@@ -1,0 +1,17 @@
+#include "exynos5422-odroidxu4.dts"
+&i2c_1 {
+	status = "okay";
+        gt928: gt928@5d {
+                        compatible = "goodix,gt928";
+                        reg = <0x5d>;
+                        interrupt-parent = <&gpx2>;
+                        interrupts = <4 4>;
+                        irq-gpios = <&gpx2 4 0>;
+                        reset-gpios = <&gpx1 3 0>;
+			touchscreen-inverted-x;
+			touchscreen-inverted-y;
+                };
+};
+&usbdrd_dwc3_0 {
+	snps,dis_u3_susphy_quirk;
+};
