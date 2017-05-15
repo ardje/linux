@@ -1142,6 +1142,64 @@ static int s2mps11_pmic_ethonoff(struct platform_device *pdev, bool onoff)
 	return ret;
 }
 
+/* for External Watchdog Hardware module */
+#include <linux/kernel.h>
+unsigned int external_watchdog = false;
+unsigned int debounce_time = 3;
+
+static int __init external_watchdog_enable(char *s)
+{
+	if (!strcmp(s, "true")) {
+		external_watchdog = true;
+		pr_emerg("s2mps11 : external watchdog enable!\n");
+	}
+	return	0;
+}
+__setup("external_watchdog=", external_watchdog_enable);
+
+static int __init external_watchdog_debounce(char *s)
+{
+	unsigned long value;
+
+	if (kstrtoul(s, 10, &value) != 0)
+		value = 3;
+
+	debounce_time = value;
+	return	0;
+}
+__setup("external_watchdog_debounce=", external_watchdog_debounce);
+
+/* pmic control register setup for external watch dog board */
+static int s2mps11_pmic_watchdog_setup(struct sec_pmic_dev *iodev)
+{
+	unsigned char rdata = 0;
+
+	/* PWRHOLD ctrl = 0*/
+	rdata = 0x0;
+
+	/* Manual reset enable */
+	rdata |= 0x08;
+
+	/* Manual reset 3 sec(default) */
+	if (debounce_time > 2 && debounce_time < 9)
+		rdata |= (debounce_time - 1);
+	else if (debounce_time > 8 && debounce_time < 11)
+		rdata |= (debounce_time - 9);
+	else
+		rdata |= 2;
+
+	if(regmap_update_bits(iodev->regmap_pmic, S2MPS11_REG_CTRL1,
+				0xFF, rdata))
+		pr_err("%s : S2MPS11_REG_CTRL1(w) fail!\n", __func__);
+	else {
+		pr_emerg("%s : external watchdog debounce time = %d sec\n",
+			__func__, debounce_time);
+		pr_emerg("%s : S2MPS11_REG_CTRL1(w:0x%02X) success!\n",
+			__func__, rdata);
+	}
+	return	0;
+}
+
 static int s2mps11_pmic_probe(struct platform_device *pdev)
 {
 	struct sec_pmic_dev *iodev = dev_get_drvdata(pdev->dev.parent);
@@ -1269,6 +1327,10 @@ common_reg:
 out:
 	kfree(rdata);
 
+	/* for Exterenal Watchdog board enable */
+	if (external_watchdog)
+		s2mps11_pmic_watchdog_setup(iodev);
+
 	return ret;
 }
 
@@ -1297,42 +1359,42 @@ static void s2mps11_pmic_shutdown(struct platform_device *pdev)
 		}
 	}
 
-        /* MMC Power Control for MMC UHS Mode */
-        if (regmap_read(iodev->regmap_pmic,
-                                S2MPS11_REG_L19CTRL, &reg_val)) {
-                dev_crit(&pdev->dev,
-                                "could not read S2MPS11_REG_L19CTRL Error!!\n");
-        }
+	/* MMC Power Control for MMC UHS Mode */
+	if (regmap_read(iodev->regmap_pmic,
+			S2MPS11_REG_L19CTRL, &reg_val)) {
+		dev_crit(&pdev->dev,
+			"could not read S2MPS11_REG_L19CTRL Error!!\n");
+	}
 
-        /* VDDQ_MMC2 OFF */
-        if (regmap_update_bits(iodev->regmap_pmic,
-                                S2MPS11_REG_L13CTRL, 0x00, 0x3F)) {
-                dev_crit(&pdev->dev,
-                                "could not update S2MPS11_REG_L13CTRL Error!!\n");
-        }
+	/* VDDQ_MMC2 OFF */
+	if (regmap_update_bits(iodev->regmap_pmic,
+				S2MPS11_REG_L13CTRL, 0x3F, 0x00)) {
+		dev_crit(&pdev->dev,
+			"could not update S2MPS11_REG_L13CTRL Error!!\n");
+	}
 
-        /* VDD_SD_2V8 OFF */
-        if (regmap_update_bits(iodev->regmap_pmic,
-                                S2MPS11_REG_L19CTRL, 0x00, 0x3F)) {
-                dev_crit(&pdev->dev,
-                                "could not update S2MPS11_REG_L19CTRL Error!!\n");
-        }
+	/* VDD_SD_2V8 OFF */
+	if (regmap_update_bits(iodev->regmap_pmic,
+				S2MPS11_REG_L19CTRL, 0x3F, 0x00)) {
+		dev_crit(&pdev->dev,
+			"could not update S2MPS11_REG_L19CTRL Error!!\n");
+	}
 
 	s2mps11_pmic_ethonoff(pdev, false);
 
-        mdelay(10);
+	mdelay(10);
 
-        if (regmap_update_bits(iodev->regmap_pmic,
-                                S2MPS11_REG_L19CTRL, reg_val, 0x3F)) {
-                dev_crit(&pdev->dev,
-                                "could not update S2MPS11_REG_L19CTRL Error!!\n");
-        }
+	if (regmap_update_bits(iodev->regmap_pmic,
+				S2MPS11_REG_L19CTRL, 0x3F, reg_val)) {
+		dev_crit(&pdev->dev,
+			"could not update S2MPS11_REG_L19CTRL Error!!\n");
+	}
 
-        if (regmap_update_bits(iodev->regmap_pmic,
-                                S2MPS11_REG_L13CTRL,  0xE8, 0xFF)) {
-                dev_crit(&pdev->dev,
-                                "could not update S2MPS11_REG_L13CTRL Error!!\n");
-        }
+	if (regmap_update_bits(iodev->regmap_pmic,
+				S2MPS11_REG_L13CTRL, 0xFF, 0xE8)) {
+		dev_crit(&pdev->dev,
+			"could not update S2MPS11_REG_L13CTRL Error!!\n");
+	}
 
 	s2mps11_pmic_ethonoff(pdev, true);
 }
