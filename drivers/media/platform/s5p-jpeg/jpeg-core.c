@@ -1099,10 +1099,10 @@ static bool s5p_jpeg_parse_hdr(struct s5p_jpeg_q_data *result,
 			       struct s5p_jpeg_ctx *ctx)
 {
 	int c, components = 0, notfound, n_dht = 0, n_dqt = 0;
-	unsigned int height, width, word, subsampling = 0, sos = 0, sof = 0,
-		     sof_len = 0;
-	unsigned int dht[S5P_JPEG_MAX_MARKER], dht_len[S5P_JPEG_MAX_MARKER],
-		     dqt[S5P_JPEG_MAX_MARKER], dqt_len[S5P_JPEG_MAX_MARKER];
+	unsigned int height = 0, width = 0, word, subsampling = 0;
+	unsigned int sos = 0, sof = 0, sof_len = 0;
+	unsigned int dht[S5P_JPEG_MAX_MARKER], dht_len[S5P_JPEG_MAX_MARKER];
+	unsigned int dqt[S5P_JPEG_MAX_MARKER], dqt_len[S5P_JPEG_MAX_MARKER];
 	long length;
 	struct s5p_jpeg_buffer jpeg_buffer;
 
@@ -2870,7 +2870,7 @@ static int s5p_jpeg_probe(struct platform_device *pdev)
 	jpeg->vfd_encoder->v4l2_dev	= &jpeg->v4l2_dev;
 	jpeg->vfd_encoder->vfl_dir	= VFL_DIR_M2M;
 
-	ret = video_register_device(jpeg->vfd_encoder, VFL_TYPE_GRABBER, -1);
+	ret = video_register_device(jpeg->vfd_encoder, VFL_TYPE_GRABBER, 20);
 	if (ret) {
 		v4l2_err(&jpeg->v4l2_dev, "Failed to register video device\n");
 		video_device_release(jpeg->vfd_encoder);
@@ -2899,7 +2899,7 @@ static int s5p_jpeg_probe(struct platform_device *pdev)
 	jpeg->vfd_decoder->v4l2_dev	= &jpeg->v4l2_dev;
 	jpeg->vfd_decoder->vfl_dir	= VFL_DIR_M2M;
 
-	ret = video_register_device(jpeg->vfd_decoder, VFL_TYPE_GRABBER, -1);
+	ret = video_register_device(jpeg->vfd_decoder, VFL_TYPE_GRABBER, 20);
 	if (ret) {
 		v4l2_err(&jpeg->v4l2_dev, "Failed to register video device\n");
 		video_device_release(jpeg->vfd_decoder);

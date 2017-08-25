@@ -1321,6 +1321,16 @@
 		       #include "exynos5420-trip-points.dtsi"
 		};
 	};
+
+	timer {
+		compatible = "arm,cortex-a15-timer",
+			     "arm,armv7-timer";
+		interrupts = <1 13 0xf08>,
+			     <1 14 0xf08>,
+			     <1 11 0xf08>,
+			     <1 10 0xf08>;
+		clock-frequency = <24000000>;
+	};
 };
 
 &dp {
@@ -1353,12 +1363,17 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c1_bus>;
 };
-
+/*
 &i2c_2 {
 	clocks = <&clock CLK_I2C2>;
 	clock-names = "i2c";
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c2_bus>;
+};
+*/
+&i2c_2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&hdmi_i2c_bus>;
 };
 
 &i2c_3 {

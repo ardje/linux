@@ -150,6 +150,13 @@
 			#undef CPU_THERMAL_ZONE_NUM
 		};
 	};
+	onewire: 1-wire {
+		compatible = "w1-gpio";
+		gpios = <&gpx2 0 0>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_1wire>;
+		status = "okay";
+	};
 };
 
 &bus_wcore {
@@ -291,6 +298,10 @@
 				regulator-name = "vdd_adc";
 				regulator-min-microvolt = <1800000>;
 				regulator-max-microvolt = <1800000>;
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-ramp-delay = <12000>;
+				regulator-initial-mode = <1>;
 			};
 
 			ldo5_reg: LDO5 {
@@ -511,10 +522,7 @@
 };
 
 &i2c_2 {
-	samsung,i2c-sda-delay = <100>;
-	samsung,i2c-max-bus-freq = <66000>;
 	status = "okay";
-
 	hdmiddc@50 {
 		compatible = "samsung,exynos4210-hdmiddc";
 		reg = <0x50>;
@@ -594,6 +602,13 @@
 		samsung,pin-function = <EXYNOS_PIN_FUNC_F>;
 		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
 		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV1>;
+	};
+
+	pinctrl_1wire: pinctrl_1wire {
+		samsung,pins = "gpx2-0";
+		samsung,pin-function = <EXYNOS_PIN_FUNC_INPUT>;
+		samsung,pin-pud = <EXYNOS_PIN_PULL_UP>;
+		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV2>;
 	};
 };
 
