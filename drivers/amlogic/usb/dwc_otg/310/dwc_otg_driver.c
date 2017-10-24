@@ -266,7 +266,7 @@ static const char *dma_config_name[] = {
 	"BURST_INCR",
 	"BURST_INCR4",
 	"BURST_INCR8",
-	"BURST_INCR16"
+	"BURST_INCR16",
 	"DISABLE",
 };
 /**
