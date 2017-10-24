@@ -1182,13 +1182,13 @@ static int assign_and_init_hc(dwc_otg_hcd_t * hcd, dwc_otg_qh_t * qh)
 	if(qh->do_split && (qtd->complete_split == 0) && (qh->ep_type == UE_BULK)){
 		/* flow control for split bulk/control transfer */
 		if(dwc_frame_num_gt(qh->sched_frame, hcd->frame_number)){
-			printk("assign_and_init_hc: sched_frame: %d, %d\n",_qh->sched_frame,_hcd->frame_number);
+			printk("assign_and_init_hc: sched_frame: %d, %d\n",qh->sched_frame,hcd->frame_number);
 			return -1;
 		}
 		else{
 			qh->sched_frame = dwc_frame_num_inc(
 						hcd->frame_number,qh->interval);
-			printk("assign_and_init_hc: next sched_frame: %d\n",_qh->sched_frame);
+			printk("assign_and_init_hc: next sched_frame: %d\n",qh->sched_frame);
 		}
 	}
 	else if(qh->do_split && (qh->ep_type == UE_INTERRUPT)){
