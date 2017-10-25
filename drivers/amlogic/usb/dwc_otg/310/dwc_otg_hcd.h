@@ -638,10 +638,23 @@ static inline void dwc_otg_hcd_qh_remove_and_free(dwc_otg_hcd_t * hcd,
  * @return Returns the memory allocate or NULL on error. */
 static inline dwc_otg_qh_t *dwc_otg_hcd_qh_alloc(int atomic_alloc)
 {
+	dwc_otg_qh_t *tmp;
+	if (atomic_alloc)
+		tmp= (dwc_otg_qh_t *) DWC_ALLOC_ATOMIC(sizeof(dwc_otg_qh_t));
+	else
+		tmp= (dwc_otg_qh_t *) DWC_ALLOC(sizeof(dwc_otg_qh_t));
+	if (tmp) {
+		tmp->sched_frame=0x3333;
+		tmp->start_split_frame=0x1111;
+		tmp->interval=0x1d;
+	}
+	return tmp;
+	/*
 	if (atomic_alloc)
 		return (dwc_otg_qh_t *) DWC_ALLOC_ATOMIC(sizeof(dwc_otg_qh_t));
 	else
 		return (dwc_otg_qh_t *) DWC_ALLOC(sizeof(dwc_otg_qh_t));
+	*/
 }
 
 extern dwc_otg_qtd_t *dwc_otg_hcd_qtd_create(dwc_otg_hcd_urb_t * urb,
