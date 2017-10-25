@@ -204,6 +204,7 @@ void qh_init(dwc_otg_hcd_t * hcd, dwc_otg_qh_t * qh, dwc_otg_hcd_urb_t * urb)
 		/* Start in a slightly future (micro)frame. */
 		qh->sched_frame = dwc_frame_num_inc(hcd->frame_number,
 						    SCHEDULE_SLOP);
+		printk("hq: %d %d\n",__LINE__,qh->sched_frame);
 		qh->interval = urb->interval;
 
 #if 0
@@ -219,12 +220,14 @@ void qh_init(dwc_otg_hcd_t * hcd, dwc_otg_qh_t * qh, dwc_otg_hcd_urb_t * urb)
 			qh->interval *= 8;
 			qh->sched_frame |= 0x7;
 			qh->start_split_frame = qh->sched_frame;
+			printk("hq: %d %d\n",__LINE__,qh->sched_frame);
 		}
 
 	}else if(qh->do_split){
 		qh->interval = SCHEDULE_SPLIT_SLOP;
 		qh->sched_frame = dwc_frame_num_inc(hcd->frame_number,
 					     SCHEDULE_SPLIT_SLOP);		
+		printk("hq: %d %d\n",__LINE__,qh->sched_frame);
 	}
 
 	DWC_DEBUGPL(DBG_HCD, "DWC OTG HCD QH Initialized\n");
@@ -451,12 +454,15 @@ static int schedule_periodic(dwc_otg_hcd_t * hcd, dwc_otg_qh_t * qh)
 	if((qh->ep_type == UE_INTERRUPT) && !(qh->ep_is_in)){
 		//if(((frame_sched - frame_number) > _qh->interval) || dwc_frame_num_le(frame_number,DWC_HFNUM_MAX_FRNUM + frame_sched)){
 			qh->sched_frame = dwc_frame_num_inc(frame_number, SCHEDULE_SLOP);
+		printk("hq: %d %d\n",__LINE__,qh->sched_frame);
 		//}//fix it in future
 	}
 
 	 if((qh->ep_type == UE_INTERRUPT) && !qh->do_split &&
-    		!dwc_frame_num_le(qh->sched_frame,dwc_frame_num_inc(frame_number,qh->interval)))    
+    		!dwc_frame_num_le(qh->sched_frame,dwc_frame_num_inc(frame_number,qh->interval))) {
             qh->sched_frame = dwc_frame_num_inc(frame_number, qh->interval);
+		printk("hq: %d %d\n",__LINE__,qh->sched_frame);
+	}
 
 	if (hcd->core_if->dma_desc_enable) {
 		/* Don't rely on SOF and start in ready schedule */
@@ -589,6 +595,7 @@ void dwc_otg_hcd_qh_deactivate(dwc_otg_hcd_t * hcd, dwc_otg_qh_t * qh,
 			/* Schedule the next continuing periodic split transfer */
 			if (sched_next_periodic_split) {
 				qh->sched_frame = frame_number;
+		printk("hq: %d %d\n",__LINE__,qh->sched_frame);
 				if (dwc_frame_num_le(frame_number,
 						     dwc_frame_num_inc
 						     (qh->start_split_frame,
@@ -604,24 +611,30 @@ void dwc_otg_hcd_qh_deactivate(dwc_otg_hcd_t * hcd, dwc_otg_qh_t * qh,
 					    (qh->ep_is_in != 0)) {
 						qh->sched_frame =
 						    dwc_frame_num_inc(qh->sched_frame, 1);
+		printk("hq: %d %d\n",__LINE__,qh->sched_frame);
 					}
 				}
 			} else {
 				qh->sched_frame =
 				    dwc_frame_num_inc(qh->start_split_frame,
 						      qh->interval);
+		printk("hq: %d %d\n",__LINE__,qh->sched_frame);
 				if (dwc_frame_num_le
 				    (qh->sched_frame, frame_number)) {
 					qh->sched_frame = frame_number;
+		printk("hq: %d %d\n",__LINE__,qh->sched_frame);
 				}
 				qh->sched_frame |= 0x7;
 				qh->start_split_frame = qh->sched_frame;
+		printk("hq: %d %d\n",__LINE__,qh->sched_frame);
 			}
 		} else {
 			qh->sched_frame =
 			    dwc_frame_num_inc(qh->sched_frame, qh->interval);
+		printk("hq: %d %d\n",__LINE__,qh->sched_frame);
 			if (dwc_frame_num_le(qh->sched_frame, frame_number)) {
 				qh->sched_frame = frame_number;
+		printk("hq: %d %d\n",__LINE__,qh->sched_frame);
 			}
 		}
 
