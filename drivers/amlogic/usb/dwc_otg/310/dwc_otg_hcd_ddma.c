@@ -472,6 +472,7 @@ static uint8_t recalc_initial_desc_idx(dwc_otg_hcd_t * hcd, dwc_otg_qh_t * qh)
 		fr_idx = (fr_idx + fr_idx_tmp) % MAX_FRLIST_EN_NUM;
 	} else {
 		qh->sched_frame = calc_starting_frame(hcd, qh, &skip_frames);
+		printk("hcd_ddma : %d\n",qh->sched_frame);
 		fr_idx = frame_list_idx(qh->sched_frame);
 	}
 
