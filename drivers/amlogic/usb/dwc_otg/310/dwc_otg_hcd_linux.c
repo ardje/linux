@@ -817,9 +817,9 @@ static int urb_enqueue(struct usb_hcd *hcd,
 	void *buf;
 	dwc_irqflags_t flags_lock;
 #ifdef DEBUG
-	if (CHK_DEBUG_LEVEL(DBG_HCDV | DBG_HCD_URB)) {
+	//if (CHK_DEBUG_LEVEL(DBG_HCDV | DBG_HCD_URB)) {
 		dump_urb_info(urb, "urb_enqueue");
-	}
+	//}
 #endif
 	DWC_SPINLOCK_IRQSAVE(dwc_otg_hcd->lock, &flags_lock);
 	DWC_SPINUNLOCK_IRQRESTORE(dwc_otg_hcd->lock, flags_lock);	
