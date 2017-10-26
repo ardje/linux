@@ -1605,7 +1605,7 @@ module_param_named(ulpi_fs_ls, dwc_otg_module_params.ulpi_fs_ls, int, 0444);
 MODULE_PARM_DESC(ulpi_fs_ls, "ULPI PHY FS/LS mode only");
 module_param_named(ts_dline, dwc_otg_module_params.ts_dline, int, 0444);
 MODULE_PARM_DESC(ts_dline, "Term select Dline pulsing for all PHYs");
-module_param_named(debug, g_dbg_lvl, int, 0444);
+module_param_named(debug, g_dbg_lvl, int, 0644);
 MODULE_PARM_DESC(debug, "");
 
 module_param_named(en_multiple_tx_fifo,
