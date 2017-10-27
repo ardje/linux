@@ -8,14 +8,55 @@ aml-objs=aml_dvb.o aml_dmx.o
 
 obj-$(CONFIG_AM_DVB) += aml_fe.o
 
-obj-$(CONFIG_AM_CI) += amlci/
+#obj-$(CONFIG_AM_CI) += amlci/
 
-obj-$(CONFIG_AM_M6_DEMOD) += amldemod/
+obj-$(CONFIG_AM_DTVDEMOD) += amldemod/
 
-ifneq ($(wildcard $(srctree)/../hardware/dvb),)
-	obj-$(CONFIG_AM_ATBM8869) += ../../../../hardware/dvb/altobeam/drivers/atbm887x/
-	obj-$(CONFIG_AM_SI2177)   += ../../../../hardware/dvb/silabs/drivers/si2177/
-	obj-$(CONFIG_AM_AVL6211)  += ../../../../hardware/dvb/availink/drivers/avl6211/
-endif
+obj-$(CONFIG_AM_ATVDEMOD) += amlatvdemod/
 
-EXTRA_CFLAGS += -I.
+obj-$(CONFIG_AML_SMARTCARD) += smartcard/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ccflags-y += -I.

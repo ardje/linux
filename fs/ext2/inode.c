@@ -58,7 +58,7 @@ static void ext2_write_failed(struct address_space *mapping, loff_t to)
 	struct inode *inode = mapping->host;
 
 	if (to > inode->i_size) {
-		truncate_pagecache(inode, to, inode->i_size);
+		truncate_pagecache(inode, inode->i_size);
 		ext2_truncate_blocks(inode, inode->i_size);
 	}
 }
@@ -1566,7 +1566,7 @@ int ext2_setattr(struct dentry *dentry, struct iattr *iattr)
 	}
 	setattr_copy(inode, iattr);
 	if (iattr->ia_valid & ATTR_MODE)
-		error = ext2_acl_chmod(inode);
+		error = posix_acl_chmod(inode, inode->i_mode);
 	mark_inode_dirty(inode);
 
 	return error;

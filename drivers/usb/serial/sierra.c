@@ -289,7 +289,6 @@ static const struct usb_device_id id_table[] = {
 	{ USB_DEVICE_AND_INTERFACE_INFO(0x1199, 0x68AA, 0xFF, 0xFF, 0xFF),
 	  .driver_info = (kernel_ulong_t)&direct_ip_interface_blacklist
 	},
-	{ USB_DEVICE(0x1199, 0x68AB) }, /* Sierra Wireless AR8550 */
 	/* AT&T Direct IP LTE modems */
 	{ USB_DEVICE_AND_INTERFACE_INFO(0x0F3D, 0x68AA, 0xFF, 0xFF, 0xFF),
 	  .driver_info = (kernel_ulong_t)&direct_ip_interface_blacklist
@@ -503,14 +502,12 @@ static int sierra_write(struct tty_struct *tty, struct usb_serial_port *port,
 
 	buffer = kmalloc(writesize, GFP_ATOMIC);
 	if (!buffer) {
-		dev_err(&port->dev, "out of memory\n");
 		retval = -ENOMEM;
 		goto error_no_buffer;
 	}
 
 	urb = usb_alloc_urb(0, GFP_ATOMIC);
 	if (!urb) {
-		dev_err(&port->dev, "no more free urbs\n");
 		retval = -ENOMEM;
 		goto error_no_urb;
 	}
@@ -742,11 +739,8 @@ static struct urb *sierra_setup_urb(struct usb_serial *serial, int endpoint,
 		return NULL;
 
 	urb = usb_alloc_urb(0, mem_flags);
-	if (urb == NULL) {
-		dev_dbg(&serial->dev->dev, "%s: alloc for endpoint %d failed\n",
-			__func__, endpoint);
+	if (!urb)
 		return NULL;
-	}
 
 	buf = kmalloc(len, mem_flags);
 	if (buf) {
@@ -758,9 +752,6 @@ static struct urb *sierra_setup_urb(struct usb_serial *serial, int endpoint,
 		dev_dbg(&serial->dev->dev, "%s %c u : %p d:%p\n", __func__,
 				dir == USB_DIR_IN ? 'i' : 'o', urb, buf);
 	} else {
-		dev_dbg(&serial->dev->dev, "%s %c u:%p d:%p\n", __func__,
-				dir == USB_DIR_IN ? 'i' : 'o', urb, buf);
-
 		sierra_release_urb(urb);
 		urb = NULL;
 	}
@@ -940,7 +931,7 @@ static int sierra_port_probe(struct usb_serial_port *port)
 		/* This is really the usb-serial port number of the interface
 		 * rather than the interface number.
 		 */
-		ifnum = port->number - serial->minor;
+		ifnum = port->port_number;
 		himemoryp = &typeA_interface_list;
 	}
 

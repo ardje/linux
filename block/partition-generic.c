@@ -408,6 +408,8 @@ static int drop_partitions(struct gendisk *disk, struct block_device *bdev)
 	struct hd_struct *part;
 	int res;
 
+	if (bdev->bd_part_count)
+		return -EBUSY;
 	res = invalidate_partition(disk, 0);
 	if (res)
 		return res;
@@ -430,9 +432,6 @@ rescan:
 		free_partitions(state);
 		state = NULL;
 	}
-
-	if (bdev->bd_part_count)
-		return -EBUSY;
 
 	res = drop_partitions(disk, bdev);
 	if (res)
@@ -470,6 +469,9 @@ rescan:
 		if (disk_unlock_native_capacity(disk))
 			goto rescan;
 	}
+
+	/* tell userspace that the media / partition table may have changed */
+	kobject_uevent(&disk_to_dev(disk)->kobj, KOBJ_CHANGE);
 
 	/* Detect the highest partition number and preallocate
 	 * disk->part_tbl.  This is an optimization and not strictly
@@ -534,9 +536,6 @@ rescan:
 			md_autodetect_dev(part_to_dev(part)->devt);
 #endif
 	}
-	
-	/* tell userspace that the media / partition table may have changed */
-	kobject_uevent(&disk_to_dev(disk)->kobj, KOBJ_ADD);
 	free_partitions(state);
 	return 0;
 }

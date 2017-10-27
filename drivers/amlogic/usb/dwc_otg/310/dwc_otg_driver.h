@@ -7,7 +7,7 @@
  * Synopsys HS OTG Linux Software Driver and documentation (hereinafter,
  * "Software") is an Unsupported proprietary work of Synopsys, Inc. unless
  * otherwise expressly agreed to in writing between Synopsys and you.
- * 
+ *
  * The Software IS NOT an item of Licensed Software or Licensed Product under
  * any End User Software License Agreement or Agreement for Licensed Product
  * with Synopsys or any supplement thereto. You are permitted to use and
@@ -17,7 +17,7 @@
  * any information contained herein except pursuant to this license grant from
  * Synopsys. If you do not agree with this notice, including the disclaimer
  * below, then you are not authorized to use the Software.
- * 
+ *
  * THIS SOFTWARE IS BEING DISTRIBUTED BY SYNOPSYS SOLELY ON AN "AS IS" BASIS
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -39,9 +39,15 @@
  */
 #include "dwc_otg_os_dep.h"
 #include "dwc_otg_core_if.h"
-#ifdef CONFIG_HAS_EARLYSUSPEND  
+#ifdef CONFIG_HAS_EARLYSUSPEND
 #include <linux/earlysuspend.h>
 #endif
+#include <linux/notifier.h>
+
+#ifdef CONFIG_AMLOGIC_USB3PHY
+extern void aml_new_usb_init(void);
+#endif
+
 /* Type declarations */
 struct dwc_otg_pcd;
 struct dwc_otg_hcd;
@@ -57,9 +63,9 @@ typedef struct dwc_otg_device {
 	struct os_dependent os_dep;
 
 	/** Generic Device refercece from os_dep */
-	struct device * gen_dev;
+	struct device *gen_dev;
 
-	const char * dev_name;
+	const char *dev_name;
 
 	/** Pointer to the core interface structure. */
 	dwc_otg_core_if_t *core_if;
@@ -73,14 +79,18 @@ typedef struct dwc_otg_device {
 	/** Flag to indicate whether the common IRQ handler is installed. */
 	uint8_t common_irq_installed;
 
-	dwc_timer_t * id_change_timer;
-#ifdef CONFIG_HAS_EARLYSUSPEND  
+	dwc_timer_t *id_change_timer;
+#ifdef CONFIG_HAS_EARLYSUSPEND
 	struct early_suspend usb_early_suspend;
 #endif
+
+	struct notifier_block nb;
+
+	struct delayed_work	work;
 } dwc_otg_device_t;
 
-/*We must clear S3C24XX_EINTPEND external interrupt register 
- * because after clearing in this register trigerred IRQ from 
+/*We must clear S3C24XX_EINTPEND external interrupt register
+ * because after clearing in this register trigerred IRQ from
  * H/W core in kernel interrupt can be occured again before OTG
  * handlers clear all IRQ sources of Core registers because of
  * timing latencies and Low Level IRQ Type.
@@ -88,7 +98,7 @@ typedef struct dwc_otg_device {
 #ifdef CONFIG_MACH_IPMATE
 #define  S3C2410X_CLEAR_EINTPEND()   \
 do { \
-	__raw_writel(1UL << 11,S3C24XX_EINTPEND); \
+	__raw_writel(1UL << 11, S3C24XX_EINTPEND); \
 } while (0)
 #else
 #define  S3C2410X_CLEAR_EINTPEND()   do { } while (0)

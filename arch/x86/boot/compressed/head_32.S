@@ -30,34 +30,6 @@
 #include <asm/boot.h>
 #include <asm/asm-offsets.h>
 
-/*
- * The 32-bit x86 assembler in binutils 2.26 will generate R_386_GOT32X
- * relocation to get the symbol address in PIC.  When the compressed x86
- * kernel isn't built as PIC, the linker optimizes R_386_GOT32X
- * relocations to their fixed symbol addresses.  However, when the
- * compressed x86 kernel is loaded at a different address, it leads
- * to the following load failure:
- *
- *   Failed to allocate space for phdrs
- *
- * during the decompression stage.
- *
- * If the compressed x86 kernel is relocatable at run-time, it should be
- * compiled with -fPIE, instead of -fPIC, if possible and should be built as
- * Position Independent Executable (PIE) so that linker won't optimize
- * R_386_GOT32X relocation to its fixed symbol address.  Older
- * linkers generate R_386_32 relocations against locally defined symbols,
- * _bss, _ebss, _got and _egot, in PIE.  It isn't wrong, just less
- * optimal than R_386_RELATIVE.  But the x86 kernel fails to properly handle
- * R_386_32 relocations when relocating the kernel.  To generate
- * R_386_RELATIVE relocations, we mark _bss, _ebss, _got and _egot as
- * hidden:
- */
-	.hidden _bss
-	.hidden _ebss
-	.hidden _got
-	.hidden _egot
-
 	__HEAD
 ENTRY(startup_32)
 #ifdef CONFIG_EFI_STUB
@@ -82,7 +54,7 @@ ENTRY(efi_pe_entry)
 	call	reloc
 reloc:
 	popl	%ecx
-	subl	$reloc, %ecx
+	subl	reloc, %ecx
 	movl	%ecx, BP_code32_start(%eax)
 
 	sub	$0x4, %esp
@@ -147,9 +119,11 @@ preferred_addr:
 	addl    %eax, %ebx
 	notl	%eax
 	andl    %eax, %ebx
-#else
-	movl	$LOAD_PHYSICAL_ADDR, %ebx
+	cmpl	$LOAD_PHYSICAL_ADDR, %ebx
+	jge	1f
 #endif
+	movl	$LOAD_PHYSICAL_ADDR, %ebx
+1:
 
 	/* Target address to relocate to for decompression */
 	addl	$z_extract_offset, %ebx
@@ -211,8 +185,10 @@ relocated:
 /*
  * Do the decompression, and jump to the new kernel..
  */
-	leal	z_extract_offset_negative(%ebx), %ebp
 				/* push arguments for decompress_kernel: */
+	pushl	$z_run_size	/* size of kernel with .bss and .brk */
+	pushl	$z_output_len	/* decompressed length, end of relocs */
+	leal	z_extract_offset_negative(%ebx), %ebp
 	pushl	%ebp		/* output address */
 	pushl	$z_input_len	/* input_len */
 	leal	input_data(%ebx), %eax
@@ -220,40 +196,14 @@ relocated:
 	leal	boot_heap(%ebx), %eax
 	pushl	%eax		/* heap area */
 	pushl	%esi		/* real mode pointer */
-	call	decompress_kernel
-	addl	$20, %esp
-
-#if CONFIG_RELOCATABLE
-/*
- * Find the address of the relocations.
- */
-	leal	z_output_len(%ebp), %edi
-
-/*
- * Calculate the delta between where vmlinux was compiled to run
- * and where it was actually loaded.
- */
-	movl	%ebp, %ebx
-	subl	$LOAD_PHYSICAL_ADDR, %ebx
-	jz	2f	/* Nothing to be done if loaded at compiled addr. */
-/*
- * Process relocations.
- */
-
-1:	subl	$4, %edi
-	movl	(%edi), %ecx
-	testl	%ecx, %ecx
-	jz	2f
-	addl	%ebx, -__PAGE_OFFSET(%ebx, %ecx)
-	jmp	1b
-2:
-#endif
+	call	decompress_kernel /* returns kernel location in %eax */
+	addl	$28, %esp
 
 /*
  * Jump to the decompressed kernel.
  */
 	xorl	%ebx, %ebx
-	jmp	*%ebp
+	jmp	*%eax
 
 /*
  * Stack and heap for uncompression

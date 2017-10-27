@@ -1,3 +1,20 @@
+/*
+ * drivers/amlogic/camera/common/config_parser.h
+ *
+ * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+*/
+
 #ifndef CONFIG_PARSER
 #define CONFIG_PARSER
 
@@ -45,186 +62,186 @@ enum error_code {
 	BODY_ELEMENT_FAILED,
 };
 
-typedef struct{
-    int num;
-    char name[40];
-    unsigned int export[EFFECT_MAX];
-}effect_type;
-
-typedef struct{
-    int sum;
-    effect_type eff[EFFECT_ITEM_MAX];
-}effect_struct;
-
-typedef struct{
-    int num;
-    char name[40];
-    int export[HW_MAX];
-}hw_type;
-
-typedef struct{
-    int sum;
-    hw_type hw[HW_ITEM_MAX];
-}hw_struct;
-
-typedef struct{
-    int num;
-    char name[40];
-    int export[2];
-}wb_type;
-
-typedef struct{
-    int sum;
-    wb_type wb[WB_ITEM_MAX];
-}wb_struct;
-
-
-typedef struct{
-    int num;
-    char name[40];
-    int export[SCENE_MAX];
-}scene_type;
-
-typedef struct{
-    int sum;
-    scene_type scene[SCENE_ITEM_MAX];
-}scene_struct;
-
-typedef struct{
+struct effect_type {
 	int num;
 	char name[40];
-	int export[CAPTURE_ITEM_MAX];	
-}capture_type;
+	unsigned int export[EFFECT_MAX];
+};
 
-typedef struct{
+struct effect_struct {
 	int sum;
-	capture_type capture[CAPTURE_MAX];
-}capture_struct;
+	struct effect_type eff[EFFECT_ITEM_MAX];
+};
 
-typedef struct sensor_aet_s {
-    unsigned int exp;
-    unsigned int ag;
-    unsigned int vts;
-    unsigned int gain;
-    unsigned int fr;
-} sensor_aet_t;
+struct hw_type {
+	int num;
+	char name[40];
+	int export[HW_MAX];
+};
 
-typedef struct sensor_aet_info_s {
-    unsigned int fmt_main_fr;
-    unsigned int fmt_capture; // false: preview, true: capture
-    unsigned int fmt_hactive;
-    unsigned int fmt_vactive;
-    unsigned int fmt_rated_fr;
-    unsigned int fmt_min_fr;
-    unsigned int tbl_max_step;
-    unsigned int tbl_rated_step;
-    unsigned int tbl_max_gain;
-    unsigned int tbl_min_gain;
-    unsigned int format_transfer_parameter;
-} sensor_aet_info_t;
+struct hw_struct {
+	int sum;
+	struct hw_type hw[HW_ITEM_MAX];
+};
 
+struct wb_type {
+	int num;
+	char name[40];
+	int export[2];
+};
 
-typedef struct{
-    int num;
-    char name[40];
-    sensor_aet_info_t *info;
-    sensor_aet_t *aet_table;
-}aet_type;
+struct wb_struct {
+	int sum;
+	struct wb_type wb[WB_ITEM_MAX];
+};
 
-typedef struct{
-    int sum;
-    aet_type aet[AET_ITEM_MAX];
-}aet_struct;
+struct scene_type {
+	int num;
+	char name[40];
+	int export[SCENE_MAX];
+};
 
-typedef struct{
-	int export[WAVE_MAX];	
-}wave_struct;
+struct scene_struct {
+	int sum;
+	struct scene_type scene[SCENE_ITEM_MAX];
+};
 
-typedef struct{
+struct capture_type {
+	int num;
+	char name[40];
+	int export[CAPTURE_ITEM_MAX];
+};
+
+struct capture_struct {
+	int sum;
+	struct capture_type capture[CAPTURE_MAX];
+};
+
+struct sensor_aet_s {
+	unsigned int exp;
+	unsigned int ag;
+	unsigned int vts;
+	unsigned int gain;
+	unsigned int fr;
+};
+/* sensor_aet_t */
+
+struct sensor_aet_info_s {
+	unsigned int fmt_main_fr;
+	unsigned int fmt_capture; /* false: preview, true: capture */
+	unsigned int fmt_hactive;
+	unsigned int fmt_vactive;
+	unsigned int fmt_rated_fr;
+	unsigned int fmt_min_fr;
+	unsigned int tbl_max_step;
+	unsigned int tbl_rated_step;
+	unsigned int tbl_max_gain;
+	unsigned int tbl_min_gain;
+	unsigned int format_transfer_parameter;
+};
+/* sensor_aet_info_t */
+
+struct aet_type {
+	int num;
+	char name[40];
+	struct sensor_aet_info_s *info;
+	struct sensor_aet_s *aet_table;
+};
+
+struct aet_struct {
+	int sum;
+	struct aet_type aet[AET_ITEM_MAX];
+};
+
+struct wave_struct {
+	int export[WAVE_MAX];
+};
+
+struct lens_type {
 	int num;
 	char name[40];
 	int export[LENS_MAX];
-}lens_type;
+};
 
-typedef struct{
+struct lens_struct {
 	int sum;
-	lens_type lens[LENS_ITEM_MAX];	
-}lens_struct;
+	struct lens_type lens[LENS_ITEM_MAX];
+};
 
-typedef struct{
+struct gamma_struct {
 	unsigned short gamma_r[GAMMA_MAX];
 	unsigned short gamma_g[GAMMA_MAX];
 	unsigned short gamma_b[GAMMA_MAX];
-}gamma_struct;
+};
 
-typedef struct{
-    int export[WB_SENSOR_MAX];
-}wb_sensor_struct;
+struct wb_sensor_struct {
+	int export[WB_SENSOR_MAX];
+};
 
-typedef struct{
-    char date[40];
-    char module[30];
-    char version[30];		
-}version_struct;
+struct version_struct {
+	char date[40];
+	char module[30];
+	char version[30];
+};
 
-typedef struct{
-	int export[CM_MAX];	
-}cm_struct;
+struct cm_struct {
+	int export[CM_MAX];
+};
 
-typedef struct{
+struct nr_type {
 	int num;
 	char name[40];
-	int export[NR_MAX];	
-}nr_type;
+	int export[NR_MAX];
+};
 
-typedef struct{
+struct nr_struct {
 	int sum;
-	nr_type nr[NR_ITEM_MAX];	
-}nr_struct;
+	struct nr_type nr[NR_ITEM_MAX];
+};
 
-typedef struct{
+struct peaking_type {
 	int num;
 	char name[40];
-	int export[PEAKING_MAX];	
-}peaking_type;
+	int export[PEAKING_MAX];
+};
 
-typedef struct{
+struct peaking_struct {
 	int sum;
-	peaking_type peaking[PEAKING_ITEM_MAX];
-}peaking_struct;
+	struct peaking_type peaking[PEAKING_ITEM_MAX];
+};
 
-typedef struct{
-    effect_struct eff;
-    int effect_valid;
-    hw_struct hw;
-    int hw_valid;
-    aet_struct aet; 
-    int aet_valid;
-    capture_struct capture;
-    int capture_valid;
-    scene_struct scene;
-    int scene_valid;
-    wb_struct wb;
-    int wb_valid;
-    wave_struct wave;
-    int wave_valid;
-    lens_struct lens;
-    int lens_valid;
-    gamma_struct gamma;
-    int gamma_valid;
-    wb_sensor_struct wb_sensor_data;
-    int wb_sensor_data_valid;
-    version_struct version;
-    int version_info_valid;
-    cm_struct cm;
-    int cm_valid;
-    nr_struct nr;
-    int nr_valid;
-    peaking_struct peaking;
-    int peaking_valid;
-}configure_t;
+struct configure_s {
+	struct effect_struct eff;
+	int effect_valid;
+	struct hw_struct hw;
+	int hw_valid;
+	struct aet_struct aet;
+	int aet_valid;
+	struct capture_struct capture;
+	int capture_valid;
+	struct scene_struct scene;
+	int scene_valid;
+	struct wb_struct wb;
+	int wb_valid;
+	struct wave_struct wave;
+	int wave_valid;
+	struct lens_struct lens;
+	int lens_valid;
+	struct gamma_struct gamma;
+	int gamma_valid;
+	struct wb_sensor_struct wb_sensor_data;
+	int wb_sensor_data_valid;
+	struct version_struct version;
+	int version_info_valid;
+	struct cm_struct cm;
+	int cm_valid;
+	struct nr_struct nr;
+	int nr_valid;
+	struct peaking_struct peaking;
+	int peaking_valid;
+};
 
-typedef struct{
+struct para_index_s {
 	unsigned int effect_index;
 	unsigned int scenes_index;
 	unsigned int wb_index;
@@ -232,48 +249,53 @@ typedef struct{
 	unsigned int nr_index;
 	unsigned int peaking_index;
 	unsigned int lens_index;
-}para_index_t;
+};
 
-typedef struct{
-	camera_wb_flip_t wb;
+struct wb_pair_t {
+	enum camera_wb_flip_e wb;
 	char *name;
-}wb_pair_t;
+};
 
-typedef struct{
-	camera_special_effect_t effect;
+struct effect_pair_t {
+	enum camera_special_effect_e effect;
 	char *name;
-}effect_pair_t;
+};
 
-typedef struct sensor_dg_s {
-    unsigned short r;
-    unsigned short g;
-    unsigned short b;
-    unsigned short dg_default;
-}sensor_dg_t;
+struct sensor_dg_s {
+	unsigned short r;
+	unsigned short g;
+	unsigned short b;
+	unsigned short dg_default;
+};
 
-typedef struct{
-	sensor_aet_info_t *sensor_aet_info; // point to 1 of up to 16 aet information
-	sensor_aet_t *sensor_aet_table;
-	unsigned int sensor_aet_step; // current step of the current aet
-	configure_t *configure;
-}camera_priv_data_t;
+struct camera_priv_data_s {
+	struct sensor_aet_info_s
+		*sensor_aet_info; /* point to 1 of up to 16 aet information */
+	struct sensor_aet_s *sensor_aet_table;
+	unsigned int sensor_aet_step; /* current step of the current aet */
+	struct configure_s *configure;
+};
 
-int parse_config(const char *path,configure_t *cf);
-int generate_para(cam_parameter_t *para,para_index_t pindex,configure_t *cf);
-void free_para(cam_parameter_t *para);
-int update_fmt_para(int width,int height,cam_parameter_t *para,para_index_t *pindex,configure_t *cf);
+int parse_config(const char *path, struct configure_s *cf);
+int generate_para(struct cam_parameter_s *para, struct para_index_s pindex,
+		  struct configure_s *cf);
+void free_para(struct cam_parameter_s *para);
+int update_fmt_para(int width, int height, struct cam_parameter_s *para,
+		    struct para_index_s *pindex, struct configure_s *cf);
 
 unsigned int get_aet_current_step(void *priv);
 unsigned int get_aet_current_gain(void *pirv);
 unsigned int get_aet_min_gain(void *priv);
 unsigned int get_aet_max_gain(void *priv);
 unsigned int get_aet_max_step(void *priv);
-unsigned int get_aet_gain_by_step(void *priv,unsigned int new_step);
+unsigned int get_aet_gain_by_step(void *priv, unsigned int new_step);
 
-
-int my_i2c_put_byte(struct i2c_adapter *adapter,unsigned short i2c_addr,unsigned short addr,unsigned char data);
-int my_i2c_put_byte_add8(struct i2c_adapter *adapter,unsigned short i2c_addr,char *buf,int len);
-int my_i2c_get_byte(struct i2c_adapter *adapter,unsigned short i2c_addr,unsigned short addr);
-int my_i2c_get_word(struct i2c_adapter *adapter,unsigned short i2c_addr);
+int my_i2c_put_byte(struct i2c_adapter *adapter, unsigned short i2c_addr,
+		    unsigned short addr, unsigned char data);
+int my_i2c_put_byte_add8(struct i2c_adapter *adapter, unsigned short i2c_addr,
+			 char *buf, int len);
+int my_i2c_get_byte(struct i2c_adapter *adapter, unsigned short i2c_addr,
+		    unsigned short addr);
+int my_i2c_get_word(struct i2c_adapter *adapter, unsigned short i2c_addr);
 #endif
 

@@ -30,7 +30,7 @@
 
 #define ISP_VER					"2014.01.16a"
 #define ISP_NUM					1
-#define DEVICE_NAME 			        "isp"
+#define DEVICE_NAME			        "isp"
 
 #define USE_WORK_QUEUE
 
@@ -55,87 +55,90 @@
 
 #define ISP_AF_SM_MASK				(ISP_FLAG_AF|ISP_FLAG_TOUCH_AF)
 
-typedef enum bayer_fmt_e {
+enum bayer_fmt_e {
 	RAW_BGGR = 0,
 	RAW_RGGB,
 	RAW_GBRG,
-	RAW_GRBG,//3
-} bayer_fmt_t;
-typedef struct isp_info_s {
-	tvin_port_t fe_port;
-	tvin_color_fmt_t bayer_fmt;
-	tvin_color_fmt_t cfmt;
-	tvin_color_fmt_t dfmt;
+	RAW_GRBG,/* 3 */
+};
+struct isp_info_s {
+	enum tvin_port_e fe_port;
+	enum tvin_color_fmt_e bayer_fmt;
+	enum tvin_color_fmt_e cfmt;
+	enum tvin_color_fmt_e dfmt;
 	unsigned int h_active;
 	unsigned int v_active;
 	unsigned short dest_hactive;
 	unsigned short dest_vactive;
 	unsigned int frame_rate;
 	unsigned int skip_cnt;
-} isp_info_t;
+};
 /*config in bsp*/
-typedef struct flash_property_s {
-	bool 	 valid;		 //true:have flash,false:havn't flash
-	bool     torch_pol_inv;  // false: negative correlation
-                                 // true: positive correlation
-        bool 	 pin_mux_inv;	 // false: led1=>pin1 & led2=>pin2, true: led1=>pin2 & led2=>pin1
-
-        bool 	 led1_pol_inv;	 // false: active high, true: active low
-        bool     mode_pol_inv;   //        TORCH  FLASH
-                                 //false: low      high
-                                 //true:  high     low
-} flash_property_t;
+struct flash_property_s {
+	bool	 valid;		 /* true:have flash,false:havn't flash */
+	/* false: negative correlation
+	 *  true: positive correlation */
+	bool     torch_pol_inv;
+	 /* false: led1=>pin1 & led2=>pin2,
+	  * true: led1=>pin2 & led2=>pin1 */
+	bool	 pin_mux_inv;
+	/* false: active high, true: active low */
+	bool	 led1_pol_inv;
+	bool     mode_pol_inv;   /* TORCH  FLASH */
+				 /* false: low      high */
+				 /* true:  high     low */
+};
 /*parameters used for ae in sm or driver*/
-typedef struct isp_ae_info_s {
-	int manul_level;//each step 2db
+struct isp_ae_info_s {
+	int manul_level;/* each step 2db */
 	atomic_t writeable;
-} isp_ae_info_t;
+};
 
 /*for af debug*/
-typedef struct af_debug_s {
+struct af_debug_s {
 	bool            dir;
-	//unsigned int    control;
+	/* unsigned int    control; */
 	unsigned int    state;
 	unsigned int    step;
-	unsigned int 	min_step;
-		 int 	max_step;
+	unsigned int	min_step;
+		 int	max_step;
 	unsigned int    delay;
-		 int 	cur_step;
+		 int	cur_step;
 	unsigned int    pre_step;
 	unsigned int	mid_step;
 	unsigned int	post_step;
 	unsigned int	pre_threshold;
 	unsigned int	post_threshold;
-	isp_blnr_stat_t data[1024];
-} af_debug_t;
+	struct isp_blnr_stat_s data[1024];
+};
 /*for af test debug*/
-typedef struct af_debug_test_s {
+struct af_debug_test_s {
 	unsigned int cnt;
 	unsigned int max;
 	struct isp_af_stat_s   *af_win;
 	struct isp_blnr_stat_s *af_bl;
 	struct isp_ae_stat_s   *ae_win;
 	struct isp_awb_stat_s  *awb_stat;
-} af_debug_test_t;
+};
 /*for af fine tune*/
-typedef struct isp_af_fine_tune_s {
+struct isp_af_fine_tune_s {
 	unsigned int cur_step;
-	isp_blnr_stat_t af_data;
-} isp_af_fine_tune_t;
+	struct isp_blnr_stat_s af_data;
+};
 
-typedef struct isp_af_info_s {
+struct isp_af_info_s {
 	unsigned int cur_index;
 	/*for lose focus*/
 	unsigned int *v_dc;
-        bool	     last_move;
-	isp_blnr_stat_t last_blnr;
+	bool	     last_move;
+	struct isp_blnr_stat_s last_blnr;
 	/*for climbing algorithm*/
 	unsigned int great_step;
 	unsigned int cur_step;
 	unsigned int capture_step;
-	isp_blnr_stat_t *af_detect;
-	isp_blnr_stat_t af_data[FOCUS_GRIDS];
-	//unsigned char af_delay;
+	struct isp_blnr_stat_s *af_detect;
+	struct isp_blnr_stat_s af_data[FOCUS_GRIDS];
+	/* unsigned char af_delay; */
 	atomic_t writeable;
 	/*window for full scan&detect*/
 	unsigned int x0;
@@ -145,34 +148,34 @@ typedef struct isp_af_info_s {
 	/*touch window radius*/
 	unsigned int radius;
 	/* blnr tmp for isr*/
-	isp_blnr_stat_t isr_af_data;
+	struct isp_blnr_stat_s isr_af_data;
 	unsigned int valid_step_cnt;
-	isp_af_fine_tune_t af_fine_data[FOCUS_GRIDS];
-}isp_af_info_t;
+	struct isp_af_fine_tune_s af_fine_data[FOCUS_GRIDS];
+};
 
 /*for debug cmd*/
-typedef struct debug_s {
+struct debug_s {
 	unsigned int comb4_mode;
-} debug_t;
+};
 
-typedef struct isp_dev_s{
+struct isp_dev_s {
 	int             index;
 	dev_t		devt;
 	unsigned int    offset;
 	struct cdev	cdev;
 	struct device	*dev;
 	unsigned int    flag;
-	unsigned int 	vs_cnt;
-        /*add for tvin frontend*/
-        tvin_frontend_t frontend;
-	tvin_frontend_t *isp_fe;
+	unsigned int	vs_cnt;
+	/*add for tvin frontend*/
+	struct tvin_frontend_s frontend;
+	struct tvin_frontend_s *isp_fe;
 
 	struct isp_info_s info;
 #ifndef USE_WORK_QUEUE
-    struct tasklet_struct isp_task;
-    struct task_struct     *kthread;
+	struct tasklet_struct isp_task;
+	struct task_struct     *kthread;
 #else
-    struct work_struct isp_wq;
+	struct work_struct isp_wq;
 #endif
 	struct isp_ae_stat_s isp_ae;
 	struct isp_ae_info_s ae_info;
@@ -180,40 +183,47 @@ typedef struct isp_dev_s{
 	struct isp_af_stat_s isp_af;
 	struct isp_af_info_s af_info;
 	struct isp_blnr_stat_s blnr_stat;
-	cam_parameter_t *cam_param;
-	xml_algorithm_ae_t *isp_ae_parm;
-	xml_algorithm_awb_t *isp_awb_parm;
-	xml_algorithm_af_t *isp_af_parm;
-	xml_capture_t *capture_parm;
-	wave_t        *wave;
-	flash_property_t flash;
-	af_debug_t      *af_dbg;
-	debug_t         debug;
+	struct cam_parameter_s *cam_param;
+	struct xml_algorithm_ae_s *isp_ae_parm;
+	struct xml_algorithm_awb_s *isp_awb_parm;
+	struct xml_algorithm_af_s *isp_af_parm;
+	struct xml_capture_s *capture_parm;
+	struct wave_s        *wave;
+	struct flash_property_s flash;
+	struct af_debug_s      *af_dbg;
+	struct debug_s         debug;
 	/*test for af test win*/
-	af_debug_test_t af_test;
+	struct af_debug_test_s af_test;
 	/*cmd state for camera*/
-	cam_cmd_state_t cmd_state;
-}isp_dev_t;
+	enum cam_cmd_state_e cmd_state;
+};
 
-typedef enum data_type_e{
-	ISP_U8=0,
+enum data_type_e {
+	ISP_U8 = 0,
 	ISP_U16,
 	ISP_U32,
-	//ISP_FLOAT, //not use
-}data_type_t;
+	/* ISP_FLOAT, //not use */
+};
 
-typedef struct isp_param_s{
-    const char *name;
-    unsigned int *param;
-    unsigned char length;
-    data_type_t type;
-}isp_param_t;
+struct isp_param_s {
+	const char *name;
+	unsigned int *param;
+	unsigned char length;
+	enum data_type_e type;
+};
 
-extern void set_ae_parm(xml_algorithm_ae_t * ae_sw,char * * parm);
-extern void set_awb_parm(xml_algorithm_awb_t * awb_sw,char * * parm);
-extern void set_af_parm(xml_algorithm_af_t * af_sw,char * * parm);
-extern void set_cap_parm(struct xml_capture_s * cap_sw,char * * parm);
-extern void set_wave_parm(struct wave_s * wave,char * * parm);
-extern bool set_gamma_table_with_curve_ratio(unsigned int r,unsigned int g,unsigned int b);
+extern void set_ae_parm(struct xml_algorithm_ae_s *ae_sw,
+		char **parm);
+extern void set_awb_parm(struct xml_algorithm_awb_s *awb_sw,
+		char **parm);
+extern void set_af_parm(struct xml_algorithm_af_s *af_sw,
+		char **parm);
+extern void set_cap_parm(struct xml_capture_s *cap_sw,
+		char **parm);
+extern void set_wave_parm(struct wave_s *wave,
+		char **parm);
+extern bool set_gamma_table_with_curve_ratio(unsigned int r,
+		unsigned int g,
+		unsigned int b);
 #endif
 

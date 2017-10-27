@@ -14,10 +14,6 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  *  General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License along
- *  with this program; if not, write to the Free Software Foundation, Inc.,
- *  59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
- *
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
 #include <linux/module.h>
@@ -27,6 +23,8 @@
 #include <linux/slab.h>
 #include <linux/cpu.h>
 #include <linux/cpucore_cooling.h>
+#include <linux/thermal_core.h>
+#include <linux/cpumask.h>
 
 /**
  * struct cpucore_cooling_device - data for cooling device with cpucore
@@ -47,6 +45,7 @@
 
 static DEFINE_IDR(cpucore_idr);
 static DEFINE_MUTEX(cooling_cpucore_lock);
+static LIST_HEAD(cpucore_dev_list);
 
 /* notify_table passes value to the cpucore_ADJUST callback function. */
 #define NOTIFY_INVALID NULL
@@ -103,8 +102,8 @@ static int cpucore_get_max_state(struct thermal_cooling_device *cdev,
 				 unsigned long *state)
 {
 	struct cpucore_cooling_device *cpucore_device = cdev->devdata;
-	*state=cpucore_device->max_cpu_core_num;
-	pr_debug( "max cpu core=%ld\n",*state);
+	*state = cpucore_device->max_cpu_core_num;
+	pr_debug("max cpu core=%ld\n", *state);
 	return 0;
 }
 
@@ -122,8 +121,8 @@ static int cpucore_get_cur_state(struct thermal_cooling_device *cdev,
 				 unsigned long *state)
 {
 	struct cpucore_cooling_device *cpucore_device = cdev->devdata;
-	*state=cpucore_device->cpucore_state;
-	pr_debug( "current state=%ld\n",*state);
+	*state = cpucore_device->cpucore_state;
+	pr_debug("current state=%ld\n", *state);
 	return 0;
 }
 
@@ -141,35 +140,106 @@ static int cpucore_set_cur_state(struct thermal_cooling_device *cdev,
 				 unsigned long state)
 {
 	struct cpucore_cooling_device *cpucore_device = cdev->devdata;
-	int set_max_num;
+	int set_max_num, id;
 	mutex_lock(&cooling_cpucore_lock);
-	if(cpucore_device->stop_flag){
+	if (cpucore_device->stop_flag) {
 		mutex_unlock(&cooling_cpucore_lock);
 		return 0;
 	}
-	if((state & CPU_STOP ) == CPU_STOP){
-		cpucore_device->stop_flag=1;
-		state=state&(~CPU_STOP);
+	if ((state & CPU_STOP) == CPU_STOP) {
+		cpucore_device->stop_flag = 1;
+		state = state&(~CPU_STOP);
 	}
 	mutex_unlock(&cooling_cpucore_lock);
-	cpucore_device->cpucore_state=state;
-	set_max_num=cpucore_device->max_cpu_core_num-state;
-	pr_debug( "need set max cpu num=%d,state=%ld\n",set_max_num,state);
-	cpufreq_set_max_cpu_num(set_max_num);
-	
+	if (cpucore_device->max_cpu_core_num - state > 0) {
+		cpucore_device->cpucore_state = state;
+		set_max_num = cpucore_device->max_cpu_core_num - state;
+		id = cpucore_device->cluster_id;
+		pr_debug("set max cpu num=%d,state=%ld\n", set_max_num, state);
+		cpufreq_set_max_cpu_num(set_max_num, id);
+	}
+
 	return 0;
 }
+
+/*
+ * Simple mathematics model for cpu core power:
+ * just for ipa hook, nothing to do;
+ */
+static int cpucore_get_requested_power(struct thermal_cooling_device *cdev,
+				       struct thermal_zone_device *tz,
+				       u32 *power)
+{
+	*power = 0;
+
+	return 0;
+}
+
+static int cpucore_state2power(struct thermal_cooling_device *cdev,
+			       struct thermal_zone_device *tz,
+			       unsigned long state, u32 *power)
+{
+	*power = 0;
+
+	return 0;
+}
+
+static int cpucore_power2state(struct thermal_cooling_device *cdev,
+			       struct thermal_zone_device *tz, u32 power,
+			       unsigned long *state)
+{
+	cdev->ops->get_cur_state(cdev, state);
+	return 0;
+}
+
+static int cpucore_notify_state(struct thermal_cooling_device *cdev,
+				struct thermal_zone_device *tz,
+				enum thermal_trip_type type)
+{
+	unsigned long cur_state;
+	long upper = -1;
+	int i;
+	struct thermal_instance *ins;
+
+	switch (type) {
+	case THERMAL_TRIP_HOT:
+		if (tz->enter_hot) {
+			for (i = 0; i < tz->trips; i++) {
+				ins = get_thermal_instance(tz, cdev, i);
+				if (ins && ins->upper > upper)
+					upper = ins->upper;
+			}
+			cdev->ops->get_cur_state(cdev, &cur_state);
+			cur_state += 1;
+			/* do not exceed upper levels */
+			if (upper != -1 && cur_state > upper)
+				cur_state = upper;
+			cdev->ops->set_cur_state(cdev, cur_state);
+		} else {
+			cur_state = 0;
+			cdev->ops->set_cur_state(cdev, cur_state);
+		}
+		break;
+	default:
+		break;
+	}
+	return 0;
+}
+
 
 /* Bind cpucore callbacks to thermal cooling device ops */
 static struct thermal_cooling_device_ops const cpucore_cooling_ops = {
 	.get_max_state = cpucore_get_max_state,
 	.get_cur_state = cpucore_get_cur_state,
 	.set_cur_state = cpucore_set_cur_state,
+	.state2power   = cpucore_state2power,
+	.power2state   = cpucore_power2state,
+	.notify_state  = cpucore_notify_state,
+	.get_requested_power = cpucore_get_requested_power,
 };
 
 /**
  * cpucore_cooling_register - function to create cpucore cooling device.
- * @clip_cpus: cpumask of cpus where the frequency constraints will happen.
  *
  * This interface function registers the cpucore cooling device with the name
  * "thermal-cpucore-%x". This api can support multiple instances of cpucore
@@ -179,12 +249,13 @@ static struct thermal_cooling_device_ops const cpucore_cooling_ops = {
  * on failure, it returns a corresponding ERR_PTR().
  */
 struct thermal_cooling_device *
-cpucore_cooling_register(void)
+cpucore_cooling_register(struct device_node *np, int cluster_id)
 {
 	struct thermal_cooling_device *cool_dev;
 	struct cpucore_cooling_device *cpucore_dev = NULL;
 	char dev_name[THERMAL_NAME_LENGTH];
-	int ret = 0;
+	int ret = 0, cpu;
+	int cores = 0;
 	cpucore_dev = kzalloc(sizeof(struct cpucore_cooling_device),
 			      GFP_KERNEL);
 	if (!cpucore_dev)
@@ -196,11 +267,21 @@ cpucore_cooling_register(void)
 		return ERR_PTR(-EINVAL);
 	}
 
+	if (mc_capable()) {
+		for_each_possible_cpu(cpu) {
+			if (topology_physical_package_id(cpu) == cluster_id)
+				cores++;
+		}
+	} else {
+		cores = num_possible_cpus();
+	}
+	cpucore_dev->max_cpu_core_num = cores;
+	pr_info("%s, max_cpu_core_num:%d\n", __func__, cores);
 	snprintf(dev_name, sizeof(dev_name), "thermal-cpucore-%d",
 		 cpucore_dev->id);
 
-	cool_dev = thermal_cooling_device_register(dev_name, cpucore_dev,
-						   &cpucore_cooling_ops);
+	cool_dev = thermal_of_cooling_device_register(np, dev_name, cpucore_dev,
+						      &cpucore_cooling_ops);
 	if (!cool_dev) {
 		release_idr(&cpucore_idr, cpucore_dev->id);
 		kfree(cpucore_dev);
@@ -208,7 +289,7 @@ cpucore_cooling_register(void)
 	}
 	cpucore_dev->cool_dev = cool_dev;
 	cpucore_dev->cpucore_state = 0;
-	cpucore_dev->max_cpu_core_num=num_present_cpus();
+	cpucore_dev->cluster_id = cluster_id;
 	return cool_dev;
 }
 EXPORT_SYMBOL_GPL(cpucore_cooling_register);

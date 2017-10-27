@@ -15,44 +15,70 @@
 #define __AM_CM_H
 
 
-#include "linux/amlogic/vframe.h"
-#include "linux/amlogic/cm.h"
+#include <linux/amlogic/amports/vframe.h>
+#include "linux/amlogic/amvecm/cm.h"
 
-typedef struct cm_regs_s {
-    unsigned int val  : 32;
-    unsigned int reg  : 14;
-    unsigned int port :  2; // port port_addr            port_data            remark
-                        // 0    NA                   NA                   direct access
-                        // 1    VPP_CHROMA_ADDR_PORT VPP_CHROMA_DATA_PORT CM port registers
-                        // 2    NA                   NA                   reserved
-                        // 3    NA                   NA                   reserved
-    unsigned int bit  :  5;
-    unsigned int wid  :  5;
-    unsigned int mode :  1; // 0:read, 1:write
-    unsigned int rsv  :  5;
-} cm_regs_t;
+struct cm_regs_s {
+	unsigned int val:32;
+	unsigned int reg:14;
+	unsigned int port:2;
+	/* 0    NA  NA direct access */
+		/* 1    VPP_CHROMA_ADDR_PORT */
+				/* VPP_CHROMA_DATA_PORT CM port registers */
+		/* 2    NA NA reserved */
+    /* 3    NA NA reserved */
+	unsigned int bit:5;
+	unsigned int wid:5;
+	unsigned int mode:1;
+	unsigned int rsv:5;
+};
 
+struct sr1_regs_s {
+	unsigned int addr;
+	unsigned int mask;
+	unsigned int  val;
+};
 
-// ***************************************************************************
-// *** IOCTL-oriented functions *********************************************
-// ***************************************************************************
-#ifdef AMVIDEO_REG_TABLE_DYNAMIC
-void am_set_regmap(unsigned int cnt, struct am_reg_s *p);
-#else
+extern unsigned int vecm_latch_flag;
+extern unsigned int cm_size;
+extern unsigned int cm2_patch_flag;
+extern int cm_en; /* 0:disabel;1:enable */
+extern int dnlp_en;/*0:disabel;1:enable */
+
+extern unsigned int sr1_reg_val[101];
+
+/* *********************************************************************** */
+/* *** IOCTL-oriented functions ****************************************** */
+/* *********************************************************************** */
 void am_set_regmap(struct am_regs_s *p);
-#endif
+extern void amcm_disable(void);
+extern void amcm_enable(void);
+extern void amcm_level_sel(unsigned int cm_level);
+extern void cm2_frame_size_patch(unsigned int width, unsigned int height);
+extern void cm2_frame_switch_patch(void);
+extern void cm_latch_process(void);
+extern int cm_load_reg(struct am_regs_s *arg);
 
-#if (MESON_CPU_TYPE >= MESON_CPU_TYPE_MESON8)
-#undef WRITE_CBUS_REG
-#undef WRITE_CBUS_REG_BITS
-#undef READ_CBUS_REG
-#undef READ_CBUS_REG_BITS
+/* #if (MESON_CPU_TYPE >= MESON_CPU_TYPE_MESON8) */
+/* #define WRITE_VPP_REG(x,val) */
+/* WRITE_VCBUS_REG(x,val) */
+/* #define WRITE_VPP_REG_BITS(x,val,start,length) */
+/* WRITE_VCBUS_REG_BITS(x,val,start,length) */
+/* #define READ_VPP_REG(x) */
+/* READ_VCBUS_REG(x) */
+/* #define READ_VPP_REG_BITS(x,start,length) */
+/* READ_VCBUS_REG_BITS(x,start,length) */
+/* #else */
+/* #define WRITE_VPP_REG(x,val) */
+/* WRITE_CBUS_REG(x,val) */
+/* #define WRITE_VPP_REG_BITS(x,val,start,length) */
+/* WRITE_CBUS_REG_BITS(x,val,start,length) */
+/* #define READ_VPP_REG(x) */
+/* READ_CBUS_REG(x) */
+/* #define READ_VPP_REG_BITS(x,start,length) */
+/* READ_CBUS_REG_BITS(x,start,length) */
+/* #endif */
 
-#define WRITE_CBUS_REG(x,val)				WRITE_VCBUS_REG(x,val)
-#define WRITE_CBUS_REG_BITS(x,val,start,length)		WRITE_VCBUS_REG_BITS(x,val,start,length)
-#define READ_CBUS_REG(x)				READ_VCBUS_REG(x)
-#define READ_CBUS_REG_BITS(x,start,length)		READ_VCBUS_REG_BITS(x,start,length)
-#endif
 
 #endif
 

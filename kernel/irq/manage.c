@@ -781,7 +781,7 @@ irq_forced_thread_fn(struct irq_desc *desc, struct irqaction *action)
 }
 
 /*
- * Interrupts explicitely requested as threaded interupts want to be
+ * Interrupts explicitly requested as threaded interrupts want to be
  * preemtible - many of them need to sleep and wait for slow busses to
  * complete.
  */
@@ -834,9 +834,6 @@ static void irq_thread_dtor(struct callback_head *unused)
 static int irq_thread(void *data)
 {
 	struct callback_head on_exit_work;
-	static const struct sched_param param = {
-		.sched_priority = MAX_USER_RT_PRIO/2,
-	};
 	struct irqaction *action = data;
 	struct irq_desc *desc = irq_to_desc(action->irq);
 	irqreturn_t (*handler_fn)(struct irq_desc *desc,
@@ -847,8 +844,6 @@ static int irq_thread(void *data)
 		handler_fn = irq_forced_thread_fn;
 	else
 		handler_fn = irq_thread_fn;
-
-	sched_setscheduler(current, SCHED_FIFO, &param);
 
 	init_task_work(&on_exit_work, irq_thread_dtor);
 	task_work_add(current, &on_exit_work, false);
@@ -944,6 +939,9 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 	 */
 	if (new->thread_fn && !nested) {
 		struct task_struct *t;
+		static const struct sched_param param = {
+			.sched_priority = MAX_USER_RT_PRIO/2,
+		};
 
 		t = kthread_create(irq_thread, new, "irq/%d-%s", irq,
 				   new->name);
@@ -951,6 +949,9 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 			ret = PTR_ERR(t);
 			goto out_mput;
 		}
+
+		sched_setscheduler_nocheck(t, SCHED_FIFO, &param);
+
 		/*
 		 * We keep the reference to the task struct even if
 		 * the thread dies to avoid that the interrupt code
@@ -1229,7 +1230,6 @@ static struct irqaction *__free_irq(unsigned int irq, void *dev_id)
 	if (!desc)
 		return NULL;
 
-	chip_bus_lock(desc);
 	raw_spin_lock_irqsave(&desc->lock, flags);
 
 	/*
@@ -1243,7 +1243,7 @@ static struct irqaction *__free_irq(unsigned int irq, void *dev_id)
 		if (!action) {
 			WARN(1, "Trying to free already-free IRQ %d\n", irq);
 			raw_spin_unlock_irqrestore(&desc->lock, flags);
-			chip_bus_sync_unlock(desc);
+
 			return NULL;
 		}
 
@@ -1266,7 +1266,6 @@ static struct irqaction *__free_irq(unsigned int irq, void *dev_id)
 #endif
 
 	raw_spin_unlock_irqrestore(&desc->lock, flags);
-	chip_bus_sync_unlock(desc);
 
 	unregister_handler_proc(irq, action);
 
@@ -1340,7 +1339,9 @@ void free_irq(unsigned int irq, void *dev_id)
 		desc->affinity_notify = NULL;
 #endif
 
+	chip_bus_lock(desc);
 	kfree(__free_irq(irq, dev_id));
+	chip_bus_sync_unlock(desc);
 }
 EXPORT_SYMBOL(free_irq);
 

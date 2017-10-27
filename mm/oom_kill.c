@@ -1,6 +1,6 @@
 /*
  *  linux/mm/oom_kill.c
- * 
+ *
  *  Copyright (C)  1998,2000  Rik van Riel
  *	Thanks go out to Claus Fischer for some serious inspiration and
  *	for goading me into coding this file...
@@ -169,7 +169,7 @@ unsigned long oom_badness(struct task_struct *p, struct mem_cgroup *memcg,
 	 * The baseline for the badness score is the proportion of RAM that each
 	 * task's rss, pagetable and swap space use.
 	 */
-	points = get_mm_rss(p->mm) + p->mm->nr_ptes +
+	points = get_mm_rss(p->mm) + atomic_long_read(&p->mm->nr_ptes) +
 		 get_mm_counter(p->mm, MM_SWAPENTS);
 	task_unlock(p);
 
@@ -296,7 +296,7 @@ enum oom_scan_t oom_scan_process_thread(struct task_struct *task,
 
 /*
  * Simple selection loop. We chose the process with the highest
- * number of 'points'.
+ * number of 'points'.  Returns -1 on scan abort.
  *
  * (not docbooked, we don't want this one cluttering up the manual)
  */
@@ -322,15 +322,19 @@ static struct task_struct *select_bad_process(unsigned int *ppoints,
 			continue;
 		case OOM_SCAN_ABORT:
 			rcu_read_unlock();
-			return ERR_PTR(-1UL);
+			return (struct task_struct *)(-1UL);
 		case OOM_SCAN_OK:
 			break;
 		};
 		points = oom_badness(p, NULL, nodemask, totalpages);
-		if (points > chosen_points) {
-			chosen = p;
-			chosen_points = points;
-		}
+		if (!points || points < chosen_points)
+			continue;
+		/* Prefer thread group leaders for display purposes */
+		if (points == chosen_points && thread_group_leader(chosen))
+			continue;
+
+		chosen = p;
+		chosen_points = points;
 	}
 	if (chosen)
 		get_task_struct(chosen);
@@ -372,10 +376,10 @@ static void dump_tasks(const struct mem_cgroup *memcg, const nodemask_t *nodemas
 			continue;
 		}
 
-		pr_info("[%5d] %5d %5d %8lu %8lu %7lu %8lu         %5hd %s\n",
+		pr_info("[%5d] %5d %5d %8lu %8lu %7ld %8lu         %5hd %s\n",
 			task->pid, from_kuid(&init_user_ns, task_uid(task)),
 			task->tgid, task->mm->total_vm, get_mm_rss(task->mm),
-			task->mm->nr_ptes,
+			atomic_long_read(&task->mm->nr_ptes),
 			get_mm_counter(task->mm, MM_SWAPENTS),
 			task->signal->oom_score_adj, task->comm);
 		task_unlock(task);
@@ -463,6 +467,11 @@ void oom_kill_process(struct task_struct *p, gfp_t gfp_mask, int order,
 	 */
 	read_lock(&tasklist_lock);
 	for_each_thread(p, t) {
+		if (p->flags & PF_EXITING) {
+			pr_err("%s:  process %d (%s) has been exiting\n",
+				message, task_pid_nr(p), p->comm);
+			break;
+		}
 		list_for_each_entry(child, &t->children, sibling) {
 			unsigned int child_points;
 
@@ -482,6 +491,11 @@ void oom_kill_process(struct task_struct *p, gfp_t gfp_mask, int order,
 		}
 	}
 	read_unlock(&tasklist_lock);
+	if (p->flags & PF_EXITING) {
+		set_tsk_thread_flag(p, TIF_MEMDIE);
+		put_task_struct(p);
+		return;
+	}
 
 	p = find_lock_task_mm(victim);
 	if (!p) {
@@ -681,7 +695,7 @@ void out_of_memory(struct zonelist *zonelist, gfp_t gfp_mask,
 		dump_header(NULL, gfp_mask, order, NULL, mpol_mask);
 		panic("Out of memory and no killable processes...\n");
 	}
-	if (PTR_ERR(p) != -1UL) {
+	if (p != (void *)-1UL) {
 		oom_kill_process(p, gfp_mask, order, points, totalpages, NULL,
 				 nodemask, "Out of memory");
 		killed = 1;

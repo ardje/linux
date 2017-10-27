@@ -207,6 +207,13 @@ config DVB_CX24116
 	help
 	  A DVB-S/S2 tuner module. Say Y when you want to support this frontend.
 
+config DVB_CX24117
+	tristate "Conexant CX24117 based"
+	depends on DVB_CORE && I2C
+	default m if !MEDIA_SUBDRV_AUTOSELECT
+	help
+	  A Dual DVB-S/S2 tuner module. Say Y when you want to support this frontend.
+
 config DVB_SI21XX
 	tristate "Silicon Labs SI21XX based"
 	depends on DVB_CORE && I2C
@@ -438,27 +445,6 @@ config DVB_RTL2832
 	default m if !MEDIA_SUBDRV_AUTOSELECT
 	help
 	  Say Y when you want to support this frontend.
-
-config DVB_RTL2832_SDR
-	tristate "Realtek RTL2832 SDR"
-	depends on DVB_CORE && I2C && I2C_MUX && VIDEO_V4L2 && MEDIA_SDR_SUPPORT && USB
-	select DVB_RTL2832
-	select VIDEOBUF2_VMALLOC
-	default m if !MEDIA_SUBDRV_AUTOSELECT
-	help
-	  Say Y when you want to support this SDR module.
-
-config DVB_SI2168
-	tristate "Silicon Labs Si2168"
-	depends on DVB_CORE && I2C && I2C_MUX
-	default m if !MEDIA_SUBDRV_AUTOSELECT
-	help
-	  Say Y when you want to support this frontend.
-
-config DVB_AS102_FE
-	tristate
-	depends on DVB_CORE
-	default DVB_AS102
 
 comment "DVB-C (cable) frontends"
 	depends on DVB_CORE
@@ -706,13 +692,6 @@ config DVB_A8293
 	tristate "Allegro A8293"
 	depends on DVB_CORE && I2C
 	default m if !MEDIA_SUBDRV_AUTOSELECT
-
-config DVB_SP2
-	tristate "CIMaX SP2"
-	depends on DVB_CORE && I2C
-	default m if !MEDIA_SUBDRV_AUTOSELECT
-	help
-	  CIMaX SP2/SP2HF Common Interface module.
 
 config DVB_LGS8GL5
 	tristate "Silicon Legend LGS-8GL5 demodulator (OFDM)"

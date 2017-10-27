@@ -1,5 +1,5 @@
-/* Core header for MiraMEMS 3-Axis Accelerometer's driver. 
- * 
+/* Core header for MiraMEMS 3-Axis Accelerometer's driver.
+ *
  * mir3da_core.h - Linux kernel modules for MiraMEMS 3-Axis Accelerometer
  *
  * Copyright (C) 2011-2013 MiraMEMS Sensing Technology Co., Ltd.
@@ -18,11 +18,10 @@
 #ifndef __MIR3DA_CORE_H__
 #define __MIR3DA_CORE_H__
 
-#define CUST_VER                            ""                                          /* for Custom debug version */
-#define CORE_VER                            "1.3.1_2014-05-26-17:00:00_"CUST_VER
- 
-#define MIR3DA_SUPPORT_CHIP_LIST            MIR_SOCLE, MIR_NSA_NTO, MIR_NSA_MLM
- 
+#define CUST_VER                ""
+#define CORE_VER                "1.3.1_2014-05-26-17:00:00_"CUST_VER
+
+
 #define MIR3DA_BUFSIZE                      256
 
 #define MIR3DA_STK_TEMP_SOLUTION            1
@@ -38,115 +37,97 @@
 
 #define MIR3DA_OFFSET_LEN                   9
 
-typedef void*   MIR_HANDLE;
-typedef void*   PLAT_HANDLE;
-
-
 struct serial_manage_if_s {
-    
-    int                         (*read)(PLAT_HANDLE handle, unsigned char addr, unsigned char *data);
-    int                         (*write)(PLAT_HANDLE handle, unsigned char addr, unsigned char data);
-    int                         (*read_block)(PLAT_HANDLE handle, unsigned char base_addr, unsigned char count, unsigned char *data);
+
+	int (*read)(void *handle,
+		unsigned char addr, unsigned char *data);
+	int (*write)(void *handle,
+		unsigned char addr, unsigned char data);
+	int (*read_block)(void *handle, unsigned char base_addr,
+		unsigned char count, unsigned char *data);
 };
 
 struct general_op_s {
 
-    struct serial_manage_if_s   smi;
-    
-    int                         (*data_save)(unsigned char *data);
-    int                         (*data_get)(unsigned char *data);
-    
-    int                         (*myprintf)(const char *fmt, ...);
-    int                         (*mysprintf)(char *buf, const char *fmt, ...);
-    void                        (*msdelay)(int ms);                        
-};  
+	struct serial_manage_if_s   smi;
 
-#define MIR_GENERAL_OPS_DECLARE(OPS_HDL, SMI_RD, SMI_RDBL, SMI_WR, DAT_SAVE, DAT_GET, MDELAY, MYPRINTF, MYSPRINTF)                                      \
-                                                                                                                                                        \
-                                struct general_op_s     OPS_HDL = { { SMI_RD, SMI_WR, SMI_RDBL }, DAT_SAVE, DAT_GET, MYPRINTF, MYSPRINTF, MDELAY }
-                                        
+	int (*data_save)(unsigned char *data);
+	int (*data_get)(unsigned char *data);
+
+	int (*myprintf)(const char *fmt, ...);
+	int (*mysprintf)(char *buf, const char *fmt, ...);
+	void (*msdelay)(int ms);
+};
+
+#define MIR_GENERAL_OPS_DECLARE(OPS_HDL, SMI_RD, SMI_RDBL, SMI_WR, \
+	DAT_SAVE, DAT_GET, MDELAY, MYPRINTF, MYSPRINTF) \
+struct general_op_s  OPS_HDL = { { SMI_RD, SMI_WR, SMI_RDBL }, \
+	DAT_SAVE, DAT_GET, MYPRINTF, MYSPRINTF, MDELAY }
+
 enum interrupt_src {
-
-    INTERRUPT_ACTIVITY     = 1,
-    INTERRUPT_CLICK,
+	INTERRUPT_ACTIVITY     = 1,
+	INTERRUPT_CLICK,
 
 };
 
-typedef enum _int_op_type {
-
-    INTERRUPT_OP_INIT,
-    INTERRUPT_OP_ENABLE,
-    INTERRUPT_OP_CONFIG,
-    INTERRUPT_OP_DISABLE,
- 
-} mir_int_op_type;
+enum mir_int_op_type {
+	INTERRUPT_OP_INIT,
+	INTERRUPT_OP_ENABLE,
+	INTERRUPT_OP_CONFIG,
+	INTERRUPT_OP_DISABLE,
+};
 
 enum interrupt_pin {
 
-    INTERRUPT_PIN1,
-    INTERRUPT_PIN2,
+	INTERRUPT_PIN1,
+	INTERRUPT_PIN2,
 };
 
 enum pin_output_mode {
 
-    OUTPUT_MOD_PULL_PUSH,
-    OUTPUT_MOD_OD,
+	OUTPUT_MOD_PULL_PUSH,
+	OUTPUT_MOD_OD,
 };
 
 struct int_act_cfg_s {
-
-    unsigned char           threshold;
-    unsigned char           duration;
+	unsigned char           threshold;
+	unsigned char           duration;
 };
 
 struct int_clk_cfg_s {
-
-    unsigned char                   threshold;
-    unsigned char                   click_time;     /* click time */
-    unsigned char                   quiet_time;     /* quiet time after click */
-    unsigned char                   window;         /* for second click time window */
+	unsigned char     threshold;
+	unsigned char     click_time;  /* click time */
+	unsigned char     quiet_time;  /* quiet time after click */
+	unsigned char     window; /* for second click time window */
 };
 
-typedef union _int_src_configuration {
-    
-    struct int_act_cfg_s            act;
-    struct int_clk_cfg_s            clk;
+union mir_int_src_cfg_t {
+	struct int_act_cfg_s            act;
+	struct int_clk_cfg_s            clk;
+};
 
-} mir_int_src_cfg_t;
-    
-typedef struct _int_configuration {
+struct mir_int_cfg_t {
+	enum interrupt_pin              pin;
+	enum interrupt_src              int_src;
+	union mir_int_src_cfg_t         int_cfg;
+};
 
-    enum interrupt_pin              pin;
-    enum interrupt_src              int_src;
-    
-    mir_int_src_cfg_t               int_cfg;  
-    
-} mir_int_cfg_t;
+struct mir_int_init_t {
+	enum pin_output_mode            pin_mod;
+	unsigned char  level;      /* 1: high active, 0: low active */
+	unsigned char  latch;          /* >0: latch time, 0: no latch */
+};
 
-typedef struct _int_init_data {
+union mir_int_op_data {
+	enum interrupt_src              int_src;
+	struct mir_int_init_t                  init;
+	struct mir_int_cfg_t            cfg;
+};
 
-    enum pin_output_mode            pin_mod;
-
-    unsigned char                   level;      /* 1: high active, 0: low active */
-    unsigned char                   latch;          /* >0: latch time, 0: no latch */
-     
-} mir_int_init_t ;
-
-typedef union _int_op_data {
-
-    enum interrupt_src              int_src;
- 
-    mir_int_init_t                  init;
-    mir_int_cfg_t                   cfg;
-    
-} mir_int_op_data;
-
-typedef struct _int_operations {
-
-    mir_int_op_type                 type;
-    mir_int_op_data                 data;
-    
-} mir_int_ops_t;
+struct mir_int_ops_t {
+	enum mir_int_op_type                 type;
+	union mir_int_op_data                 data;
+};
 
 
 /* Register Define for SOCLE asic */
@@ -195,8 +176,8 @@ typedef struct _int_operations {
 #define SOCLE_REG_TEMP_OFF2             0x0128
 #define SOCLE_REG_TEMP_OFF3             0x0129
 #define SOCLE_REG_OTP_TRIM_THERM_H      0x011a
-                                         
-                                                        
+
+
 /* Register define for NSA asic */
 #define NSA_REG_SPI_I2C                 0x00
 #define NSA_REG_WHO_AM_I                0x01
@@ -205,7 +186,7 @@ typedef struct _int_operations {
 #define NSA_REG_ACC_Y_LSB               0x04
 #define NSA_REG_ACC_Y_MSB               0x05
 #define NSA_REG_ACC_Z_LSB               0x06
-#define NSA_REG_ACC_Z_MSB               0x07 
+#define NSA_REG_ACC_Z_MSB               0x07
 #define NSA_REG_G_RANGE                 0x0f
 #define NSA_REG_ODR_AXIS_DISABLE        0x10
 #define NSA_REG_POWERMODE_BW            0x11
@@ -237,44 +218,46 @@ typedef struct _int_operations {
 #define NSA_REG_FINE_OFFSET_TRIM_Z      0x88
 #define NSA_REG_SENS_COMP               0x8c
 #define NSA_REG_SENS_COARSE_TRIM        0xd1
-                                         
+
 #define MIR3DA_ODR_50HZ                  0
 #define MIR3DA_ODR_100HZ                 1
 #define MIR3DA_ODR_200HZ                 2
 
 #define MI_TAG                          "[MIR3DA] "
 enum{
-	DEBUG_ERR=1,
-	DEBUG_ASSERT=1<<1,	
-	DEBUG_MSG=1<<2,
-	DEBUG_FUNC=1<<3,
-	DEBUG_DATA=1<<4,
+	DEBUG_ERR = 1,
+	DEBUG_ASSERT = 1<<1,
+	DEBUG_MSG = 1<<2,
+	DEBUG_FUNC = 1<<3,
+	DEBUG_DATA = 1<<4,
 };
 
 /* register operation */
-int mir3da_register_read(MIR_HANDLE handle, short reg, unsigned char *data);
-int mir3da_register_write(MIR_HANDLE handle, short reg, unsigned char data);
-int mir3da_register_read_continuously(MIR_HANDLE handle, short base_reg, unsigned char count, unsigned char *data);
-int mir3da_register_mask_write(MIR_HANDLE handle, short addr, unsigned char mask, unsigned char data);
+int mir3da_register_read(void *handle, short reg, unsigned char *data);
+int mir3da_register_write(void *handle, short reg, unsigned char data);
+int mir3da_register_read_continuously(void *handle,
+	short base_reg, unsigned char count, unsigned char *data);
+int mir3da_register_mask_write(void *handle,
+	short addr, unsigned char mask, unsigned char data);
 
-int mir3da_install_general_ops(struct general_op_s *ops);	
+int mir3da_install_general_ops(struct general_op_s *ops);
 /* chip init */
-int mir3da_module_detect(PLAT_HANDLE handle);
-MIR_HANDLE mir3da_core_init(PLAT_HANDLE handle);
+int mir3da_module_detect(void *handle);
+void *mir3da_core_init(void *handle);
 
 /* data polling */
-int mir3da_read_data(MIR_HANDLE handle, short *x, short *y, short *z);
+int mir3da_read_data(void *handle, short *x, short *y, short *z);
 
 /* filter configure */
 #if FILTER_AVERAGE_ENHANCE
-struct mir3da_filter_param_s{
-    int filter_param_l;
-    int filter_param_h;
-    int filter_threhold;
+struct mir3da_filter_param_s {
+	int filter_param_l;
+	int filter_param_h;
+	int filter_threhold;
 };
 
-int mir3da_get_filter_param(struct mir3da_filter_param_s* param);
-int mir3da_set_filter_param(struct mir3da_filter_param_s* param);
+int mir3da_get_filter_param(struct mir3da_filter_param_s *param);
+int mir3da_set_filter_param(struct mir3da_filter_param_s *param);
 #endif
 
 #if MIR3DA_STK_TEMP_SOLUTION
@@ -285,27 +268,27 @@ extern  int squareRoot(int val);
 #endif
 
 /* CALI */
-int mir3da_calibrate(MIR_HANDLE handle, int z_dir);
+int mir3da_calibrate(void *handle, int z_dir);
 
 /* calibration */
 #if MIR3DA_OFFSET_TEMP_SOLUTION
-void manual_load_cali_file(MIR_HANDLE handle);
+void manual_load_cali_file(void *handle);
 #endif
 
 /* Interrupt operations */
-int mir3da_interrupt_ops(MIR_HANDLE handle, mir_int_ops_t *ops);
+int mir3da_interrupt_ops(void *handle, struct mir_int_ops_t *ops);
 
-int cycle_read_xyz(MIR_HANDLE handle, int* x, int* y, int* z, int ncycle);
+int cycle_read_xyz(void *handle, int *x, int *y, int *z, int ncycle);
 
-int mir3da_read_offset(MIR_HANDLE handle, unsigned char* offst);
-int mir3da_write_offset(MIR_HANDLE handle, unsigned char* offset);
+int mir3da_read_offset(void *handle, unsigned char *offst);
+int mir3da_write_offset(void *handle, unsigned char *offset);
 
-int mir3da_set_enable(MIR_HANDLE handle, char bEnable);
-int mir3da_get_enable(MIR_HANDLE handle, char *bEnable);
-int mir3da_get_reg_data(MIR_HANDLE handle, char *buf);
-int mir3da_set_odr(MIR_HANDLE handle, int delay);
+int mir3da_set_enable(void *handle, char bEnable);
+int mir3da_get_enable(void *handle, char *bEnable);
+int mir3da_get_reg_data(void *handle, char *buf);
+int mir3da_set_odr(void *handle, int delay);
 
-int mir3da_chip_resume(MIR_HANDLE handle);
+int mir3da_chip_resume(void *handle);
 #endif    /* __MIR3DA_CORE_H__ */
 
 

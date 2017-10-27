@@ -32,6 +32,7 @@
 #include <linux/io.h>
 #include <linux/moduleparam.h>
 #include <linux/of_address.h>
+#include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/dma-mapping.h>
 #include <linux/usb/ch9.h>
@@ -1880,8 +1881,11 @@ static int qe_get_frame(struct usb_gadget *gadget)
 
 	tmp = in_be16(&udc->usb_param->frame_n);
 	if (tmp & 0x8000)
-		return tmp & 0x07ff;
-	return -EINVAL;
+		tmp = tmp & 0x07ff;
+	else
+		tmp = -EINVAL;
+
+	return (int)tmp;
 }
 
 static int fsl_qe_start(struct usb_gadget *gadget,
@@ -2424,7 +2428,7 @@ static int qe_ep_config(struct qe_udc *udc, unsigned char pipe_num)
 
 	ep->ep.ops = &qe_ep_ops;
 	ep->stopped = 1;
-	ep->ep.maxpacket = (unsigned short) ~0;
+	usb_ep_set_maxpacket_limit(&ep->ep, (unsigned short) ~0);
 	ep->ep.desc = NULL;
 	ep->dir = 0xff;
 	ep->epnum = (u8)pipe_num;
@@ -2585,7 +2589,7 @@ static int qe_udc_probe(struct platform_device *ofdev)
 	if (ret)
 		goto err6;
 
-	dev_set_drvdata(&ofdev->dev, udc);
+	platform_set_drvdata(ofdev, udc);
 	dev_info(udc->dev,
 			"%s USB controller initialized as device\n",
 			(udc->soc_type == PORT_QE) ? "QE" : "CPM");
@@ -2636,7 +2640,7 @@ static int qe_udc_resume(struct platform_device *dev)
 
 static int qe_udc_remove(struct platform_device *ofdev)
 {
-	struct qe_udc *udc = dev_get_drvdata(&ofdev->dev);
+	struct qe_udc *udc = platform_get_drvdata(ofdev);
 	struct qe_ep *ep;
 	unsigned int size;
 	DECLARE_COMPLETION(done);
@@ -2712,7 +2716,7 @@ MODULE_DEVICE_TABLE(of, qe_udc_match);
 
 static struct platform_driver udc_driver = {
 	.driver = {
-		.name = (char *)driver_name,
+		.name = driver_name,
 		.owner = THIS_MODULE,
 		.of_match_table = qe_udc_match,
 	},

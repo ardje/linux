@@ -29,6 +29,7 @@
 #include <linux/hw_breakpoint.h>
 #include <linux/smp.h>
 #include <linux/cpu_pm.h>
+#include <linux/coresight.h>
 
 #include <asm/cacheflush.h>
 #include <asm/cputype.h>
@@ -36,7 +37,6 @@
 #include <asm/hw_breakpoint.h>
 #include <asm/kdebug.h>
 #include <asm/traps.h>
-#include <asm/hardware/coresight.h>
 
 /* Breakpoint currently in use for each BRP. */
 static DEFINE_PER_CPU(struct perf_event *, bp_on_reg[ARM_MAX_BRP]);
@@ -344,13 +344,13 @@ int arch_install_hw_breakpoint(struct perf_event *bp)
 		/* Breakpoint */
 		ctrl_base = ARM_BASE_BCR;
 		val_base = ARM_BASE_BVR;
-		slots = (struct perf_event **)__get_cpu_var(bp_on_reg);
+		slots = this_cpu_ptr(bp_on_reg);
 		max_slots = core_num_brps;
 	} else {
 		/* Watchpoint */
 		ctrl_base = ARM_BASE_WCR;
 		val_base = ARM_BASE_WVR;
-		slots = (struct perf_event **)__get_cpu_var(wp_on_reg);
+		slots = this_cpu_ptr(wp_on_reg);
 		max_slots = core_num_wrps;
 	}
 
@@ -396,12 +396,12 @@ void arch_uninstall_hw_breakpoint(struct perf_event *bp)
 	if (info->ctrl.type == ARM_BREAKPOINT_EXECUTE) {
 		/* Breakpoint */
 		base = ARM_BASE_BCR;
-		slots = (struct perf_event **)__get_cpu_var(bp_on_reg);
+		slots = this_cpu_ptr(bp_on_reg);
 		max_slots = core_num_brps;
 	} else {
 		/* Watchpoint */
 		base = ARM_BASE_WCR;
-		slots = (struct perf_event **)__get_cpu_var(wp_on_reg);
+		slots = this_cpu_ptr(wp_on_reg);
 		max_slots = core_num_wrps;
 	}
 
@@ -697,7 +697,7 @@ static void watchpoint_handler(unsigned long addr, unsigned int fsr,
 	struct arch_hw_breakpoint *info;
 	struct arch_hw_breakpoint_ctrl ctrl;
 
-	slots = (struct perf_event **)__get_cpu_var(wp_on_reg);
+	slots = this_cpu_ptr(wp_on_reg);
 
 	for (i = 0; i < core_num_wrps; ++i) {
 		rcu_read_lock();
@@ -768,7 +768,7 @@ static void watchpoint_single_step_handler(unsigned long pc)
 	struct perf_event *wp, **slots;
 	struct arch_hw_breakpoint *info;
 
-	slots = (struct perf_event **)__get_cpu_var(wp_on_reg);
+	slots = this_cpu_ptr(wp_on_reg);
 
 	for (i = 0; i < core_num_wrps; ++i) {
 		rcu_read_lock();
@@ -802,7 +802,7 @@ static void breakpoint_handler(unsigned long unknown, struct pt_regs *regs)
 	struct arch_hw_breakpoint *info;
 	struct arch_hw_breakpoint_ctrl ctrl;
 
-	slots = (struct perf_event **)__get_cpu_var(bp_on_reg);
+	slots = this_cpu_ptr(bp_on_reg);
 
 	/* The exception entry code places the amended lr in the PC. */
 	addr = regs->ARM_pc;
@@ -975,7 +975,7 @@ static void reset_ctrl_regs(void *unused)
 	 * Unconditionally clear the OS lock by writing a value
 	 * other than CS_LAR_KEY to the access register.
 	 */
-	ARM_DBG_WRITE(c1, c0, 4, ~CS_LAR_KEY);
+	ARM_DBG_WRITE(c1, c0, 4, ~CORESIGHT_UNLOCK);
 	isb();
 
 	/*
@@ -1020,7 +1020,7 @@ out_mdbgen:
 		cpumask_or(&debug_err_mask, &debug_err_mask, cpumask_of(cpu));
 }
 
-static int __cpuinit dbg_reset_notify(struct notifier_block *self,
+static int dbg_reset_notify(struct notifier_block *self,
 				      unsigned long action, void *cpu)
 {
 	if ((action & ~CPU_TASKS_FROZEN) == CPU_ONLINE)
@@ -1029,7 +1029,7 @@ static int __cpuinit dbg_reset_notify(struct notifier_block *self,
 	return NOTIFY_OK;
 }
 
-static struct notifier_block __cpuinitdata dbg_reset_nb = {
+static struct notifier_block dbg_reset_nb = {
 	.notifier_call = dbg_reset_notify,
 };
 
@@ -1063,22 +1063,6 @@ static int __init arch_hw_breakpoint_init(void)
 
 	if (!debug_arch_supported()) {
 		pr_info("debug architecture 0x%x unsupported.\n", debug_arch);
-		return 0;
-	}
-
-	/*
-	 * Scorpion CPUs (at least those in APQ8060) seem to set DBGPRSR.SPD
-	 * whenever a WFI is issued, even if the core is not powered down, in
-	 * violation of the architecture.  When DBGPRSR.SPD is set, accesses to
-	 * breakpoint and watchpoint registers are treated as undefined, so
-	 * this results in boot time and runtime failures when these are
-	 * accessed and we unexpectedly take a trap.
-	 *
-	 * It's not clear if/how this can be worked around, so we blacklist
-	 * Scorpion CPUs to avoid these issues.
-	*/
-	if ((read_cpuid_id() & 0xff00fff0) == ARM_CPU_PART_SCORPION) {
-		pr_info("Scorpion CPU detected. Hardware breakpoints and watchpoints disabled\n");
 		return 0;
 	}
 

@@ -361,7 +361,9 @@ void ieee80211_sw_roc_work(struct work_struct *work)
 		 * treat it as though the ROC operation started properly, so
 		 * other ROC operations won't interfere with this one.
 		 */
-		roc->on_channel = roc->chan == local->_oper_chandef.chan;
+		roc->on_channel = roc->chan == local->_oper_chandef.chan &&
+				  local->_oper_chandef.width != NL80211_CHAN_WIDTH_5 &&
+				  local->_oper_chandef.width != NL80211_CHAN_WIDTH_10;
 
 		/* start this ROC */
 		ieee80211_recalc_idle(local);
@@ -406,6 +408,8 @@ void ieee80211_sw_roc_work(struct work_struct *work)
 
 		if (started)
 			ieee80211_start_next_roc(local);
+		else if (list_empty(&local->roc_list))
+			ieee80211_run_deferred_scan(local);
 	}
 
  out_unlock:

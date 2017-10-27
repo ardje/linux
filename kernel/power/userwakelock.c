@@ -144,7 +144,7 @@ ssize_t wake_lock_show(
 	s += scnprintf(s, end - s, "\n");
 
 	mutex_unlock(&tree_lock);
-	return (s - buf);
+	return s - buf;
 }
 
 ssize_t wake_lock_store(
@@ -174,8 +174,8 @@ bad_name:
 }
 
 
-ssize_t wake_unlock_show(
-	struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+ssize_t wake_unlock_show(struct kobject *kobj,
+			 struct kobj_attribute *attr, char *buf)
 {
 	char *s = buf;
 	char *end = buf + PAGE_SIZE;
@@ -192,7 +192,7 @@ ssize_t wake_unlock_show(
 	s += scnprintf(s, end - s, "\n");
 
 	mutex_unlock(&tree_lock);
-	return (s - buf);
+	return s - buf;
 }
 
 ssize_t wake_unlock_store(
@@ -216,4 +216,3 @@ not_found:
 	mutex_unlock(&tree_lock);
 	return n;
 }
-

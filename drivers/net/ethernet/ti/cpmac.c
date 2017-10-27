@@ -17,7 +17,6 @@
  */
 
 #include <linux/module.h>
-#include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/moduleparam.h>
 
@@ -557,8 +556,7 @@ fatal_error:
 
 static int cpmac_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
-	int queue;
-	unsigned int len;
+	int queue, len;
 	struct cpmac_desc *desc;
 	struct cpmac_priv *priv = netdev_priv(dev);
 
@@ -568,7 +566,7 @@ static int cpmac_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (unlikely(skb_padto(skb, ETH_ZLEN)))
 		return NETDEV_TX_OK;
 
-	len = max_t(unsigned int, skb->len, ETH_ZLEN);
+	len = max(skb->len, ETH_ZLEN);
 	queue = skb_get_queue_mapping(skb);
 	netif_stop_subqueue(dev, queue);
 
@@ -637,7 +635,7 @@ static void cpmac_hw_stop(struct net_device *dev)
 {
 	int i;
 	struct cpmac_priv *priv = netdev_priv(dev);
-	struct plat_cpmac_data *pdata = priv->pdev->dev.platform_data;
+	struct plat_cpmac_data *pdata = dev_get_platdata(&priv->pdev->dev);
 
 	ar7_device_reset(pdata->reset_bit);
 	cpmac_write(priv->regs, CPMAC_RX_CONTROL,
@@ -660,7 +658,7 @@ static void cpmac_hw_start(struct net_device *dev)
 {
 	int i;
 	struct cpmac_priv *priv = netdev_priv(dev);
-	struct plat_cpmac_data *pdata = priv->pdev->dev.platform_data;
+	struct plat_cpmac_data *pdata = dev_get_platdata(&priv->pdev->dev);
 
 	ar7_device_reset(pdata->reset_bit);
 	for (i = 0; i < 8; i++) {
@@ -1119,7 +1117,7 @@ static int cpmac_probe(struct platform_device *pdev)
 	struct net_device *dev;
 	struct plat_cpmac_data *pdata;
 
-	pdata = pdev->dev.platform_data;
+	pdata = dev_get_platdata(&pdev->dev);
 
 	if (external_switch || dumb_switch) {
 		strncpy(mdio_bus_id, "fixed-0", MII_BUS_ID_SIZE); /* fixed phys bus */
@@ -1242,7 +1240,7 @@ int cpmac_init(void)
 		goto fail_alloc;
 	}
 
-	/* FIXME: unhardcode gpio&reset bits */
+#warning FIXME: unhardcode gpio&reset bits
 	ar7_gpio_disable(26);
 	ar7_gpio_disable(27);
 	ar7_device_reset(AR7_RESET_BIT_CPMAC_LO);

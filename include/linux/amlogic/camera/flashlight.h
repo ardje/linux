@@ -1,28 +1,34 @@
-/*******************************************************************
+/*
+ * include/linux/amlogic/camera/flashlight.h
  *
- *  Copyright C 2011 by Amlogic, Inc. All Rights Reserved.
+ * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
  *
- *  Description:
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
- *  Author: Amlogic Software
- *  Created: 2011/8/26   19:46
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
  *
- *******************************************************************/
+*/
+
 #ifndef _VIDEO_AMLOGIC_FLASHLIGHT_INCLUDE_
 #define _VIDEO_AMLOGIC_FLASHLIGHT_INCLUDE_
-typedef struct {
+struct aml_plat_flashlight_data_s {
 	void (*flashlight_on)(void);
 	void (*flashlight_off)(void);
-}aml_plat_flashlight_data_t;
+};
 
-typedef enum {
+enum aml_plat_flashlight_status_s {
 	FLASHLIGHT_AUTO = 0,
 	FLASHLIGHT_ON,
 	FLASHLIGHT_OFF,
 	FLASHLIGHT_TORCH,
 	FLASHLIGHT_RED_EYE,
-}aml_plat_flashlight_status_t;
+};
 
 #endif
-
 

@@ -2,7 +2,7 @@
     Copyright (c) 1998 - 2002  Frodo Looijaard <frodol@dds.nl>,
     Philip Edelbrock <phil@netroedge.com>, and Mark D. Studebaker
     <mdsxyz123@yahoo.com>
-    Copyright (C) 2007 - 2012  Jean Delvare <khali@linux-fr.org>
+    Copyright (C) 2007 - 2012  Jean Delvare <jdelvare@suse.de>
     Copyright (C) 2010         Intel Corporation,
                                David Woodhouse <dwmw2@infradead.org>
 
@@ -89,7 +89,6 @@
 #include <linux/slab.h>
 #include <linux/wait.h>
 #include <linux/err.h>
-#include <linux/of_i2c.h>
 
 #if (defined CONFIG_I2C_MUX_GPIO || defined CONFIG_I2C_MUX_GPIO_MODULE) && \
 		defined CONFIG_DMI
@@ -1236,7 +1235,6 @@ static int i801_probe(struct pci_dev *dev, const struct pci_device_id *id)
 		goto exit_free_irq;
 	}
 
-	of_i2c_register_devices(&priv->adapter);
 	i801_probe_optional_slaves(priv);
 	/* We ignore errors - multiplexing is optional */
 	i801_add_mux(priv);
@@ -1317,8 +1315,7 @@ static void __exit i2c_i801_exit(void)
 	pci_unregister_driver(&i801_driver);
 }
 
-MODULE_AUTHOR("Mark D. Studebaker <mdsxyz123@yahoo.com>, "
-	      "Jean Delvare <khali@linux-fr.org>");
+MODULE_AUTHOR("Mark D. Studebaker <mdsxyz123@yahoo.com>, Jean Delvare <jdelvare@suse.de>");
 MODULE_DESCRIPTION("I801 SMBus driver");
 MODULE_LICENSE("GPL");
 

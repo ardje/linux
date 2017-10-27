@@ -181,11 +181,9 @@ static int klsi_105_get_line_state(struct usb_serial_port *port,
 	dev_info(&port->serial->dev->dev, "sending SIO Poll request\n");
 
 	status_buf = kmalloc(KLSI_STATUSBUF_LEN, GFP_KERNEL);
-	if (!status_buf) {
-		dev_err(&port->dev, "%s - out of memory for status buffer.\n",
-				__func__);
+	if (!status_buf)
 		return -ENOMEM;
-	}
+
 	status_buf[0] = 0xff;
 	status_buf[1] = 0xff;
 	rc = usb_control_msg(port->serial->dev,
@@ -197,11 +195,10 @@ static int klsi_105_get_line_state(struct usb_serial_port *port,
 			     status_buf, KLSI_STATUSBUF_LEN,
 			     10000
 			     );
-	if (rc != KLSI_STATUSBUF_LEN) {
-		dev_err(&port->dev, "reading line status failed: %d\n", rc);
-		if (rc >= 0)
-			rc = -EIO;
-	} else {
+	if (rc < 0)
+		dev_err(&port->dev, "Reading line status failed (error = %d)\n",
+			rc);
+	else {
 		status = get_unaligned_le16(status_buf);
 
 		dev_info(&port->serial->dev->dev, "read status %x %x",
@@ -273,11 +270,9 @@ static int  klsi_105_open(struct tty_struct *tty, struct usb_serial_port *port)
 	 * priv->line_state.
 	 */
 	cfg = kmalloc(sizeof(*cfg), GFP_KERNEL);
-	if (!cfg) {
-		dev_err(&port->dev, "%s - out of memory for config buffer.\n",
-				__func__);
+	if (!cfg)
 		return -ENOMEM;
-	}
+
 	cfg->pktlen   = 5;
 	cfg->baudrate = kl5kusb105a_sio_b9600;
 	cfg->databits = kl5kusb105a_dtb_8;
@@ -304,7 +299,7 @@ static int  klsi_105_open(struct tty_struct *tty, struct usb_serial_port *port)
 	rc = usb_serial_generic_open(tty, port);
 	if (rc) {
 		retval = rc;
-		goto err_free_cfg;
+		goto exit;
 	}
 
 	rc = usb_control_msg(port->serial->dev,
@@ -319,38 +314,21 @@ static int  klsi_105_open(struct tty_struct *tty, struct usb_serial_port *port)
 	if (rc < 0) {
 		dev_err(&port->dev, "Enabling read failed (error = %d)\n", rc);
 		retval = rc;
-		goto err_generic_close;
 	} else
 		dev_dbg(&port->dev, "%s - enabled reading\n", __func__);
 
 	rc = klsi_105_get_line_state(port, &line_state);
-	if (rc < 0) {
+	if (rc >= 0) {
+		spin_lock_irqsave(&priv->lock, flags);
+		priv->line_state = line_state;
+		spin_unlock_irqrestore(&priv->lock, flags);
+		dev_dbg(&port->dev, "%s - read line state 0x%lx\n", __func__, line_state);
+		retval = 0;
+	} else
 		retval = rc;
-		goto err_disable_read;
-	}
 
-	spin_lock_irqsave(&priv->lock, flags);
-	priv->line_state = line_state;
-	spin_unlock_irqrestore(&priv->lock, flags);
-	dev_dbg(&port->dev, "%s - read line state 0x%lx\n", __func__,
-			line_state);
-
-	return 0;
-
-err_disable_read:
-	usb_control_msg(port->serial->dev,
-			     usb_sndctrlpipe(port->serial->dev, 0),
-			     KL5KUSB105A_SIO_CONFIGURE,
-			     USB_TYPE_VENDOR | USB_DIR_OUT,
-			     KL5KUSB105A_SIO_CONFIGURE_READ_OFF,
-			     0, /* index */
-			     NULL, 0,
-			     KLSI_TIMEOUT);
-err_generic_close:
-	usb_serial_generic_close(port);
-err_free_cfg:
+exit:
 	kfree(cfg);
-
 	return retval;
 }
 
@@ -434,10 +412,8 @@ static void klsi_105_set_termios(struct tty_struct *tty,
 	speed_t baud;
 
 	cfg = kmalloc(sizeof(*cfg), GFP_KERNEL);
-	if (!cfg) {
-		dev_err(dev, "%s - out of memory for config buffer.\n", __func__);
+	if (!cfg)
 		return;
-	}
 
 	/* lock while we are modifying the settings */
 	spin_lock_irqsave(&priv->lock, flags);

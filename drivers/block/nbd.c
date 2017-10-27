@@ -271,18 +271,18 @@ static int nbd_send_req(struct nbd_device *nbd, struct request *req)
 
 	if (nbd_cmd(req) == NBD_CMD_WRITE) {
 		struct req_iterator iter;
-		struct bio_vec *bvec;
+		struct bio_vec bvec;
 		/*
 		 * we are really probing at internals to determine
 		 * whether to set MSG_MORE or not...
 		 */
 		rq_for_each_segment(bvec, req, iter) {
 			flags = 0;
-			if (!rq_iter_last(req, iter))
+			if (!rq_iter_last(bvec, iter))
 				flags = MSG_MORE;
 			dprintk(DBG_TX, "%s: request %p: sending %d bytes data\n",
-					nbd->disk->disk_name, req, bvec->bv_len);
-			result = sock_send_bvec(nbd, bvec, flags);
+					nbd->disk->disk_name, req, bvec.bv_len);
+			result = sock_send_bvec(nbd, &bvec, flags);
 			if (result <= 0) {
 				dev_err(disk_to_dev(nbd->disk),
 					"Send data failed (result %d)\n",
@@ -378,10 +378,10 @@ static struct request *nbd_read_stat(struct nbd_device *nbd)
 			nbd->disk->disk_name, req);
 	if (nbd_cmd(req) == NBD_CMD_READ) {
 		struct req_iterator iter;
-		struct bio_vec *bvec;
+		struct bio_vec bvec;
 
 		rq_for_each_segment(bvec, req, iter) {
-			result = sock_recv_bvec(nbd, bvec);
+			result = sock_recv_bvec(nbd, &bvec);
 			if (result <= 0) {
 				dev_err(disk_to_dev(nbd->disk), "Receive data failed (result %d)\n",
 					result);
@@ -389,7 +389,7 @@ static struct request *nbd_read_stat(struct nbd_device *nbd)
 				return req;
 			}
 			dprintk(DBG_RX, "%s: request %p: got %d bytes data\n",
-				nbd->disk->disk_name, req, bvec->bv_len);
+				nbd->disk->disk_name, req, bvec.bv_len);
 		}
 	}
 	return req;
@@ -581,8 +581,8 @@ static void do_nbd_request(struct request_queue *q)
 		BUG_ON(nbd->magic != NBD_MAGIC);
 
 		if (unlikely(!nbd->sock)) {
-			dev_err_ratelimited(disk_to_dev(nbd->disk),
-					    "Attempted send on closed socket\n");
+			dev_err(disk_to_dev(nbd->disk),
+				"Attempted send on closed socket\n");
 			req->errors++;
 			nbd_end_request(req);
 			spin_lock_irq(q->queue_lock);
@@ -756,7 +756,6 @@ static int __nbd_ioctl(struct block_device *bdev, struct nbd_device *nbd,
 		 * This is for compatibility only.  The queue is always cleared
 		 * by NBD_DO_IT or NBD_CLEAR_SOCK.
 		 */
-		BUG_ON(!nbd->sock && !list_empty(&nbd->queue_head));
 		return 0;
 
 	case NBD_PRINT_DEBUG:
@@ -815,6 +814,10 @@ static int __init nbd_init(void)
 		return -EINVAL;
 	}
 
+	nbd_dev = kcalloc(nbds_max, sizeof(*nbd_dev), GFP_KERNEL);
+	if (!nbd_dev)
+		return -ENOMEM;
+
 	part_shift = 0;
 	if (max_part > 0) {
 		part_shift = fls(max_part);
@@ -835,10 +838,6 @@ static int __init nbd_init(void)
 
 	if (nbds_max > 1UL << (MINORBITS - part_shift))
 		return -EINVAL;
-
-	nbd_dev = kcalloc(nbds_max, sizeof(*nbd_dev), GFP_KERNEL);
-	if (!nbd_dev)
-		return -ENOMEM;
 
 	for (i = 0; i < nbds_max; i++) {
 		struct gendisk *disk = alloc_disk(1 << part_shift);

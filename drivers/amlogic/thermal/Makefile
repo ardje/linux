@@ -1,6 +1,2 @@
-#
-#Makefile for the thermal dirver
-#
-obj-$(CONFIG_AMLOGIC_THERMAL)+= amlogic_thermal.o
 
-
+obj-$(CONFIG_AML_TEMP_SENSOR) += aml_thermal_hw.o

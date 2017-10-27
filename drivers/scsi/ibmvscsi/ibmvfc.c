@@ -717,6 +717,7 @@ static int ibmvfc_reset_crq(struct ibmvfc_host *vhost)
 	spin_lock_irqsave(vhost->host->host_lock, flags);
 	vhost->state = IBMVFC_NO_CRQ;
 	vhost->logged_in = 0;
+	ibmvfc_set_host_action(vhost, IBMVFC_HOST_ACTION_NONE);
 
 	/* Clean out the queue */
 	memset(crq->msgs, 0, PAGE_SIZE);
@@ -2207,7 +2208,10 @@ static int ibmvfc_cancel_all(struct scsi_device *sdev, int type)
 
 	if (rsp_rc != 0) {
 		sdev_printk(KERN_ERR, sdev, "Failed to send cancel event. rc=%d\n", rsp_rc);
-		return -EIO;
+		/* If failure is received, the host adapter is most likely going
+		 through reset, return success so the caller will wait for the command
+		 being cancelled to get returned */
+		return 0;
 	}
 
 	sdev_printk(KERN_INFO, sdev, "Cancelling outstanding commands.\n");
@@ -2220,7 +2224,15 @@ static int ibmvfc_cancel_all(struct scsi_device *sdev, int type)
 
 	if (status != IBMVFC_MAD_SUCCESS) {
 		sdev_printk(KERN_WARNING, sdev, "Cancel failed with rc=%x\n", status);
-		return -EIO;
+		switch (status) {
+		case IBMVFC_MAD_DRIVER_FAILED:
+		case IBMVFC_MAD_CRQ_ERROR:
+			/* Host adapter most likely going through reset, return success to
+			 the caller will wait for the command being cancelled to get returned */
+			return 0;
+		default:
+			return -EIO;
+		};
 	}
 
 	sdev_printk(KERN_INFO, sdev, "Successfully cancelled outstanding commands\n");

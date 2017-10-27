@@ -1,25 +1,31 @@
-/*******************************************************************
+/*
+ * ../../include/media/videobuf-res.h
  *
- *  Copyright C 2012 by Amlogic, Inc. All Rights Reserved.
+ * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
  *
- *  Description:
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
- *  Author: Amlogic Software
- *  Created: 2012/9/6   16:46
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
  *
- *******************************************************************/
- 
+*/
+
 #ifndef _VIDEOBUF_RES_H
 #define _VIDEOBUF_RES_H
 
 #include <media/videobuf-core.h>
 
 struct videobuf_res_privdata {
-	//const* char dev_name;
+	/* const* char dev_name; */
 	u32 magic;
 	resource_size_t start;
 	resource_size_t end;
-	void* priv;
+	void *priv;
 };
 
 void videobuf_queue_res_init(struct videobuf_queue *q,

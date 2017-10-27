@@ -20,13 +20,6 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-/*
- * For some really annoying reason, amlogic decided that the kernel's GPIO library is not enough,
- * and we need to use amlogic_gpio_* instead (try to follow gpio_flag...)
- *
- * 2015 Joakim L. Gilje <jgilje@jgilje.net>
- */
-
 #define PPS_GPIO_NAME "pps-gpio"
 #define pr_fmt(fmt) PPS_GPIO_NAME ": " fmt
 
@@ -42,9 +35,6 @@
 #include <linux/list.h>
 #include <linux/of_device.h>
 #include <linux/of_gpio.h>
-
-#include <linux/amlogic/aml_gpio_consumer.h>
-#define GPIO_IRQ 7
 
 /* Info for each registered platform device */
 struct pps_gpio_device_data {
@@ -131,26 +121,26 @@ static int pps_gpio_probe(struct platform_device *pdev)
 			data->assert_falling_edge = true;
 	}
 
-	ret = amlogic_gpio_request(data->gpio_pin, gpio_label);
+	/* GPIO setup */
+	ret = devm_gpio_request(&pdev->dev, data->gpio_pin, gpio_label);
 	if (ret) {
-		pr_warning("failed to request GPIO %u\n", pdata->gpio_pin);
+		dev_err(&pdev->dev, "failed to request GPIO %u\n",
+			data->gpio_pin);
+		return ret;
+	}
+
+	ret = gpio_direction_input(data->gpio_pin);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to set pin direction\n");
 		return -EINVAL;
 	}
 
-	ret = amlogic_gpio_direction_input(data->gpio_pin, gpio_label);
-	if (ret) {
-		pr_warning("failed to set pin direction\n");
-		gpio_free(pdata->gpio_pin);
+	/* IRQ setup */
+	ret = gpio_to_irq(data->gpio_pin);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "failed to map GPIO to IRQ: %d\n", ret);
 		return -EINVAL;
 	}
-
-
-	if(amlogic_gpio_to_irq(data->gpio_pin, gpio_label,
-		AML_GPIO_IRQ(GPIO_IRQ, 0, data->assert_falling_edge ? 3 : 2))) {
-		dev_err(&pdev->dev, "amlogic_gpio_to_irq fail!\n");
-	}
-
-	dev_err(&pdev->dev, "mapped GPIO to IRQ: %d\n", INT_GPIO_0 + GPIO_IRQ);
 	data->irq = ret;
 
 	/* initialize PPS specific parts of the bookkeeping data structure. */
@@ -175,7 +165,7 @@ static int pps_gpio_probe(struct platform_device *pdev)
 	}
 
 	/* register IRQ interrupt handler */
-	ret = devm_request_irq(&pdev->dev, INT_GPIO_0 + GPIO_IRQ, pps_gpio_irq_handler,
+	ret = devm_request_irq(&pdev->dev, data->irq, pps_gpio_irq_handler,
 			get_irqf_trigger_flags(data), data->info.name, data);
 	if (ret) {
 		pps_unregister_source(data->pps);
@@ -210,6 +200,7 @@ static struct platform_driver pps_gpio_driver = {
 	.remove		= pps_gpio_remove,
 	.driver		= {
 		.name	= PPS_GPIO_NAME,
+		.owner	= THIS_MODULE,
 		.of_match_table	= pps_gpio_dt_ids,
 	},
 };

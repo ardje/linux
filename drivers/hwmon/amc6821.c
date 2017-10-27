@@ -360,11 +360,13 @@ static ssize_t set_pwm1_enable(
 	if (config)
 		return config;
 
+	mutex_lock(&data->update_lock);
 	config = i2c_smbus_read_byte_data(client, AMC6821_REG_CONF1);
 	if (config < 0) {
 			dev_err(&client->dev,
 			"Error reading configuration register, aborting.\n");
-			return -EIO;
+			count = config;
+			goto unlock;
 	}
 
 	switch (val) {
@@ -381,14 +383,15 @@ static ssize_t set_pwm1_enable(
 		config |= AMC6821_CONF1_FDRC1;
 		break;
 	default:
-		return -EINVAL;
+		count = -EINVAL;
+		goto unlock;
 	}
-	mutex_lock(&data->update_lock);
 	if (i2c_smbus_write_byte_data(client, AMC6821_REG_CONF1, config)) {
 			dev_err(&client->dev,
 			"Configuration register write error, aborting.\n");
 			count = -EIO;
 	}
+unlock:
 	mutex_unlock(&data->update_lock);
 	return count;
 }
@@ -416,11 +419,9 @@ static ssize_t get_temp_auto_point_temp(
 	case 1:
 		return sprintf(buf, "%d\n",
 			data->temp1_auto_point_temp[ix] * 1000);
-		break;
 	case 2:
 		return sprintf(buf, "%d\n",
 			data->temp2_auto_point_temp[ix] * 1000);
-		break;
 	default:
 		dev_dbg(dev, "Unknown attr->nr (%d).\n", nr);
 		return -EINVAL;
@@ -495,8 +496,9 @@ static ssize_t set_temp_auto_point_temp(
 		return -EINVAL;
 	}
 
-	data->valid = 0;
 	mutex_lock(&data->update_lock);
+	data->valid = 0;
+
 	switch (ix) {
 	case 0:
 		ptemp[0] = clamp_val(val / 1000, 0,
@@ -513,7 +515,6 @@ static ssize_t set_temp_auto_point_temp(
 				count = -EIO;
 		}
 		goto EXIT;
-		break;
 	case 1:
 		ptemp[1] = clamp_val(val / 1000, (ptemp[0] & 0x7C) + 4, 124);
 		ptemp[1] &= 0x7C;
@@ -661,13 +662,14 @@ static ssize_t set_fan1_div(
 	if (config)
 		return config;
 
+	mutex_lock(&data->update_lock);
 	config = i2c_smbus_read_byte_data(client, AMC6821_REG_CONF4);
 	if (config < 0) {
 		dev_err(&client->dev,
 			"Error reading configuration register, aborting.\n");
-		return -EIO;
+		count = config;
+		goto EXIT;
 	}
-	mutex_lock(&data->update_lock);
 	switch (val) {
 	case 2:
 		config &= ~AMC6821_CONF4_PSPR;

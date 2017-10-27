@@ -269,6 +269,17 @@ struct mtp_device_status {
 	__le16	wCode;
 };
 
+struct mtp_data_header {
+	/* length of packet, including this header */
+	__le32	length;
+	/* container type (2 for data packet) */
+	__le16	type;
+	/* MTP command code */
+	__le16	command;
+	/* MTP transaction ID */
+	__le32	transaction_id;
+};
+
 /* temporary variable used between mtp_open() and mtp_gadget_bind() */
 static struct mtp_dev *_mtp_dev;
 
@@ -410,15 +421,6 @@ static int mtp_create_bulk_endpoints(struct mtp_dev *dev,
 	ep->driver_data = dev;		/* claim the endpoint */
 	dev->ep_out = ep;
 
-	ep = usb_ep_autoconfig(cdev->gadget, out_desc);
-	if (!ep) {
-		DBG(cdev, "usb_ep_autoconfig for ep_out failed\n");
-		return -ENODEV;
-	}
-	DBG(cdev, "usb_ep_autoconfig for mtp ep_out got %s\n", ep->name);
-	ep->driver_data = dev;		/* claim the endpoint */
-	dev->ep_out = ep;
-
 	ep = usb_ep_autoconfig(cdev->gadget, intr_desc);
 	if (!ep) {
 		DBG(cdev, "usb_ep_autoconfig for ep_intr failed\n");
@@ -464,10 +466,11 @@ static ssize_t mtp_read(struct file *fp, char __user *buf,
 	struct mtp_dev *dev = fp->private_data;
 	struct usb_composite_dev *cdev = dev->cdev;
 	struct usb_request *req;
-	int r = count, xfer;
+	ssize_t r = count;
+	unsigned xfer;
 	int ret = 0;
 
-	DBG(cdev, "mtp_read(%d)\n", count);
+	DBG(cdev, "mtp_read(%zu)\n", count);
 
 	if (count > MTP_BULK_BUFFER_SIZE)
 		return -EINVAL;
@@ -531,7 +534,7 @@ done:
 		dev->state = STATE_READY;
 	spin_unlock_irq(&dev->lock);
 
-	DBG(cdev, "mtp_read returning %d\n", r);
+	DBG(cdev, "mtp_read returning %zd\n", r);
 	return r;
 }
 
@@ -541,11 +544,12 @@ static ssize_t mtp_write(struct file *fp, const char __user *buf,
 	struct mtp_dev *dev = fp->private_data;
 	struct usb_composite_dev *cdev = dev->cdev;
 	struct usb_request *req = 0;
-	int r = count, xfer;
+	ssize_t r = count;
+	unsigned xfer;
 	int sendZLP = 0;
 	int ret;
 
-	DBG(cdev, "mtp_write(%d)\n", count);
+	DBG(cdev, "mtp_write(%zu)\n", count);
 
 	spin_lock_irq(&dev->lock);
 	if (dev->state == STATE_CANCELED) {
@@ -622,7 +626,7 @@ static ssize_t mtp_write(struct file *fp, const char __user *buf,
 		dev->state = STATE_READY;
 	spin_unlock_irq(&dev->lock);
 
-	DBG(cdev, "mtp_write returning %d\n", r);
+	DBG(cdev, "mtp_write returning %zd\n", r);
 	return r;
 }
 
@@ -821,7 +825,7 @@ static int mtp_send_event(struct mtp_dev *dev, struct mtp_event *event)
 	int ret;
 	int length = event->length;
 
-	DBG(dev->cdev, "mtp_send_event(%d)\n", event->length);
+	DBG(dev->cdev, "mtp_send_event(%zu)\n", event->length);
 
 	if (length < 0 || length > INTR_BUFFER_SIZE)
 		return -EINVAL;

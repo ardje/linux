@@ -23,28 +23,44 @@
 
 #include "internal.h"
 
+static int mm_counter(struct page *page)
+{
+	return PageAnon(page) ? MM_ANONPAGES : MM_FILEPAGES;
+}
+
 static void zap_pte(struct mm_struct *mm, struct vm_area_struct *vma,
 			unsigned long addr, pte_t *ptep)
 {
 	pte_t pte = *ptep;
+	struct page *page;
+	swp_entry_t entry;
 
 	if (pte_present(pte)) {
-		struct page *page;
-
 		flush_cache_page(vma, addr, pte_pfn(pte));
 		pte = ptep_clear_flush(vma, addr, ptep);
 		page = vm_normal_page(vma, addr, pte);
 		if (page) {
 			if (pte_dirty(pte))
 				set_page_dirty(page);
+			update_hiwater_rss(mm);
+			dec_mm_counter(mm, mm_counter(page));
 			page_remove_rmap(page);
 			page_cache_release(page);
-			update_hiwater_rss(mm);
-			dec_mm_counter(mm, MM_FILEPAGES);
 		}
-	} else {
-		if (!pte_file(pte))
-			free_swap_and_cache(pte_to_swp_entry(pte));
+	} else {	/* zap_pte() is not called when pte_none() */
+		if (!pte_file(pte)) {
+			update_hiwater_rss(mm);
+			entry = pte_to_swp_entry(pte);
+			if (non_swap_entry(entry)) {
+				if (is_migration_entry(entry)) {
+					page = migration_entry_to_page(entry);
+					dec_mm_counter(mm, mm_counter(page));
+				}
+			} else {
+				free_swap_and_cache(entry);
+				dec_mm_counter(mm, MM_SWAPENTS);
+			}
+		}
 		pte_clear_not_present_full(mm, addr, ptep, 0);
 	}
 }
@@ -57,17 +73,22 @@ static int install_file_pte(struct mm_struct *mm, struct vm_area_struct *vma,
 		unsigned long addr, unsigned long pgoff, pgprot_t prot)
 {
 	int err = -ENOMEM;
-	pte_t *pte;
+	pte_t *pte, ptfile;
 	spinlock_t *ptl;
 
 	pte = get_locked_pte(mm, addr, &ptl);
 	if (!pte)
 		goto out;
 
-	if (!pte_none(*pte))
-		zap_pte(mm, vma, addr, pte);
+	ptfile = pgoff_to_pte(pgoff);
 
-	set_pte_at(mm, addr, pte, pgoff_to_pte(pgoff));
+	if (!pte_none(*pte)) {
+		if (pte_present(*pte) && pte_soft_dirty(*pte))
+			pte_file_mksoft_dirty(ptfile);
+		zap_pte(mm, vma, addr, pte);
+	}
+
+	set_pte_at(mm, addr, pte, ptfile);
 	/*
 	 * We don't need to run update_mmu_cache() here because the "file pte"
 	 * being installed by install_file_pte() is not a real pte - it's a
@@ -202,28 +223,16 @@ get_write_lock:
 		 */
 		if (mapping_cap_account_dirty(mapping)) {
 			unsigned long addr;
-			struct file *file = vma->vm_file,
-				*prfile = vma->vm_prfile;
-
+			struct file *file = get_file(vma->vm_file);
 			/* mmap_region may free vma; grab the info now */
 			vm_flags = vma->vm_flags;
 
-			vma_get_file(vma);
 			addr = mmap_region(file, start, size, vm_flags, pgoff);
-			vma_fput(vma);
+			fput(file);
 			if (IS_ERR_VALUE(addr)) {
 				err = addr;
 			} else {
 				BUG_ON(addr != start);
-				if (prfile) {
-					struct vm_area_struct *new_vma;
-
-					new_vma = find_vma(mm, addr);
-					if (!new_vma->vm_prfile)
-						new_vma->vm_prfile = prfile;
-					if (new_vma != vma)
-						get_file(prfile);
-				}
 				err = 0;
 			}
 			goto out_freed;

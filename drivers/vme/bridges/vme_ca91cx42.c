@@ -42,7 +42,7 @@ static int geoid;
 
 static const char driver_name[] = "vme_ca91cx42";
 
-static DEFINE_PCI_DEVICE_TABLE(ca91cx42_ids) = {
+static const struct pci_device_id ca91cx42_ids[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_TUNDRA, PCI_DEVICE_ID_TUNDRA_CA91C142) },
 	{ },
 };
@@ -243,6 +243,8 @@ static int ca91cx42_irq_init(struct vme_bridge *ca91cx42_bridge)
 static void ca91cx42_irq_exit(struct ca91cx42_driver *bridge,
 	struct pci_dev *pdev)
 {
+	struct vme_bridge *ca91cx42_bridge;
+
 	/* Disable interrupts from PCI to VME */
 	iowrite32(0, bridge->base + VINT_EN);
 
@@ -251,7 +253,9 @@ static void ca91cx42_irq_exit(struct ca91cx42_driver *bridge,
 	/* Clear Any Pending PCI Interrupts */
 	iowrite32(0x00FFFFFF, bridge->base + LINT_STAT);
 
-	free_irq(pdev->irq, pdev);
+	ca91cx42_bridge = container_of((void *)bridge, struct vme_bridge,
+				       driver_priv);
+	free_irq(pdev->irq, ca91cx42_bridge);
 }
 
 static int ca91cx42_iack_received(struct ca91cx42_driver *bridge, int level)
@@ -464,7 +468,7 @@ static int ca91cx42_slave_get(struct vme_slave_resource *image, int *enabled,
 	vme_bound = ioread32(bridge->base + CA91CX42_VSI_BD[i]);
 	pci_offset = ioread32(bridge->base + CA91CX42_VSI_TO[i]);
 
-	*pci_base = (dma_addr_t)*vme_base + pci_offset;
+	*pci_base = (dma_addr_t)vme_base + pci_offset;
 	*size = (unsigned long long)((vme_bound - *vme_base) + granularity);
 
 	*enabled = 0;
@@ -856,7 +860,7 @@ static ssize_t ca91cx42_master_read(struct vme_master_resource *image,
 	void *buf, size_t count, loff_t offset)
 {
 	ssize_t retval;
-	void *addr = image->kern_base + offset;
+	void __iomem *addr = image->kern_base + offset;
 	unsigned int done = 0;
 	unsigned int count32;
 
@@ -916,7 +920,7 @@ static ssize_t ca91cx42_master_write(struct vme_master_resource *image,
 	void *buf, size_t count, loff_t offset)
 {
 	ssize_t retval;
-	void *addr = image->kern_base + offset;
+	void __iomem *addr = image->kern_base + offset;
 	unsigned int done = 0;
 	unsigned int count32;
 

@@ -161,6 +161,7 @@
 #include <asm/xen/page.h>
 #include <asm/xen/hypercall.h>
 #include <asm/xen/hypervisor.h>
+#include <xen/balloon.h>
 #include <xen/grant_table.h>
 
 #include "multicalls.h"
@@ -279,6 +280,9 @@ void __ref xen_build_mfn_list_list(void)
 {
 	unsigned long pfn;
 
+	if (xen_feature(XENFEAT_auto_translated_physmap))
+		return;
+
 	/* Pre-initialize p2m_top_mfn to be completely missing */
 	if (p2m_top_mfn == NULL) {
 		p2m_mid_missing_mfn = extend_brk(PAGE_SIZE, PAGE_SIZE);
@@ -335,6 +339,9 @@ void __ref xen_build_mfn_list_list(void)
 
 void xen_setup_mfn_list_list(void)
 {
+	if (xen_feature(XENFEAT_auto_translated_physmap))
+		return;
+
 	BUG_ON(HYPERVISOR_shared_info == &xen_dummy_shared_info);
 
 	HYPERVISOR_shared_info->arch.pfn_to_mfn_frame_list_list =
@@ -345,10 +352,15 @@ void xen_setup_mfn_list_list(void)
 /* Set up p2m_top to point to the domain-builder provided p2m pages */
 void __init xen_build_dynamic_phys_to_machine(void)
 {
-	unsigned long *mfn_list = (unsigned long *)xen_start_info->mfn_list;
-	unsigned long max_pfn = min(MAX_DOMAIN_PAGES, xen_start_info->nr_pages);
+	unsigned long *mfn_list;
+	unsigned long max_pfn;
 	unsigned long pfn;
 
+	 if (xen_feature(XENFEAT_auto_translated_physmap))
+		return;
+
+	mfn_list = (unsigned long *)xen_start_info->mfn_list;
+	max_pfn = min(MAX_DOMAIN_PAGES, xen_start_info->nr_pages);
 	xen_max_p2m_pfn = max_pfn;
 
 	p2m_missing = extend_brk(PAGE_SIZE, PAGE_SIZE);
@@ -798,10 +810,10 @@ bool __set_phys_to_machine(unsigned long pfn, unsigned long mfn)
 {
 	unsigned topidx, mididx, idx;
 
-	if (unlikely(xen_feature(XENFEAT_auto_translated_physmap))) {
-		BUG_ON(pfn != mfn && mfn != INVALID_P2M_ENTRY);
+	/* don't track P2M changes in autotranslate guests */
+	if (unlikely(xen_feature(XENFEAT_auto_translated_physmap)))
 		return true;
-	}
+
 	if (unlikely(pfn >= MAX_P2M_PFN)) {
 		BUG_ON(mfn != INVALID_P2M_ENTRY);
 		return true;
@@ -965,7 +977,10 @@ int m2p_remove_override(struct page *page,
 	if (kmap_op != NULL) {
 		if (!PageHighMem(page)) {
 			struct multicall_space mcs;
-			struct gnttab_unmap_grant_ref *unmap_op;
+			struct gnttab_unmap_and_replace *unmap_op;
+			struct page *scratch_page = get_balloon_scratch_page();
+			unsigned long scratch_page_address = (unsigned long)
+				__va(page_to_pfn(scratch_page) << PAGE_SHIFT);
 
 			/*
 			 * It might be that we queued all the m2p grant table
@@ -984,25 +999,31 @@ int m2p_remove_override(struct page *page,
 				printk(KERN_WARNING "m2p_remove_override: "
 						"pfn %lx mfn %lx, failed to modify kernel mappings",
 						pfn, mfn);
+				put_balloon_scratch_page();
 				return -1;
 			}
 
-			mcs = xen_mc_entry(
-					sizeof(struct gnttab_unmap_grant_ref));
+			xen_mc_batch();
+
+			mcs = __xen_mc_entry(
+					sizeof(struct gnttab_unmap_and_replace));
 			unmap_op = mcs.args;
 			unmap_op->host_addr = kmap_op->host_addr;
+			unmap_op->new_addr = scratch_page_address;
 			unmap_op->handle = kmap_op->handle;
-			unmap_op->dev_bus_addr = 0;
 
 			MULTI_grant_table_op(mcs.mc,
-					GNTTABOP_unmap_grant_ref, unmap_op, 1);
+					GNTTABOP_unmap_and_replace, unmap_op, 1);
+
+			mcs = __xen_mc_entry(0);
+			MULTI_update_va_mapping(mcs.mc, scratch_page_address,
+					pfn_pte(page_to_pfn(scratch_page),
+					PAGE_KERNEL_RO), 0);
 
 			xen_mc_issue(PARAVIRT_LAZY_MMU);
 
-			set_pte_at(&init_mm, address, ptep,
-					pfn_pte(pfn, PAGE_KERNEL));
-			__flush_tlb_single(address);
 			kmap_op->host_addr = 0;
+			put_balloon_scratch_page();
 		}
 	}
 

@@ -27,9 +27,16 @@
 #include <linux/mii.h>
 #include <linux/phy.h>
 #include <linux/slab.h>
+#include <linux/of.h>
+#include <linux/of_gpio.h>
+
 #include <asm/io.h>
 
 #include "stmmac.h"
+
+#if defined(CONFIG_AML_PMU4)
+#include <linux/amlogic/aml_pmu4.h>
+#endif
 
 #define MII_BUSY 0x00000001
 #define MII_WRITE 0x00000002
@@ -125,16 +132,51 @@ static int stmmac_mdio_write(struct mii_bus *bus, int phyaddr, int phyreg,
  * @bus: points to the mii_bus structure
  * Description: reset the MII bus
  */
-static int stmmac_mdio_reset(struct mii_bus *bus)
+int stmmac_mdio_reset(struct mii_bus *bus)
 {
 #if defined(CONFIG_STMMAC_PLATFORM)
 	struct net_device *ndev = bus->priv;
 	struct stmmac_priv *priv = netdev_priv(ndev);
 	unsigned int mii_address = priv->hw->mii.addr;
+	struct stmmac_mdio_bus_data *data = priv->plat->mdio_bus_data;
 
-	if (priv->plat->mdio_bus_data->phy_reset) {
+#ifdef CONFIG_OF
+	if (priv->device->of_node) {
+		int reset_gpio, active_low;
+
+		if (data->reset_gpio < 0) {
+			struct device_node *np = priv->device->of_node;
+			if (!np)
+				return 0;
+
+			data->reset_gpio = of_get_named_gpio(np,
+						"snps,reset-gpio", 0);
+			if (data->reset_gpio < 0)
+				return 0;
+
+			data->active_low = of_property_read_bool(np,
+						"snps,reset-active-low");
+			of_property_read_u32_array(np,
+				"snps,reset-delays-us", data->delays, 3);
+		}
+
+		reset_gpio = data->reset_gpio;
+		active_low = data->active_low;
+
+		if (!gpio_request(reset_gpio, "mdio-reset")) {
+			gpio_direction_output(reset_gpio, active_low ? 1 : 0);
+			udelay(data->delays[0]);
+			gpio_set_value(reset_gpio, active_low ? 0 : 1);
+			udelay(data->delays[1]);
+			gpio_set_value(reset_gpio, active_low ? 1 : 0);
+			udelay(data->delays[2]);
+		}
+	}
+#endif
+
+	if (data->phy_reset) {
 		pr_debug("stmmac_mdio_reset: calling phy_reset\n");
-		priv->plat->mdio_bus_data->phy_reset(priv->plat->bsp_priv);
+		data->phy_reset(priv->plat->bsp_priv);
 	}
 
 	/* This is a workaround for problems with the STE101P PHY.
@@ -145,6 +187,22 @@ static int stmmac_mdio_reset(struct mii_bus *bus)
 #endif
 	return 0;
 }
+
+#if defined(CONFIG_AML_PMU4)
+static int stmmac_i2c_read(struct mii_bus *bus, int phyaddr, int phyreg)
+{
+	int data;
+	uint8_t data_lo;
+	uint8_t data_hi;
+
+	aml_pmu4_write(0xa6, phyreg);
+	aml_pmu4_read(0xa7, &data_lo);
+	aml_pmu4_read(0xa8, &data_hi);
+	data = (data_hi<<8)|data_lo;
+
+	return data;
+}
+#endif
 
 /**
  * stmmac_mdio_register
@@ -159,6 +217,16 @@ int stmmac_mdio_register(struct net_device *ndev)
 	struct stmmac_priv *priv = netdev_priv(ndev);
 	struct stmmac_mdio_bus_data *mdio_bus_data = priv->plat->mdio_bus_data;
 	int addr, found;
+	int phy_start_addr = 0, phy_max_addr = PHY_MAX_ADDR;
+#if defined(CONFIG_AML_PMU4)
+	uint8_t pmu4_ver = 0;
+
+	err = aml_pmu4_version(&pmu4_ver);
+	if (err == 0 && pmu4_ver == PMU4_VA_ID) {
+		phy_start_addr  = 8;
+		phy_max_addr = 9;
+	}
+#endif
 
 	if (!mdio_bus_data)
 		return 0;
@@ -172,10 +240,19 @@ int stmmac_mdio_register(struct net_device *ndev)
 	else
 		irqlist = priv->mii_irq;
 
+#ifdef CONFIG_OF
+	if (priv->device->of_node)
+		mdio_bus_data->reset_gpio = -1;
+#endif
+
 	new_bus->name = "stmmac";
 	new_bus->read = &stmmac_mdio_read;
 	new_bus->write = &stmmac_mdio_write;
 	new_bus->reset = &stmmac_mdio_reset;
+#if defined(CONFIG_AML_PMU4)
+	if (pmu4_ver == PMU4_VA_ID)
+		new_bus->read = &stmmac_i2c_read;
+#endif
 	snprintf(new_bus->id, MII_BUS_ID_SIZE, "%s-%x",
 		 new_bus->name, priv->plat->bus_id);
 	new_bus->priv = ndev;
@@ -189,7 +266,7 @@ int stmmac_mdio_register(struct net_device *ndev)
 	}
 
 	found = 0;
-	for (addr = 0; addr < PHY_MAX_ADDR; addr++) {
+	for (addr = phy_start_addr; addr < phy_max_addr; addr++) {
 		struct phy_device *phydev = new_bus->phy_map[addr];
 		if (phydev) {
 			int act = 0;
@@ -205,7 +282,10 @@ int stmmac_mdio_register(struct net_device *ndev)
 				irqlist[addr] = mdio_bus_data->probed_phy_irq;
 				phydev->irq = mdio_bus_data->probed_phy_irq;
 			}
-
+#ifdef CONFIG_DWMAC_MESON
+			irqlist[addr] = PHY_POLL;
+			phydev->irq = PHY_POLL;
+#endif
 			/*
 			 * If we're  going to bind the MAC to this PHY bus,
 			 * and no PHY number was provided to the MAC,

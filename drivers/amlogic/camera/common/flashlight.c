@@ -1,15 +1,20 @@
 /*
- * Flash light char device driver.
+ * drivers/amlogic/camera/common/flashlight.c
  *
- * Author: Heming Lv <heming.lv@amlogic.com>
- *
- * Copyright (c) 2011 Amlogic Inc.
+ * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
- * it under the smems of the GNU General Public License as published by
-  * the Free Software Foundation; version 2 of the License.
-  *
-  */
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+*/
+
 #include <linux/cdev.h>
 #include <linux/types.h>
 
@@ -24,105 +29,110 @@
 #define FLASHLIGHT_CLASS_NAME   "flashlight"
 
 static dev_t flashlight_devno;
-static struct cdev *flashlight_cdev=NULL;
-static struct device *devp=NULL;
+static struct cdev *flashlight_cdev;
+static struct device *devp;
 
-static aml_plat_flashlight_status_t flashlight_flag = FLASHLIGHT_OFF;
+static enum aml_plat_flashlight_status_s flashlight_flag = FLASHLIGHT_OFF;
 
-static ssize_t flashlight_ctrl(struct class *cla, struct class_attribute *attr, const char *buf, size_t count);
-static ssize_t flashlight_getflag(struct class *cla, struct class_attribute *attr, char *buf);
-static ssize_t flashlight_setflag(struct class *cla, struct class_attribute *attr, const char *buf, size_t count);
-static int  flashlight_open(struct inode *inode,struct file *file);
-static int  flashlight_release(struct inode *inode,struct file *file);
+static ssize_t flashlight_ctrl(struct class *cla, struct class_attribute *attr,
+			       const char *buf, size_t count);
+static ssize_t flashlight_getflag(struct class *cla,
+				  struct class_attribute *attr, char *buf);
+static ssize_t flashlight_setflag(struct class *cla,
+				  struct class_attribute *attr,
+				  const char *buf, size_t count);
+static int flashlight_open(struct inode *inode, struct file *file);
+static int flashlight_release(struct inode *inode, struct file *file);
 static int flashlight_probe(struct platform_device *pdev);
 static int flashlight_remove(struct platform_device *pdev);
 
-
 static struct platform_driver flashlight_driver = {
-	 .probe = flashlight_probe,
-	 .remove = flashlight_remove,
-	 .driver = {
-	 .name = FLASHLIGHT_DRIVER_NAME,
-	 .owner = THIS_MODULE,
-	 },
- };
+	.probe = flashlight_probe, .remove = flashlight_remove, .driver = {
+		.name =
+		FLASHLIGHT_DRIVER_NAME, .owner = THIS_MODULE,
+	},
+};
 
 static const struct file_operations flashlight_fops = {
-	.open	= flashlight_open,
-	.release	= flashlight_release,
+	.open = flashlight_open, .release = flashlight_release,
 };
 
 static struct class_attribute flashlight_class_attrs[] = {
-    __ATTR(flashlightctrl,S_IWUGO,NULL,flashlight_ctrl),
-    __ATTR(flashlightflag,S_IRUGO|S_IWUGO,flashlight_getflag,flashlight_setflag),
-    __ATTR_NULL
+	__ATTR(flashlightctrl, S_IWUGO, NULL, flashlight_ctrl), __ATTR(
+		flashlightflag, S_IRUGO | S_IWUGO, flashlight_getflag,
+		flashlight_setflag), __ATTR_NULL
 };
 static struct class flashlight_class = {
-    .name = FLASHLIGHT_CLASS_NAME,
-    .class_attrs = flashlight_class_attrs,
-    .owner = THIS_MODULE,
-};
+		.name = FLASHLIGHT_CLASS_NAME,
+		.class_attrs = flashlight_class_attrs,
+		.owner = THIS_MODULE,
+	};
 
 static int flashlight_device_match(struct device *dev, void *data)
 {
-	return (!strcmp(dev->kobj.name,(const char*)data));
+	int ret = !strcmp(dev->kobj.name, (const char *)data);
+	return ret;
 }
 
 struct device *flashlight_class_to_device(struct class *cla)
 {
-	struct device		*dev;
-	dev = class_find_device(cla, NULL, (void*)cla->name,flashlight_device_match);
+	struct device *dev;
+	dev = class_find_device(cla, NULL, (void *)cla->name,
+				flashlight_device_match);
 	if (!dev)
-		printk("%s:%s no matched device found!\n",FLASHLIGHT_MODULE_NAME,__FUNCTION__);
+		pr_info("%s:%s no matched device found!\n",
+			FLASHLIGHT_MODULE_NAME, __func__);
 	return dev;
 }
 
-static ssize_t flashlight_ctrl(struct class *cla, struct class_attribute *attr, const char *buf, size_t count)
+static ssize_t flashlight_ctrl(struct class *cla, struct class_attribute *attr,
+			       const char *buf, size_t count)
 {
-	aml_plat_flashlight_data_t *pdata = NULL;
-	struct device	*dev = NULL;
+	struct aml_plat_flashlight_data_s *pdata = NULL;
+	struct device *dev = NULL;
 	dev = flashlight_class_to_device(cla);
-	pdata = (aml_plat_flashlight_data_t *)dev->platform_data;
-	if(pdata == NULL){
-		printk("%s platform data is required!\n",__FUNCTION__);
+	pdata = (struct aml_plat_flashlight_data_s *)dev->platform_data;
+	if (pdata == NULL) {
+		pr_err("%s platform data is required!\n", __func__);
 		return -1;
 	}
-	if(!strncmp(buf,"0",1)){
-		if(pdata->flashlight_off)
+	if (!strncmp(buf, "0", 1)) {
+		if (pdata->flashlight_off)
 			pdata->flashlight_off();
-	}
-	else if (!strncmp(buf,"1",1)){
-		if(pdata->flashlight_on)
+	} else if (!strncmp(buf, "1", 1)) {
+		if (pdata->flashlight_on)
 			pdata->flashlight_on();
-	}
-	else{
-		printk( KERN_ERR"%s:%s error!Not support this parameter\n",FLASHLIGHT_MODULE_NAME,__FUNCTION__);
+	} else {
+		pr_err(KERN_ERR"%s:%s error!Not support this parameter\n",
+		       FLASHLIGHT_MODULE_NAME, __func__);
 		return -EINVAL;
 	}
 	return count;
 }
 
-static ssize_t flashlight_getflag(struct class *cla, struct class_attribute *attr, char *buf)
+static ssize_t flashlight_getflag(struct class *cla,
+				  struct class_attribute *attr, char *buf)
 {
-	sprintf(buf,"%d",(int)flashlight_flag);
+	sprintf(buf, "%d", (int)flashlight_flag);
 	return strlen(buf);
 }
 
-static ssize_t flashlight_setflag(struct class *cla, struct class_attribute *attr, const char *buf, size_t count)
+static ssize_t flashlight_setflag(struct class *cla,
+				  struct class_attribute *attr,
+				  const char *buf, size_t count)
 {
-	if(!strlen(buf)){
-		printk("%s parameter is required!\n",__FUNCTION__);
-	}
-	flashlight_flag = (aml_plat_flashlight_status_t)(buf[0]-'0');
+	if (!strlen(buf))
+		pr_info("%s parameter is required!\n", __func__);
+	flashlight_flag = (enum aml_plat_flashlight_status_s)(buf[0] - '0');
 	return count;
 }
 
-static int  flashlight_open(struct inode *inode,struct file *file)
+static int flashlight_open(struct inode *inode, struct file *file)
 {
 	return 0;
 }
 
-static int  flashlight_release(struct inode *inode,struct file *file)
+static int flashlight_release(struct inode *inode, struct file *file)
 {
 	return 0;
 }
@@ -130,22 +140,26 @@ static int  flashlight_release(struct inode *inode,struct file *file)
 static int flashlight_probe(struct platform_device *pdev)
 {
 	int ret;
-	aml_plat_flashlight_data_t *pdata = NULL;
+	struct aml_plat_flashlight_data_s *pdata = NULL;
 
-	ret = alloc_chrdev_region(&flashlight_devno, 0, 1, FLASHLIGHT_DRIVER_NAME);
+	ret = alloc_chrdev_region(&flashlight_devno, 0,
+			1, FLASHLIGHT_DRIVER_NAME);
 	if (ret < 0) {
-		printk(KERN_ERR "%s:%s failed to allocate major number\n",FLASHLIGHT_MODULE_NAME,__FUNCTION__);
+		pr_err(KERN_ERR "%s:%s failed to allocate major number\n",
+		       FLASHLIGHT_MODULE_NAME, __func__);
 		ret = -ENODEV;
 		goto out;
 	}
 	ret = class_register(&flashlight_class);
 	if (ret < 0) {
-		printk(KERN_ERR "%s:%s  failed to register class\n",FLASHLIGHT_MODULE_NAME,__FUNCTION__);
+		pr_err(KERN_ERR "%s:%s  failed to register class\n",
+			FLASHLIGHT_MODULE_NAME, __func__);
 		goto error1;
 	}
 	flashlight_cdev = cdev_alloc();
-	if ( !flashlight_cdev ) {
-		printk(KERN_ERR "%s:%s: failed to allocate memory\n",FLASHLIGHT_MODULE_NAME,__FUNCTION__);
+	if (!flashlight_cdev) {
+		pr_err(KERN_ERR "%s:%s: failed to allocate memory\n",
+			FLASHLIGHT_MODULE_NAME, __func__);
 		ret = -ENOMEM;
 		goto error2;
 	}
@@ -153,16 +167,20 @@ static int flashlight_probe(struct platform_device *pdev)
 	flashlight_cdev->owner = THIS_MODULE;
 	ret = cdev_add(flashlight_cdev, flashlight_devno, 1);
 	if (ret) {
-		printk(KERN_ERR "%s:%s: failed to add device\n",FLASHLIGHT_MODULE_NAME,__FUNCTION__);
+		pr_err(KERN_ERR "%s:%s: failed to add device\n",
+			FLASHLIGHT_MODULE_NAME, __func__);
 		goto error3;
 	}
-	devp = device_create(&flashlight_class, NULL, flashlight_devno, NULL, FLASHLIGHT_DEVICE_NAME);
+	devp = device_create(&flashlight_class, NULL, flashlight_devno, NULL,
+			     FLASHLIGHT_DEVICE_NAME);
 	if (IS_ERR(devp)) {
-		printk(KERN_ERR "%s:%s failed to create device node\n",FLASHLIGHT_MODULE_NAME,__FUNCTION__);
+		pr_err(KERN_ERR "%s:%s failed to create device node\n",
+			FLASHLIGHT_MODULE_NAME, __func__);
 		ret = PTR_ERR(devp);
 		goto error3;
 	}
-	printk(KERN_INFO "%s:%s device %s created\n", FLASHLIGHT_MODULE_NAME,__FUNCTION__,FLASHLIGHT_DEVICE_NAME);
+	pr_info(KERN_INFO "%s:%s device %s created\n", FLASHLIGHT_MODULE_NAME,
+	       __func__, FLASHLIGHT_DEVICE_NAME);
 	pdata = pdev->dev.platform_data;
 	if (!pdata) {
 		dev_err(&pdev->dev, "platform data is required!\n");
@@ -194,27 +212,24 @@ static int flashlight_remove(struct platform_device *pdev)
 
 int set_flashlight(bool mode)
 {
-	aml_plat_flashlight_data_t *pdata = NULL;
-	if(devp&&devp->platform_data){
+	struct aml_plat_flashlight_data_s *pdata = NULL;
+	if (devp && devp->platform_data) {
 		pdata = devp->platform_data;
-		if(!mode){
-			if(pdata->flashlight_off)
+		if (!mode) {
+			if (pdata->flashlight_off)
 				pdata->flashlight_off();
-		}
-		else {
-			if(pdata->flashlight_on)
+		} else {
+			if (pdata->flashlight_on)
 				pdata->flashlight_on();
 		}
 	}
 }
-
 EXPORT_SYMBOL(set_flashlight);
 
-aml_plat_flashlight_status_t get_flashlightflag(void)
+enum aml_plat_flashlight_status_s get_flashlightflag(void)
 {
 	return flashlight_flag;
 }
-
 EXPORT_SYMBOL(get_flashlightflag);
 
 static int __init flashlight_init(void)
@@ -222,7 +237,8 @@ static int __init flashlight_init(void)
 	int ret = -1;
 	ret = platform_driver_register(&flashlight_driver);
 	if (ret != 0) {
-		printk(KERN_ERR "failed to register flashlight driver, error %d\n", ret);
+		pr_err(KERN_ERR "failed to register flashlight driver,
+			error %d\n", ret);
 		return -ENODEV;
 	}
 	return ret;

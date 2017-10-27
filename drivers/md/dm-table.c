@@ -26,22 +26,8 @@
 #define KEYS_PER_NODE (NODE_SIZE / sizeof(sector_t))
 #define CHILDREN_PER_NODE (KEYS_PER_NODE + 1)
 
-/*
- * The table has always exactly one reference from either mapped_device->map
- * or hash_cell->new_map. This reference is not counted in table->holders.
- * A pair of dm_create_table/dm_destroy_table functions is used for table
- * creation/destruction.
- *
- * Temporary references from the other code increase table->holders. A pair
- * of dm_table_get/dm_table_put functions is used to manipulate it.
- *
- * When the table is about to be destroyed, we wait for table->holders to
- * drop to zero.
- */
-
 struct dm_table {
 	struct mapped_device *md;
-	atomic_t holders;
 	unsigned type;
 
 	/* btree table */
@@ -169,7 +155,6 @@ static int alloc_targets(struct dm_table *t, unsigned int num)
 {
 	sector_t *n_highs;
 	struct dm_target *n_targets;
-	int n = t->num_targets;
 
 	/*
 	 * Allocate both the target array and offset array at once.
@@ -183,12 +168,7 @@ static int alloc_targets(struct dm_table *t, unsigned int num)
 
 	n_targets = (struct dm_target *) (n_highs + num);
 
-	if (n) {
-		memcpy(n_highs, t->highs, sizeof(*n_highs) * n);
-		memcpy(n_targets, t->targets, sizeof(*n_targets) * n);
-	}
-
-	memset(n_highs + n, -1, sizeof(*n_highs) * (num - n));
+	memset(n_highs, -1, sizeof(*n_highs) * num);
 	vfree(t->highs);
 
 	t->num_allocated = num;
@@ -208,7 +188,6 @@ int dm_table_create(struct dm_table **result, fmode_t mode,
 
 	INIT_LIST_HEAD(&t->devices);
 	INIT_LIST_HEAD(&t->target_callbacks);
-	atomic_set(&t->holders, 0);
 
 	if (!num_targets)
 		num_targets = KEYS_PER_NODE;
@@ -251,10 +230,6 @@ void dm_table_destroy(struct dm_table *t)
 	if (!t)
 		return;
 
-	while (atomic_read(&t->holders))
-		msleep(1);
-	smp_mb();
-
 	/* free the indexes */
 	if (t->depth >= 2)
 		vfree(t->index[t->depth - 2]);
@@ -277,33 +252,6 @@ void dm_table_destroy(struct dm_table *t)
 	dm_free_md_mempools(t->mempools);
 
 	kfree(t);
-}
-
-void dm_table_get(struct dm_table *t)
-{
-	atomic_inc(&t->holders);
-}
-EXPORT_SYMBOL(dm_table_get);
-
-void dm_table_put(struct dm_table *t)
-{
-	if (!t)
-		return;
-
-	smp_mb__before_atomic_dec();
-	atomic_dec(&t->holders);
-}
-EXPORT_SYMBOL(dm_table_put);
-
-/*
- * Checks to see if we need to extend highs or targets.
- */
-static inline int check_space(struct dm_table *t)
-{
-	if (t->num_targets >= t->num_allocated)
-		return alloc_targets(t, t->num_allocated * 2);
-
-	return 0;
 }
 
 /*
@@ -766,8 +714,7 @@ int dm_table_add_target(struct dm_table *t, const char *type,
 		return -EINVAL;
 	}
 
-	if ((r = check_space(t)))
-		return r;
+	BUG_ON(t->num_targets >= t->num_allocated);
 
 	tgt = t->targets + t->num_targets;
 	memset(tgt, 0, sizeof(*tgt));
@@ -914,14 +861,17 @@ EXPORT_SYMBOL(dm_consume_args);
 static int dm_table_set_type(struct dm_table *t)
 {
 	unsigned i;
-	unsigned bio_based = 0, request_based = 0;
+	unsigned bio_based = 0, request_based = 0, hybrid = 0;
 	struct dm_target *tgt;
 	struct dm_dev_internal *dd;
 	struct list_head *devices;
+	unsigned live_md_type;
 
 	for (i = 0; i < t->num_targets; i++) {
 		tgt = t->targets + i;
-		if (dm_target_request_based(tgt))
+		if (dm_target_hybrid(tgt))
+			hybrid = 1;
+		else if (dm_target_request_based(tgt))
 			request_based = 1;
 		else
 			bio_based = 1;
@@ -931,6 +881,19 @@ static int dm_table_set_type(struct dm_table *t)
 			       " can't be mixed up");
 			return -EINVAL;
 		}
+	}
+
+	if (hybrid && !bio_based && !request_based) {
+		/*
+		 * The targets can work either way.
+		 * Determine the type from the live device.
+		 * Default to bio-based if device is new.
+		 */
+		live_md_type = dm_get_md_type(t->md);
+		if (live_md_type == DM_TYPE_REQUEST_BASED)
+			request_based = 1;
+		else
+			bio_based = 1;
 	}
 
 	if (bio_based) {
@@ -1586,8 +1549,11 @@ int dm_table_resume_targets(struct dm_table *t)
 			continue;
 
 		r = ti->type->preresume(ti);
-		if (r)
+		if (r) {
+			DMERR("%s: %s: preresume failed, error = %d",
+			      dm_device_name(t->md), ti->type->name, r);
 			return r;
+		}
 	}
 
 	for (i = 0; i < t->num_targets; i++) {

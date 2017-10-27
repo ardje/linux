@@ -8,6 +8,8 @@
 obj-y				+= irqchip/
 obj-y				+= bus/
 
+obj-$(CONFIG_GENERIC_PHY)	+= phy/
+
 # GPIO must come after pinctrl as gpios may need to mux pins etc
 obj-y				+= pinctrl/
 obj-y				+= gpio/
@@ -117,8 +119,7 @@ obj-$(CONFIG_SGI_SN)		+= sn/
 obj-y				+= firmware/
 obj-$(CONFIG_CRYPTO)		+= crypto/
 obj-$(CONFIG_SUPERH)		+= sh/
-obj-$(CONFIG_ARCH_SHMOBILE)	+= sh/
-obj-$(CONFIG_SSBI)		+= ssbi/
+obj-$(CONFIG_ARCH_SHMOBILE_LEGACY)	+= sh/
 ifndef CONFIG_ARCH_USES_GETTIMEOFFSET
 obj-y				+= clocksource/
 endif
@@ -153,7 +154,9 @@ obj-$(CONFIG_IIO)		+= iio/
 obj-$(CONFIG_VME_BUS)		+= vme/
 obj-$(CONFIG_IPACK_BUS)		+= ipack/
 obj-$(CONFIG_NTB)		+= ntb/
+obj-$(CONFIG_FMC)		+= fmc/
+obj-$(CONFIG_POWERCAP)		+= powercap/
 
-obj-$(CONFIG_PLAT_MESON) 	+= amlogic/
-
-obj-$(CONFIG_MACH_MESON8B_ODROIDC) += hardkernel/
+obj-$(CONFIG_GATOR)		+= gator/
+obj-$(CONFIG_CORESIGHT)		+= coresight/
+obj-y 				+= amlogic/

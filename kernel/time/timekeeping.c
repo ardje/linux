@@ -25,6 +25,11 @@
 
 #include "tick-internal.h"
 #include "ntp_internal.h"
+#include "timekeeping_internal.h"
+
+#define TK_CLEAR_NTP		(1 << 0)
+#define TK_MIRROR		(1 << 1)
+#define TK_CLOCK_WAS_SET	(1 << 2)
 
 static struct timekeeper timekeeper;
 static DEFINE_RAW_SPINLOCK(timekeeper_lock);
@@ -85,8 +90,9 @@ static void tk_set_sleep_time(struct timekeeper *tk, struct timespec t)
 }
 
 /**
- * timekeeper_setup_internals - Set up internals to use clocksource clock.
+ * tk_setup_internals - Set up internals to use clocksource clock.
  *
+ * @tk:		The target timekeeper to setup.
  * @clock:		Pointer to clocksource.
  *
  * Calculates a fixed cycle/nsec interval for a given clocksource/adjustment
@@ -200,9 +206,9 @@ static inline s64 timekeeping_get_ns_raw(struct timekeeper *tk)
 
 static RAW_NOTIFIER_HEAD(pvclock_gtod_chain);
 
-static void update_pvclock_gtod(struct timekeeper *tk)
+static void update_pvclock_gtod(struct timekeeper *tk, bool was_set)
 {
-	raw_notifier_call_chain(&pvclock_gtod_chain, 0, tk);
+	raw_notifier_call_chain(&pvclock_gtod_chain, was_set, tk);
 }
 
 /**
@@ -216,7 +222,7 @@ int pvclock_gtod_register_notifier(struct notifier_block *nb)
 
 	raw_spin_lock_irqsave(&timekeeper_lock, flags);
 	ret = raw_notifier_chain_register(&pvclock_gtod_chain, nb);
-	update_pvclock_gtod(tk);
+	update_pvclock_gtod(tk, true);
 	raw_spin_unlock_irqrestore(&timekeeper_lock, flags);
 
 	return ret;
@@ -241,16 +247,16 @@ int pvclock_gtod_unregister_notifier(struct notifier_block *nb)
 EXPORT_SYMBOL_GPL(pvclock_gtod_unregister_notifier);
 
 /* must hold timekeeper_lock */
-static void timekeeping_update(struct timekeeper *tk, bool clearntp, bool mirror)
+static void timekeeping_update(struct timekeeper *tk, unsigned int action)
 {
-	if (clearntp) {
+	if (action & TK_CLEAR_NTP) {
 		tk->ntp_error = 0;
 		ntp_clear();
 	}
 	update_vsyscall(tk);
-	update_pvclock_gtod(tk);
+	update_pvclock_gtod(tk, action & TK_CLOCK_WAS_SET);
 
-	if (mirror)
+	if (action & TK_MIRROR)
 		memcpy(&shadow_timekeeper, &timekeeper, sizeof(timekeeper));
 }
 
@@ -508,7 +514,7 @@ int do_settimeofday(const struct timespec *tv)
 
 	tk_set_xtime(tk, tv);
 
-	timekeeping_update(tk, true, true);
+	timekeeping_update(tk, TK_CLEAR_NTP | TK_MIRROR | TK_CLOCK_WAS_SET);
 
 	write_seqcount_end(&timekeeper_seq);
 	raw_spin_unlock_irqrestore(&timekeeper_lock, flags);
@@ -552,7 +558,7 @@ int timekeeping_inject_offset(struct timespec *ts)
 	tk_set_wall_to_mono(tk, timespec_sub(tk->wall_to_monotonic, *ts));
 
 error: /* even if we error out, we forwarded the time, so call update */
-	timekeeping_update(tk, true, true);
+	timekeeping_update(tk, TK_CLEAR_NTP | TK_MIRROR | TK_CLOCK_WAS_SET);
 
 	write_seqcount_end(&timekeeper_seq);
 	raw_spin_unlock_irqrestore(&timekeeper_lock, flags);
@@ -605,7 +611,7 @@ void timekeeping_set_tai_offset(s32 tai_offset)
 	raw_spin_lock_irqsave(&timekeeper_lock, flags);
 	write_seqcount_begin(&timekeeper_seq);
 	__timekeeping_set_tai_offset(tk, tai_offset);
-	timekeeping_update(tk, false, true);
+	timekeeping_update(tk, TK_MIRROR | TK_CLOCK_WAS_SET);
 	write_seqcount_end(&timekeeper_seq);
 	raw_spin_unlock_irqrestore(&timekeeper_lock, flags);
 	clock_was_set();
@@ -628,13 +634,22 @@ static int change_clocksource(void *data)
 	write_seqcount_begin(&timekeeper_seq);
 
 	timekeeping_forward_now(tk);
-	if (!new->enable || new->enable(new) == 0) {
-		old = tk->clock;
-		tk_setup_internals(tk, new);
-		if (old->disable)
-			old->disable(old);
+	/*
+	 * If the cs is in module, get a module reference. Succeeds
+	 * for built-in code (owner == NULL) as well.
+	 */
+	if (try_module_get(new->owner)) {
+		if (!new->enable || new->enable(new) == 0) {
+			old = tk->clock;
+			tk_setup_internals(tk, new);
+			if (old->disable)
+				old->disable(old);
+			module_put(old->owner);
+		} else {
+			module_put(new->owner);
+		}
 	}
-	timekeeping_update(tk, true, true);
+	timekeeping_update(tk, TK_CLEAR_NTP | TK_MIRROR | TK_CLOCK_WAS_SET);
 
 	write_seqcount_end(&timekeeper_seq);
 	raw_spin_unlock_irqrestore(&timekeeper_lock, flags);
@@ -649,14 +664,15 @@ static int change_clocksource(void *data)
  * This function is called from clocksource.c after a new, better clock
  * source has been registered. The caller holds the clocksource_mutex.
  */
-void timekeeping_notify(struct clocksource *clock)
+int timekeeping_notify(struct clocksource *clock)
 {
 	struct timekeeper *tk = &timekeeper;
 
 	if (tk->clock == clock)
-		return;
+		return 0;
 	stop_machine(change_clocksource, clock, NULL);
 	tick_clock_notify();
+	return tk->clock == clock ? 0 : -1;
 }
 
 /**
@@ -842,6 +858,7 @@ static void __timekeeping_inject_sleeptime(struct timekeeper *tk,
 	tk_xtime_add(tk, delta);
 	tk_set_wall_to_mono(tk, timespec_sub(tk->wall_to_monotonic, *delta));
 	tk_set_sleep_time(tk, timespec_add(tk->total_sleep_time, *delta));
+	tk_debug_account_sleep_time(delta);
 }
 
 /**
@@ -873,7 +890,7 @@ void timekeeping_inject_sleeptime(struct timespec *delta)
 
 	__timekeeping_inject_sleeptime(tk, delta);
 
-	timekeeping_update(tk, true, true);
+	timekeeping_update(tk, TK_CLEAR_NTP | TK_MIRROR | TK_CLOCK_WAS_SET);
 
 	write_seqcount_end(&timekeeper_seq);
 	raw_spin_unlock_irqrestore(&timekeeper_lock, flags);
@@ -955,7 +972,7 @@ static void timekeeping_resume(void)
 	tk->cycle_last = clock->cycle_last = cycle_now;
 	tk->ntp_error = 0;
 	timekeeping_suspended = 0;
-	timekeeping_update(tk, false, true);
+	timekeeping_update(tk, TK_MIRROR | TK_CLOCK_WAS_SET);
 	write_seqcount_end(&timekeeper_seq);
 	raw_spin_unlock_irqrestore(&timekeeper_lock, flags);
 
@@ -1009,7 +1026,7 @@ static int timekeeping_suspend(void)
 			timespec_add(timekeeping_suspend_time, delta_delta);
 	}
 
-	timekeeping_update(tk, false, true);
+	timekeeping_update(tk, TK_MIRROR);
 	write_seqcount_end(&timekeeper_seq);
 	raw_spin_unlock_irqrestore(&timekeeper_lock, flags);
 
@@ -1117,16 +1134,6 @@ static void timekeeping_adjust(struct timekeeper *tk, s64 offset)
 		 * we can adjust by 1.
 		 */
 		error >>= 2;
-		/*
-		 * XXX - In update_wall_time, we round up to the next
-		 * nanosecond, and store the amount rounded up into
-		 * the error. This causes the likely below to be unlikely.
-		 *
-		 * The proper fix is to avoid rounding up by using
-		 * the high precision tk->xtime_nsec instead of
-		 * xtime.tv_nsec everywhere. Fixing this will take some
-		 * time.
-		 */
 		if (likely(error <= interval))
 			adj = 1;
 		else
@@ -1264,7 +1271,7 @@ static inline unsigned int accumulate_nsecs_to_secs(struct timekeeper *tk)
 
 			__timekeeping_set_tai_offset(tk, tk->tai_offset - leap);
 
-			clock_set = 1;
+			clock_set = TK_CLOCK_WAS_SET;
 		}
 	}
 	return clock_set;
@@ -1346,7 +1353,7 @@ static inline void old_vsyscall_fixup(struct timekeeper *tk)
  * update_wall_time - Uses the current clocksource to increment the wall time
  *
  */
-static void update_wall_time(void)
+void update_wall_time(void)
 {
 	struct clocksource *clock;
 	struct timekeeper *real_tk = &timekeeper;
@@ -1423,14 +1430,13 @@ static void update_wall_time(void)
 	 * updating.
 	 */
 	memcpy(real_tk, tk, sizeof(*tk));
-	timekeeping_update(real_tk, false, false);
+	timekeeping_update(real_tk, clock_set);
 	write_seqcount_end(&timekeeper_seq);
 out:
 	raw_spin_unlock_irqrestore(&timekeeper_lock, flags);
 	if (clock_set)
-		/* have to call outside the timekeeper_seq */
+		/* Have to call _delayed version, since in irq context*/
 		clock_was_set_delayed();
-
 }
 
 /**
@@ -1575,7 +1581,6 @@ struct timespec get_monotonic_coarse(void)
 void do_timer(unsigned long ticks)
 {
 	jiffies_64 += ticks;
-	update_wall_time();
 	calc_global_load(ticks);
 }
 
@@ -1605,9 +1610,10 @@ void get_xtime_and_monotonic_and_sleep_offset(struct timespec *xtim,
  * ktime_get_update_offsets - hrtimer helper
  * @offs_real:	pointer to storage for monotonic -> realtime offset
  * @offs_boot:	pointer to storage for monotonic -> boottime offset
+ * @offs_tai:	pointer to storage for monotonic -> clock tai offset
  *
  * Returns current monotonic time and updates the offsets
- * Called from hrtimer_interupt() or retrigger_next_event()
+ * Called from hrtimer_interrupt() or retrigger_next_event()
  */
 ktime_t ktime_get_update_offsets(ktime_t *offs_real, ktime_t *offs_boot,
 							ktime_t *offs_tai)
@@ -1689,7 +1695,7 @@ int do_adjtimex(struct timex *txc)
 
 	if (tai != orig_tai) {
 		__timekeeping_set_tai_offset(tk, tai);
-		timekeeping_update(tk, false, true);
+		timekeeping_update(tk, TK_MIRROR | TK_CLOCK_WAS_SET);
 	}
 	write_seqcount_end(&timekeeper_seq);
 	raw_spin_unlock_irqrestore(&timekeeper_lock, flags);
@@ -1732,4 +1738,5 @@ void xtime_update(unsigned long ticks)
 	write_seqlock(&jiffies_lock);
 	do_timer(ticks);
 	write_sequnlock(&jiffies_lock);
+	update_wall_time();
 }

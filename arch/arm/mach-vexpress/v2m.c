@@ -1,15 +1,13 @@
 /*
  * Versatile Express V2M Motherboard Support
  */
-#include <linux/clocksource.h>
 #include <linux/device.h>
 #include <linux/amba/bus.h>
 #include <linux/amba/mmci.h>
 #include <linux/io.h>
-#include <linux/clocksource.h>
 #include <linux/smp.h>
 #include <linux/init.h>
-#include <linux/irqchip.h>
+#include <linux/memblock.h>
 #include <linux/of_address.h>
 #include <linux/of_fdt.h>
 #include <linux/of_irq.h>
@@ -23,7 +21,6 @@
 #include <linux/regulator/fixed.h>
 #include <linux/regulator/machine.h>
 #include <linux/vexpress.h>
-#include <linux/clk-provider.h>
 #include <linux/clkdev.h>
 
 #include <asm/mach-types.h>
@@ -373,6 +370,31 @@ MACHINE_START(VEXPRESS, "ARM-Versatile Express")
 	.init_machine	= v2m_init,
 MACHINE_END
 
+static void __init v2m_dt_hdlcd_init(void)
+{
+	struct device_node *node;
+	int len, na, ns;
+	const __be32 *prop;
+	phys_addr_t fb_base, fb_size;
+
+	node = of_find_compatible_node(NULL, NULL, "arm,hdlcd");
+	if (!node)
+		return;
+
+	na = of_n_addr_cells(node);
+	ns = of_n_size_cells(node);
+
+	prop = of_get_property(node, "framebuffer", &len);
+	if (WARN_ON(!prop || len < (na + ns) * sizeof(*prop)))
+		return;
+
+	fb_base = of_read_number(prop, na);
+	fb_size = of_read_number(prop + na, ns);
+
+	if (WARN_ON(memblock_remove(fb_base, fb_size)))
+		return;
+};
+
 static struct map_desc v2m_rs1_io_desc __initdata = {
 	.virtual	= V2M_PERIPH,
 	.pfn		= __phys_to_pfn(0x1c000000),
@@ -423,16 +445,10 @@ void __init v2m_dt_init_early(void)
 			pr_warning("vexpress: DT HBI (%x) is not matching "
 					"hardware (%x)!\n", dt_hbi, hbi);
 	}
-}
 
-static void __init v2m_dt_timer_init(void)
-{
-	of_clk_init(NULL);
+	versatile_sched_clock_init(vexpress_get_24mhz_clock_base(), 24000000);
 
-	clocksource_of_init();
-
-	versatile_sched_clock_init(vexpress_get_24mhz_clock_base(),
-				24000000);
+	v2m_dt_hdlcd_init();
 }
 
 static const struct of_device_id v2m_dt_bus_match[] __initconst = {
@@ -456,9 +472,8 @@ static const char * const v2m_dt_match[] __initconst = {
 DT_MACHINE_START(VEXPRESS_DT, "ARM-Versatile Express")
 	.dt_compat	= v2m_dt_match,
 	.smp		= smp_ops(vexpress_smp_ops),
+	.smp_init	= smp_init_ops(vexpress_smp_init_ops),
 	.map_io		= v2m_dt_map_io,
 	.init_early	= v2m_dt_init_early,
-	.init_irq	= irqchip_init,
-	.init_time	= v2m_dt_timer_init,
 	.init_machine	= v2m_dt_init,
 MACHINE_END

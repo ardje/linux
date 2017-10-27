@@ -102,7 +102,7 @@ static bool cirrus_crtc_mode_fixup(struct drm_crtc *crtc,
 	return true;
 }
 
-void cirrus_set_start_address(struct drm_crtc *crtc, unsigned offset)
+static void cirrus_set_start_address(struct drm_crtc *crtc, unsigned offset)
 {
 	struct cirrus_device *cdev = crtc->dev->dev_private;
 	u32 addr;
@@ -456,7 +456,7 @@ static void cirrus_encoder_commit(struct drm_encoder *encoder)
 {
 }
 
-void cirrus_encoder_destroy(struct drm_encoder *encoder)
+static void cirrus_encoder_destroy(struct drm_encoder *encoder)
 {
 	struct cirrus_encoder *cirrus_encoder = to_cirrus_encoder(encoder);
 	drm_encoder_cleanup(encoder);
@@ -495,15 +495,14 @@ static struct drm_encoder *cirrus_encoder_init(struct drm_device *dev)
 }
 
 
-int cirrus_vga_get_modes(struct drm_connector *connector)
+static int cirrus_vga_get_modes(struct drm_connector *connector)
 {
-	/* Just add a static list of modes */
-	drm_add_modes_noedid(connector, 640, 480);
-	drm_add_modes_noedid(connector, 800, 600);
-	drm_add_modes_noedid(connector, 1024, 768);
-	drm_add_modes_noedid(connector, 1280, 1024);
+	int count;
 
-	return 4;
+	/* Just add a static list of modes */
+	count = drm_add_modes_noedid(connector, 1280, 1024);
+	drm_set_preferred_mode(connector, 1024, 768);
+	return count;
 }
 
 static int cirrus_vga_mode_valid(struct drm_connector *connector,
@@ -513,7 +512,7 @@ static int cirrus_vga_mode_valid(struct drm_connector *connector,
 	return MODE_OK;
 }
 
-struct drm_encoder *cirrus_connector_best_encoder(struct drm_connector
+static struct drm_encoder *cirrus_connector_best_encoder(struct drm_connector
 						  *connector)
 {
 	int enc_id = connector->encoder_ids[0];

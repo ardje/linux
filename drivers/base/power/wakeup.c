@@ -659,7 +659,23 @@ void pm_wakeup_event(struct device *dev, unsigned int msec)
 }
 EXPORT_SYMBOL_GPL(pm_wakeup_event);
 
-static void print_active_wakeup_sources(void)
+void pm_get_active_wakeup_sources(char *pending_wakeup_source, size_t max)
+{
+	struct wakeup_source *ws;
+	int len = 0;
+	rcu_read_lock();
+	len += snprintf(pending_wakeup_source, max, "Pending Wakeup Sources: ");
+	list_for_each_entry_rcu(ws, &wakeup_sources, entry) {
+		if (ws->active) {
+			len += snprintf(pending_wakeup_source + len, max,
+				"%s ", ws->name);
+		}
+	}
+	rcu_read_unlock();
+}
+EXPORT_SYMBOL_GPL(pm_get_active_wakeup_sources);
+
+void pm_print_active_wakeup_sources(void)
 {
 	struct wakeup_source *ws;
 	int active = 0;
@@ -683,6 +699,7 @@ static void print_active_wakeup_sources(void)
 			last_activity_ws->name);
 	rcu_read_unlock();
 }
+EXPORT_SYMBOL_GPL(pm_print_active_wakeup_sources);
 
 /**
  * pm_wakeup_pending - Check if power transition in progress should be aborted.
@@ -707,8 +724,10 @@ bool pm_wakeup_pending(void)
 	}
 	spin_unlock_irqrestore(&events_lock, flags);
 
-	if (ret)
-		print_active_wakeup_sources();
+	if (ret) {
+		pr_info("PM: Wakeup pending, aborting suspend\n");
+		pm_print_active_wakeup_sources();
+	}
 
 	return ret;
 }

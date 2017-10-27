@@ -24,7 +24,7 @@
 
 #include <linux/thermal.h>
 
-#include "thermal_core.h"
+#include <linux/thermal_core.h>
 
 /*
  * If the temperature is higher than a trip point,
@@ -50,16 +50,17 @@ static unsigned long get_target_state(struct thermal_instance *instance,
 				enum thermal_trend trend, bool throttle)
 {
 	struct thermal_cooling_device *cdev = instance->cdev;
-	int cur_state;
-	int next_target;
+	signed long cur_state;
+	signed long next_target;
 
 	/*
 	 * We keep this instance the way it is by default.
 	 * Otherwise, we use the current state of the
 	 * cdev in use to determine the next_target.
 	 */
-	cdev->ops->get_cur_state(cdev, (unsigned long *)&cur_state);
-	next_target = (int)instance->target;
+	cdev->ops->get_cur_state(cdev, &cur_state);
+	next_target = instance->target;
+	dev_dbg(&cdev->device, "cur_state=%ld\n", cur_state);
 
 	switch (trend) {
 	case THERMAL_TREND_RAISING:
@@ -95,14 +96,7 @@ static unsigned long get_target_state(struct thermal_instance *instance,
 		break;
 	}
 
-	pr_debug( "instance:%s,trend=%d,throttle=%d,instace->target=%ld,cur_state=%d,next_target=%d\n",
-		instance->name,
-		trend,
-		throttle,
-		instance->target,
-		cur_state,
-		next_target);
-	return (unsigned long)next_target;
+	return next_target;
 }
 
 static void update_passive_instance(struct thermal_zone_device *tz,
@@ -138,6 +132,9 @@ static void thermal_zone_trip_update(struct thermal_zone_device *tz, int trip)
 	if (tz->temperature >= trip_temp)
 		throttle = true;
 
+	dev_dbg(&tz->device, "Trip%d[type=%d,temp=%ld]:trend=%d,throttle=%d\n",
+				trip, trip_type, trip_temp, trend, throttle);
+
 	mutex_lock(&tz->lock);
 
 	list_for_each_entry(instance, &tz->thermal_instances, tz_node) {
@@ -146,6 +143,8 @@ static void thermal_zone_trip_update(struct thermal_zone_device *tz, int trip)
 
 		old_target = instance->target;
 		instance->target = get_target_state(instance, trend, throttle);
+		dev_dbg(&instance->cdev->device, "old_target=%d, target=%d\n",
+					old_target, (int)instance->target);
 
 		if (old_target == instance->target)
 			continue;

@@ -245,6 +245,21 @@ static void dump_common_audit_data(struct audit_buffer *ab,
 		}
 		break;
 	}
+	case LSM_AUDIT_DATA_IOCTL_OP: {
+		struct inode *inode;
+
+		audit_log_d_path(ab, " path=", &a->u.op->path);
+
+		inode = a->u.op->path.dentry->d_inode;
+		if (inode) {
+			audit_log_format(ab, " dev=");
+			audit_log_untrustedstring(ab, inode->i_sb->s_id);
+			audit_log_format(ab, " ino=%lu", inode->i_ino);
+		}
+
+		audit_log_format(ab, " ioctlcmd=%hx", a->u.op->cmd);
+		break;
+	}
 	case LSM_AUDIT_DATA_DENTRY: {
 		struct inode *inode;
 
@@ -302,18 +317,19 @@ static void dump_common_audit_data(struct audit_buffer *ab,
 						"faddr", "fport");
 				break;
 			}
+#if IS_ENABLED(CONFIG_IPV6)
 			case AF_INET6: {
 				struct inet_sock *inet = inet_sk(sk);
-				struct ipv6_pinfo *inet6 = inet6_sk(sk);
 
-				print_ipv6_addr(ab, &inet6->rcv_saddr,
+				print_ipv6_addr(ab, &sk->sk_v6_rcv_saddr,
 						inet->inet_sport,
 						"laddr", "lport");
-				print_ipv6_addr(ab, &inet6->daddr,
+				print_ipv6_addr(ab, &sk->sk_v6_daddr,
 						inet->inet_dport,
 						"faddr", "fport");
 				break;
 			}
+#endif
 			case AF_UNIX:
 				u = unix_sk(sk);
 				if (u->path.dentry) {
@@ -396,7 +412,8 @@ void common_lsm_audit(struct common_audit_data *a,
 	if (a == NULL)
 		return;
 	/* we use GFP_ATOMIC so we won't sleep */
-	ab = audit_log_start(current->audit_context, GFP_ATOMIC, AUDIT_AVC);
+	ab = audit_log_start(current->audit_context, GFP_ATOMIC | __GFP_NOWARN,
+			     AUDIT_AVC);
 
 	if (ab == NULL)
 		return;

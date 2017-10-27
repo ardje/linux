@@ -3,11 +3,22 @@
  */
 
 #include <linux/mm.h>
+#include <linux/pagemap.h>
 #include <linux/page-isolation.h>
 #include <linux/pageblock-flags.h>
 #include <linux/memory.h>
+#include <linux/hugetlb.h>
+#include <linux/sched.h>
 #include "internal.h"
 
+int iso_status = 0;
+EXPORT_SYMBOL(iso_status);
+int iso_recount = 0;
+EXPORT_SYMBOL(iso_recount);
+wait_queue_head_t iso_wq;
+EXPORT_SYMBOL(iso_wq);
+DEFINE_MUTEX(iso_wait);
+EXPORT_SYMBOL(iso_wait);
 int set_migratetype_isolate(struct page *page, bool skip_hwpoisoned_pages)
 {
 	struct zone *zone;
@@ -210,11 +221,11 @@ __test_page_isolated_in_pageblock(unsigned long pfn, unsigned long end_pfn,
 			continue;
 		}
 		else
-			break;
+			return -EBUSY;
 	}
 	if (pfn < end_pfn)
-		return 0;
-	return 1;
+		return 1;
+	return 0;
 }
 
 int test_pages_isolated(unsigned long start_pfn, unsigned long end_pfn,
@@ -226,9 +237,9 @@ int test_pages_isolated(unsigned long start_pfn, unsigned long end_pfn,
 	int ret;
 
 	/*
-	 * Note: pageblock_nr_page != MAX_ORDER. Then, chunks of free page
-	 * is not aligned to pageblock_nr_pages.
-	 * Then we just check pagetype fist.
+	 * Note: pageblock_nr_pages != MAX_ORDER. Then, chunks of free pages
+	 * are not aligned to pageblock_nr_pages.
+	 * Then we just check migratetype first.
 	 */
 	for (pfn = start_pfn; pfn < end_pfn; pfn += pageblock_nr_pages) {
 		page = __first_valid_page(pfn, pageblock_nr_pages);
@@ -238,19 +249,58 @@ int test_pages_isolated(unsigned long start_pfn, unsigned long end_pfn,
 	page = __first_valid_page(start_pfn, end_pfn - start_pfn);
 	if ((pfn < end_pfn) || !page)
 		return -EBUSY;
-	/* Check all pages are free or Marked as ISOLATED */
+	/* Check all pages are free or marked as ISOLATED */
 	zone = page_zone(page);
 	spin_lock_irqsave(&zone->lock, flags);
 	ret = __test_page_isolated_in_pageblock(start_pfn, end_pfn,
 						skip_hwpoisoned_pages);
 	spin_unlock_irqrestore(&zone->lock, flags);
-	return ret ? 0 : -EBUSY;
+	if (ret == -EBUSY) {
+		DECLARE_WAITQUEUE(wait, current);
+		if (iso_status == MIGRATE_CMA_HOLD ||
+		   iso_status == MIGRATE_CMA_ALLOC) {
+			mutex_lock(&iso_wait);
+			iso_status = MIGRATE_CMA_ALLOC;
+			init_waitqueue_head(&iso_wq);
+			add_wait_queue(&iso_wq, &wait);
+			mutex_unlock(&iso_wait);
+
+			schedule_timeout_interruptible(20);
+
+			mutex_lock(&iso_wait);
+			remove_wait_queue(&iso_wq, &wait);
+			mutex_unlock(&iso_wait);
+		}
+	}
+
+	return ret ? -EBUSY : 0;
 }
 
 struct page *alloc_migrate_target(struct page *page, unsigned long private,
 				  int **resultp)
 {
 	gfp_t gfp_mask = GFP_USER | __GFP_MOVABLE;
+#ifdef CONFIG_CMA
+	struct address_space *mapping = NULL;
+
+	mapping = page_mapping(page);
+	if ((unsigned long)mapping & PAGE_MAPPING_ANON)
+		mapping = NULL;
+	if (mapping)
+		gfp_mask |= (mapping_gfp_mask(mapping) & __GFP_BDEV);
+#endif
+	/*
+	 * TODO: allocate a destination hugepage from a nearest neighbor node,
+	 * accordance with memory policy of the user process if possible. For
+	 * now as a simple work-around, we use the next node for destination.
+	 */
+	if (PageHuge(page)) {
+		nodemask_t src = nodemask_of_node(page_to_nid(page));
+		nodemask_t dst;
+		nodes_complement(dst, src);
+		return alloc_huge_page_node(page_hstate(compound_head(page)),
+					    next_node(page_to_nid(page), dst));
+	}
 
 	if (PageHighMem(page))
 		gfp_mask |= __GFP_HIGHMEM;

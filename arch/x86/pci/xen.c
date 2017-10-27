@@ -227,14 +227,23 @@ static int xen_hvm_setup_msi_irqs(struct pci_dev *dev, int nvec, int type)
 		return 1;
 
 	list_for_each_entry(msidesc, &dev->msi_list, list) {
-		pirq = xen_allocate_pirq_msi(dev, msidesc);
-		if (pirq < 0) {
-			irq = -ENODEV;
-			goto error;
+		__read_msi_msg(msidesc, &msg);
+		pirq = MSI_ADDR_EXT_DEST_ID(msg.address_hi) |
+			((msg.address_lo >> MSI_ADDR_DEST_ID_SHIFT) & 0xff);
+		if (msg.data != XEN_PIRQ_MSI_DATA ||
+		    xen_irq_from_pirq(pirq) < 0) {
+			pirq = xen_allocate_pirq_msi(dev, msidesc);
+			if (pirq < 0) {
+				irq = -ENODEV;
+				goto error;
+			}
+			xen_msi_compose_msg(dev, pirq, &msg);
+			__write_msi_msg(msidesc, &msg);
+			dev_dbg(&dev->dev, "xen: msi bound to pirq=%d\n", pirq);
+		} else {
+			dev_dbg(&dev->dev,
+				"xen: msi already bound to pirq=%d\n", pirq);
 		}
-		xen_msi_compose_msg(dev, pirq, &msg);
-		__write_msi_msg(msidesc, &msg);
-		dev_dbg(&dev->dev, "xen: msi bound to pirq=%d\n", pirq);
 		irq = xen_bind_pirq_msi_to_irq(dev, msidesc, pirq,
 					       (type == PCI_CAP_ID_MSIX) ?
 					       "msi-x" : "msi",
@@ -328,7 +337,7 @@ out:
 	return ret;
 }
 
-static void xen_initdom_restore_msi_irqs(struct pci_dev *dev, int irq)
+static void xen_initdom_restore_msi_irqs(struct pci_dev *dev)
 {
 	int ret = 0;
 
@@ -373,7 +382,14 @@ static void xen_teardown_msi_irq(unsigned int irq)
 {
 	xen_destroy_irq(irq);
 }
-
+static u32 xen_nop_msi_mask_irq(struct msi_desc *desc, u32 mask, u32 flag)
+{
+	return 0;
+}
+static u32 xen_nop_msix_mask_irq(struct msi_desc *desc, u32 flag)
+{
+	return 0;
+}
 #endif
 
 int __init pci_xen_init(void)
@@ -397,6 +413,8 @@ int __init pci_xen_init(void)
 	x86_msi.setup_msi_irqs = xen_setup_msi_irqs;
 	x86_msi.teardown_msi_irq = xen_teardown_msi_irq;
 	x86_msi.teardown_msi_irqs = xen_teardown_msi_irqs;
+	x86_msi.msi_mask_irq = xen_nop_msi_mask_irq;
+	x86_msi.msix_mask_irq = xen_nop_msix_mask_irq;
 #endif
 	return 0;
 }
@@ -476,6 +494,8 @@ int __init pci_xen_initial_domain(void)
 	x86_msi.setup_msi_irqs = xen_initdom_setup_msi_irqs;
 	x86_msi.teardown_msi_irq = xen_teardown_msi_irq;
 	x86_msi.restore_msi_irqs = xen_initdom_restore_msi_irqs;
+	x86_msi.msi_mask_irq = xen_nop_msi_mask_irq;
+	x86_msi.msix_mask_irq = xen_nop_msix_mask_irq;
 #endif
 	xen_setup_acpi_sci();
 	__acpi_register_gsi = acpi_register_gsi_xen;

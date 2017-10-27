@@ -34,7 +34,6 @@
  * SOFTWARE.
  */
 
-#include <linux/init.h>
 #include <linux/hardirq.h>
 #include <linux/export.h>
 
@@ -57,19 +56,13 @@ void mlx4_cq_completion(struct mlx4_dev *dev, u32 cqn)
 {
 	struct mlx4_cq *cq;
 
-	rcu_read_lock();
 	cq = radix_tree_lookup(&mlx4_priv(dev)->cq_table.tree,
 			       cqn & (dev->caps.num_cqs - 1));
-	rcu_read_unlock();
-
 	if (!cq) {
 		mlx4_dbg(dev, "Completion event for bogus CQ %08x\n", cqn);
 		return;
 	}
 
-	/* Acessing the CQ outside of rcu_read_lock is safe, because
-	 * the CQ is freed only after interrupt handling is completed.
-	 */
 	++cq->arm_sn;
 
 	cq->comp(cq);
@@ -80,19 +73,23 @@ void mlx4_cq_event(struct mlx4_dev *dev, u32 cqn, int event_type)
 	struct mlx4_cq_table *cq_table = &mlx4_priv(dev)->cq_table;
 	struct mlx4_cq *cq;
 
-	rcu_read_lock();
+	spin_lock(&cq_table->lock);
+
 	cq = radix_tree_lookup(&cq_table->tree, cqn & (dev->caps.num_cqs - 1));
-	rcu_read_unlock();
+	if (cq)
+		atomic_inc(&cq->refcount);
+
+	spin_unlock(&cq_table->lock);
 
 	if (!cq) {
-		mlx4_dbg(dev, "Async event for bogus CQ %08x\n", cqn);
+		mlx4_warn(dev, "Async event for bogus CQ %08x\n", cqn);
 		return;
 	}
 
-	/* Acessing the CQ outside of rcu_read_lock is safe, because
-	 * the CQ is freed only after interrupt handling is completed.
-	 */
 	cq->event(cq, event_type);
+
+	if (atomic_dec_and_test(&cq->refcount))
+		complete(&cq->free);
 }
 
 static int mlx4_SW2HW_CQ(struct mlx4_dev *dev, struct mlx4_cmd_mailbox *mailbox,
@@ -130,8 +127,6 @@ int mlx4_cq_modify(struct mlx4_dev *dev, struct mlx4_cq *cq,
 		return PTR_ERR(mailbox);
 
 	cq_context = mailbox->buf;
-	memset(cq_context, 0, sizeof *cq_context);
-
 	cq_context->cq_max_count = cpu_to_be16(count);
 	cq_context->cq_period    = cpu_to_be16(period);
 
@@ -155,8 +150,6 @@ int mlx4_cq_resize(struct mlx4_dev *dev, struct mlx4_cq *cq,
 		return PTR_ERR(mailbox);
 
 	cq_context = mailbox->buf;
-	memset(cq_context, 0, sizeof *cq_context);
-
 	cq_context->logsize_usrpage = cpu_to_be32(ilog2(entries) << 24);
 	cq_context->log_page_size   = mtt->page_shift - 12;
 	mtt_addr = mlx4_mtt_addr(dev, mtt);
@@ -193,7 +186,7 @@ err_put:
 	mlx4_table_put(dev, &cq_table->table, *cqn);
 
 err_out:
-	mlx4_bitmap_free(&cq_table->bitmap, *cqn);
+	mlx4_bitmap_free(&cq_table->bitmap, *cqn, MLX4_NO_RR);
 	return err;
 }
 
@@ -223,7 +216,7 @@ void __mlx4_cq_free_icm(struct mlx4_dev *dev, int cqn)
 
 	mlx4_table_put(dev, &cq_table->cmpt_table, cqn);
 	mlx4_table_put(dev, &cq_table->table, cqn);
-	mlx4_bitmap_free(&cq_table->bitmap, cqn);
+	mlx4_bitmap_free(&cq_table->bitmap, cqn, MLX4_NO_RR);
 }
 
 static void mlx4_cq_free_icm(struct mlx4_dev *dev, int cqn)
@@ -263,9 +256,9 @@ int mlx4_cq_alloc(struct mlx4_dev *dev, int nent,
 	if (err)
 		return err;
 
-	spin_lock(&cq_table->lock);
+	spin_lock_irq(&cq_table->lock);
 	err = radix_tree_insert(&cq_table->tree, cq->cqn, cq);
-	spin_unlock(&cq_table->lock);
+	spin_unlock_irq(&cq_table->lock);
 	if (err)
 		goto err_icm;
 
@@ -276,8 +269,6 @@ int mlx4_cq_alloc(struct mlx4_dev *dev, int nent,
 	}
 
 	cq_context = mailbox->buf;
-	memset(cq_context, 0, sizeof *cq_context);
-
 	cq_context->flags	    = cpu_to_be32(!!collapsed << 18);
 	if (timestamp_en)
 		cq_context->flags  |= cpu_to_be32(1 << 19);
@@ -305,9 +296,9 @@ int mlx4_cq_alloc(struct mlx4_dev *dev, int nent,
 	return 0;
 
 err_radix:
-	spin_lock(&cq_table->lock);
+	spin_lock_irq(&cq_table->lock);
 	radix_tree_delete(&cq_table->tree, cq->cqn);
-	spin_unlock(&cq_table->lock);
+	spin_unlock_irq(&cq_table->lock);
 
 err_icm:
 	mlx4_cq_free_icm(dev, cq->cqn);
@@ -326,11 +317,11 @@ void mlx4_cq_free(struct mlx4_dev *dev, struct mlx4_cq *cq)
 	if (err)
 		mlx4_warn(dev, "HW2SW_CQ failed (%d) for CQN %06x\n", err, cq->cqn);
 
-	spin_lock(&cq_table->lock);
-	radix_tree_delete(&cq_table->tree, cq->cqn);
-	spin_unlock(&cq_table->lock);
-
 	synchronize_irq(priv->eq_table.eq[cq->vector].irq);
+
+	spin_lock_irq(&cq_table->lock);
+	radix_tree_delete(&cq_table->tree, cq->cqn);
+	spin_unlock_irq(&cq_table->lock);
 
 	if (atomic_dec_and_test(&cq->refcount))
 		complete(&cq->free);

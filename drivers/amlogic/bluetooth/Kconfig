@@ -1,20 +1,15 @@
-
-menu "Bluetooth Device Support"
+menu "Amlogic Bt Rfkill Driver"
 
 config BT_DEVICE
-    bool "BT Device support"
+    boolean "BT Device support"
     depends on BT && RFKILL
-    select BACKLIGHT_CLASS_DEVICE
     default n
-    help
+    ---help---
       Say Y here if you want to use the BT device.
-      
-config BT_WAKE_CTRL
-    bool "BT Wake Control support"
-    select BACKLIGHT_CLASS_DEVICE
+config BLUESLEEP
+    boolean "Bluesleep support"
+    depends on BT
     default n
-    help
-        Say Y here if you want to use the BT LPM fucnction.
-		
-source "drivers/amlogic/bluetooth/rtk8723/Kconfig"		
+    ---help---
+      Say Y here if you want to use Bluesleep.
 endmenu

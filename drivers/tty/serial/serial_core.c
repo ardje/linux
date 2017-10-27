@@ -50,12 +50,6 @@ static struct lock_class_key port_lock_key;
 
 #define HIGH_BITS_OFFSET	((sizeof(long)-sizeof(int))*8)
 
-#ifdef CONFIG_SERIAL_CORE_CONSOLE
-#define uart_console(port)	((port)->cons && (port)->cons->index == (port)->line)
-#else
-#define uart_console(port)	(0)
-#endif
-
 static void uart_change_speed(struct tty_struct *tty, struct uart_state *state,
 					struct ktermios *old_termios);
 static void uart_wait_until_sent(struct tty_struct *tty, int timeout);
@@ -888,11 +882,11 @@ static int uart_set_info(struct tty_struct *tty, struct tty_port *port,
 			 * need to rate-limit; it's CAP_SYS_ADMIN only.
 			 */
 			if (uport->flags & UPF_SPD_MASK) {
-				char buf[64];
+				/* char buf[64]; */
 				printk(KERN_NOTICE
 				       "%s sets custom speed on %s. This "
 				       "is deprecated.\n", current->comm,
-				       tty_name(port->tty, buf));
+				       tty_name(port->tty));
 			}
 			uart_change_speed(tty, state, NULL);
 		}
@@ -1842,9 +1836,13 @@ uart_set_options(struct uart_port *port, struct console *co,
 	/*
 	 * Ensure that the serial console lock is initialised
 	 * early.
+	 * If this port is a console, then the spinlock is already
+	 * initialised.
 	 */
-	spin_lock_init(&port->lock);
-	lockdep_set_class(&port->lock, &port_lock_key);
+	if (!(uart_console(port) && (port->cons->flags & CON_ENABLED))) {
+		spin_lock_init(&port->lock);
+		lockdep_set_class(&port->lock, &port_lock_key);
+	}
 
 	memset(&termios, 0, sizeof(struct ktermios));
 
@@ -2107,12 +2105,12 @@ uart_report_port(struct uart_driver *drv, struct uart_port *port)
 		break;
 	}
 
-	printk(KERN_INFO "%s%s%s%d at %s (irq = %d) is a %s\n",
+	printk(KERN_INFO "%s%s%s%d at %s (irq = %d, base_baud = %d) is a %s\n",
 	       port->dev ? dev_name(port->dev) : "",
 	       port->dev ? ": " : "",
 	       drv->dev_name,
 	       drv->tty_driver->name_base + port->line,
-	       address, port->irq, uart_type(port));
+	       address, port->irq, port->uartclk / 16, uart_type(port));
 }
 
 static void

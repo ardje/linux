@@ -19,7 +19,7 @@
 #include <linux/err.h>
 #include <linux/string.h>
 #include <linux/fs.h>
-#include <mach/am_regs.h>
+/* #include <mach/am_regs.h> */
 
 /* Amlogic Headers */
 #include <linux/amlogic/tvin/tvin_v4l2.h>
@@ -28,47 +28,74 @@
 
 #define DEVICE_NAME "isp"
 
-static void isp_param_show(isp_param_t *parm, int len)
+static void isp_param_show(struct isp_param_s *parm, int len)
 {
-	int i=0,j=0;
+	int i = 0, j = 0;
 
-	for(i=0;i<len;i++){
-		if(ISP_U32==parm[i].type || ISP_U16== parm[i].type || ISP_U8== parm[i].type) {
+	for (i = 0; i < len; i++) {
+		if (ISP_U32 == parm[i].type ||
+			ISP_U16 == parm[i].type ||
+			ISP_U8 == parm[i].type) {
+			for (j = 0; j < parm[i].length; j++)
+				pr_info("%s %s[%d]=0x%x.\n",
+						__func__,
+						parm[i].name, j,
+						*(parm[i].param+j));
+		} /* else if(ISP_FLOAT == parm[i].type) {
 			for(j=0;j<parm[i].length;j++)
-				pr_info("%s %s[%d]=0x%x.\n",__func__,parm[i].name,j,*(parm[i].param+j));
-		}/* else if(ISP_FLOAT == parm[i].type) {
-			for(j=0;j<parm[i].length;j++)
-				pr_info("%s %s[%d]=%d.\n",__func__,parm[i].name,j,*(parm[i].param+j));
+				pr_info("%s %s[%d]=%d.\n",
+				__func__,
+				parm[i].name,j,*(parm[i].param+j));
 		}*/
 	}
 }
 
-static int isp_set_param(isp_param_t *parm,int len,char **buf)
+static int isp_set_param(struct isp_param_s *parm, int len, char **buf)
 {
-	int i=0,j=0;
-	for(i=0;i<len;i++) {
-		if(!strcmp(parm[i].name,*buf)) {
-			if(ISP_U32==parm[i].type || ISP_U8== parm[i].type || ISP_U16== parm[i].type) {
-				for(j=0;j<parm[i].length&&*(buf+j+1)!=NULL;j++) {
-					*(parm[i].param+j) = simple_strtol(*(buf+j+1),NULL,16);
-					pr_info("%s %s[%d]=0x%x.\n",__func__,parm[i].name,j,*(parm[i].param+j));
+	int i = 0, j = 0;
+	long val;
+
+	for (i = 0; i < len; i++) {
+		if (!strcmp(parm[i].name, *buf)) {
+			if (ISP_U32 == parm[i].type ||
+				ISP_U8 == parm[i].type ||
+				ISP_U16 == parm[i].type) {
+				for (j = 0; j < parm[i].length &&
+				*(buf+j+1) != NULL; j++) {
+					/* *(parm[i].param+j) =
+					 * simple_strtol(*(buf+j+1),
+					 * NULL, 16); */
+					if (kstrtol(*(buf+j+1), 16, &val) < 0)
+						return -EINVAL;
+					else
+						*(parm[i].param+j) = val;
+					pr_info("%s %s[%d]=0x%x.\n",
+							__func__,
+							parm[i].name, j,
+							*(parm[i].param+j));
 				}
-			} /*else if(ISP_FLOAT == parm[i].type) {
-				for(j=0;j<parm[i].length&&*(buf+j+1)!=NULL;j++) {
-					sscanf(*(buf+j+1),"%f",(float*)(parm[i].param+j));
-					pr_info("%s %s[%d]=%d.\n",__func__,parm[i].name,j,*(parm[i].param+j));
+			}
+			/*else if(ISP_FLOAT == parm[i].type) {
+				for(j=0;j<parm[i].length&&
+				*(buf+j+1)!=NULL;j++) {
+					sscanf(*(buf+j+1),"%f",
+					(float*)(parm[i].param+j));
+					pr_info("%s %s[%d]=%d.\n",
+					__func__,
+					parm[i].name,j,*(parm[i].param+j));
 				}
 			}*/
 			break;
 		}
 	}
-	if(i == len) {
-		pr_err("[%s..]%s:the parameter name %s is error.\n",DEVICE_NAME,__func__,buf[0]);
+	if (i == len) {
+		pr_err("[%s..]%s:the parameter name %s is error.\n",
+				DEVICE_NAME, __func__, buf[0]);
 		return 1;
 	}
 	return 0;
 }
-isp_param_t isp_param_ae[AE_PARM_NUM]={
+struct isp_param_s isp_param_ae[AE_PARM_NUM] = {
 		{"ae_algorithm",      NULL,      1,  ISP_U32},
 		{"ae_statistics",     NULL,  3,  ISP_U32},
 		{"ae_exp",            NULL,         3,  ISP_U32},
@@ -128,36 +155,35 @@ isp_param_t isp_param_ae[AE_PARM_NUM]={
 		{"slow_lpfcoef_enh",  NULL,  1,  ISP_U32},
 		{"fast_lpfcoef_enh",  NULL,  1,  ISP_U32},
 		{"flash_thr_enh",     NULL,     1,  ISP_U32},
-		{"ae_ratio_low",	  NULL, 	 1,  ISP_U32},
+		{"ae_ratio_low",	  NULL,	 1,  ISP_U32},
 		{"ae_ratio_low2mid",  NULL,  1,  ISP_U32},
 		{"ae_ratio_mid2high", NULL, 1,  ISP_U32},
-		{"ae_ratio_high",	  NULL, 	 1,  ISP_U32},
-		{"ae_min_diff",	      NULL, 	     1,  ISP_U32},
-		{"ae_max_diff",	      NULL, 	     1,  ISP_U32},
-		{"reserve",	          NULL, 	     16, ISP_U32},
-		{"aet_fmt_gain",	  NULL, 	 1,  ISP_U32},
+		{"ae_ratio_high",	  NULL,	 1,  ISP_U32},
+		{"ae_min_diff",	      NULL,	     1,  ISP_U32},
+		{"ae_max_diff",	      NULL,	     1,  ISP_U32},
+		{"reserve",	          NULL,	     16, ISP_U32},
+		{"aet_fmt_gain",	  NULL,	 1,  ISP_U32},
 };
 /* ae_param is all u32 if not need to modify here */
-void set_ae_parm(xml_algorithm_ae_t *ae_sw,char **parm)
+void set_ae_parm(struct xml_algorithm_ae_s *ae_sw, char **parm)
 {
 	int len = AE_PARM_NUM;
-	unsigned int i,*ae_sw_t;
+	unsigned int i, *ae_sw_t;
 	ae_sw_t = (unsigned int *)ae_sw;
-	for(i = 0;i < AE_PARM_NUM;i++){
+	for (i = 0; i < AE_PARM_NUM; i++) {
 		isp_param_ae[i].param = ae_sw_t;
 		ae_sw_t += isp_param_ae[i].length;
 	}
-	if(!strcmp(parm[0],"show")){
-		isp_param_show((isp_param_t*)&isp_param_ae,len);
-	} else {
-		isp_set_param((isp_param_t*)&isp_param_ae,len,parm);
-	}
+	if (!strcmp(parm[0], "show"))
+		isp_param_show((struct isp_param_s *)&isp_param_ae, len);
+	else
+		isp_set_param((struct isp_param_s *)&isp_param_ae, len, parm);
 }
 
-void set_awb_parm(xml_algorithm_awb_t *awb_sw,char **parm)
+void set_awb_parm(struct xml_algorithm_awb_s *awb_sw, char **parm)
 {
 	int len = AWB_PARM_NUM;
-	isp_param_t awb[AWB_PARM_NUM]={
+	struct isp_param_s awb[AWB_PARM_NUM] = {
 		{"awb_algorithm",  &awb_sw->awb_algorithm,   1,  ISP_U32},
 		{"ratio_winl",	   &awb_sw->ratio_winl,		 1,  ISP_U32},
 		{"ratio_winr",	   &awb_sw->ratio_winr,		 1,  ISP_U32},
@@ -202,7 +228,7 @@ void set_awb_parm(xml_algorithm_awb_t *awb_sw,char **parm)
 		{"thr_yl_h",	   &awb_sw->thr_yl_h,	     1,  ISP_U32},
 		{"thr_yl_m",	   &awb_sw->thr_yl_m,	     1,  ISP_U32},
 		{"thr_yl_l",	   &awb_sw->thr_yl_l,	     1,  ISP_U32},
-	        {"ratio_yuv",      &awb_sw->ratio_yuv,       1,  ISP_U32},
+		{"ratio_yuv",      &awb_sw->ratio_yuv,       1,  ISP_U32},
 		{"slow_lpfcoef",   &awb_sw->slow_lpfcoef,    1,  ISP_U32},
 		{"fast_lpfcoef",   &awb_sw->fast_lpfcoef,    1,  ISP_U32},
 		{"outer",          &awb_sw->outer,           1,  ISP_U32},
@@ -218,88 +244,81 @@ void set_awb_parm(xml_algorithm_awb_t *awb_sw,char **parm)
 		{"reserve",        &awb_sw->reserve[0],      16, ISP_U32},
 	};
 
-	if(!strcmp(parm[0],"show")){
-		isp_param_show((isp_param_t*)&awb,len);
-	} else {
-		isp_set_param((isp_param_t*)&awb,len,parm);
-	}
+	if (!strcmp(parm[0], "show"))
+		isp_param_show((struct isp_param_s *)&awb, len);
+	else
+		isp_set_param((struct isp_param_s *)&awb, len, parm);
 }
 
-void set_af_parm(xml_algorithm_af_t *af_sw,char **parm)
+void set_af_parm(struct xml_algorithm_af_s *af_sw, char **parm)
 {
 	int len = AF_PARM_NUM;
-	isp_param_t af[AF_PARM_NUM]={
-		{"enter_static_ratio",    &af_sw->enter_static_ratio,      1, ISP_U32},
-		{"detect_step_cnt",       &af_sw->detect_step_cnt,         1, ISP_U32},
-		{"ave_vdc_thr",		  &af_sw->ave_vdc_thr,		   		   1, ISP_U32},
-		{"win_ratio", 	  	  &af_sw->win_ratio,		   1, ISP_U32},
-		{"step",      		  (unsigned int *)&af_sw->step,           FOCUS_GRIDS, ISP_U32},
-		{"valid_step_cnt",        &af_sw->valid_step_cnt,          1, ISP_U32},
-		{"jump_offset",           &af_sw->jump_offset,             1, ISP_U32},
-		{"field_delay",           &af_sw->field_delay,             1, ISP_U32},
-		{"x",                     &af_sw->x,      			       1, ISP_U32},
-		{"y",                     &af_sw->y,      			       1, ISP_U32},
-		{"radius_ratio",          &af_sw->radius_ratio,     		       1, ISP_U32},
-		{"radius_ratio",          &af_sw->hillside_fall,     		       1, ISP_U32},
+	struct isp_param_s af[AF_PARM_NUM] = {
+		{"enter_static_ratio", &af_sw->enter_static_ratio, 1, ISP_U32},
+		{"detect_step_cnt", &af_sw->detect_step_cnt, 1, ISP_U32},
+		{"ave_vdc_thr",  &af_sw->ave_vdc_thr, 1, ISP_U32},
+		{"win_ratio", &af_sw->win_ratio, 1, ISP_U32},
+		{"step", (unsigned int *)&af_sw->step, FOCUS_GRIDS, ISP_U32},
+		{"valid_step_cnt", &af_sw->valid_step_cnt, 1, ISP_U32},
+		{"jump_offset",  &af_sw->jump_offset, 1, ISP_U32},
+		{"field_delay", &af_sw->field_delay, 1, ISP_U32},
+		{"x",  &af_sw->x, 1, ISP_U32},
+		{"y",   &af_sw->y, 1, ISP_U32},
+		{"radius_ratio", &af_sw->radius_ratio, 1, ISP_U32},
+		{"radius_ratio", &af_sw->hillside_fall, 1, ISP_U32},
 	};
 
-	if(!strcmp(parm[0],"show")){
-		isp_param_show((isp_param_t*)&af,len);
-	} else {
-		isp_set_param((isp_param_t*)&af,len,parm);
-	}
+	if (!strcmp(parm[0], "show"))
+		isp_param_show((struct isp_param_s *)&af, len);
+	else
+		isp_set_param((struct isp_param_s *)&af, len, parm);
 }
 
-void set_cap_parm(struct xml_capture_s *cap_sw,char **parm)
+void set_cap_parm(struct xml_capture_s *cap_sw, char **parm)
 {
 	int len = CAP_PARM_NUM;
-	isp_param_t cap[CAP_PARM_NUM]={
-		{"ae_try_max_cnt",   &cap_sw->ae_try_max_cnt,      1, ISP_U32},
-		{"af_mode",          &cap_sw->af_mode,      	   1, ISP_U32},
-		{"sigle_count",      &cap_sw->sigle_count,         1, ISP_U32},
-		{"skip_step",        &cap_sw->skip_step,      	   1, ISP_U32},
-		{"multi_capture_num",&cap_sw->multi_capture_num,   1, ISP_U32},
-		{"eyetime",          &cap_sw->eyetime,      	   1, ISP_U32},
-		{"pretime",          &cap_sw->pretime,      	   1, ISP_U32},
-		{"postime",          &cap_sw->postime,      	   1, ISP_U32},
+	struct isp_param_s cap[CAP_PARM_NUM] = {
+		{"ae_try_max_cnt",   &cap_sw->ae_try_max_cnt, 1, ISP_U32},
+		{"af_mode",          &cap_sw->af_mode, 1, ISP_U32},
+		{"sigle_count",      &cap_sw->sigle_count, 1, ISP_U32},
+		{"skip_step",        &cap_sw->skip_step, 1, ISP_U32},
+		{"multi_capture_num", &cap_sw->multi_capture_num, 1, ISP_U32},
+		{"eyetime",          &cap_sw->eyetime, 1, ISP_U32},
+		{"pretime",          &cap_sw->pretime, 1, ISP_U32},
+		{"postime",          &cap_sw->postime, 1, ISP_U32},
 	};
 
-	if(!strcmp(parm[0],"show")){
-		isp_param_show((isp_param_t*)&cap,len);
-	} else {
-		isp_set_param((isp_param_t*)&cap,len,parm);
-	}
-
+	if (!strcmp(parm[0], "show"))
+		isp_param_show((struct isp_param_s *)&cap, len);
+	else
+		isp_set_param((struct isp_param_s *)&cap, len, parm);
 }
 
-void set_wave_parm(struct wave_s *wave,char **parm)
+void set_wave_parm(struct wave_s *wave, char **parm)
 {
 	int len = WAVE_PARM_NUM;
-	isp_param_t wav[WAVE_PARM_NUM]={
-		{"torch_rising_time",      	&wave->torch_rising_time,      	1, ISP_U32},
-		{"flash_rising_time",           &wave->flash_rising_time,      	1, ISP_U32},
-		{"torch_flash_ratio",           &wave->torch_flash_ratio,      	1, ISP_U32},
-		{"wave_clock_div",              &wave->wave_clock_div,          1, ISP_U32},
-		{"pulse_init_time",             &wave->pulse_init_time,         1, ISP_U32},
-		{"pulse_high_time",             &wave->pulse_high_time,      	1, ISP_U32},
-		{"pulse_low_time",              &wave->pulse_low_time,          1, ISP_U32},
-		{"time_to_latch",               &wave->time_to_latch,      	1, ISP_U32},
-		{"latch_time",                  &wave->latch_time,      	1, ISP_U32},
-		{"latch_time_timeout",          &wave->latch_time_timeout,      1, ISP_U32},
-		{"time_to_off",                 &wave->time_to_off,      	1, ISP_U32},
-		{"pulse_qty_max",               &wave->pulse_qty_max,      	1, ISP_U32},
+	struct isp_param_s wav[WAVE_PARM_NUM] = {
+		{"torch_rising_time", &wave->torch_rising_time,	1, ISP_U32},
+		{"flash_rising_time", &wave->flash_rising_time,	1, ISP_U32},
+		{"torch_flash_ratio",  &wave->torch_flash_ratio, 1, ISP_U32},
+		{"wave_clock_div", &wave->wave_clock_div, 1, ISP_U32},
+		{"pulse_init_time", &wave->pulse_init_time, 1, ISP_U32},
+		{"pulse_high_time", &wave->pulse_high_time,	1, ISP_U32},
+		{"pulse_low_time", &wave->pulse_low_time, 1, ISP_U32},
+		{"time_to_latch", &wave->time_to_latch,	1, ISP_U32},
+		{"latch_time", &wave->latch_time, 1, ISP_U32},
+		{"latch_time_timeout", &wave->latch_time_timeout, 1, ISP_U32},
+		{"time_to_off", &wave->time_to_off,	1, ISP_U32},
+		{"pulse_qty_max", &wave->pulse_qty_max,	1, ISP_U32},
 	};
 
-	if(!strcmp(parm[0],"show")){
-		isp_param_show((isp_param_t*)&wav,len);
-	} else {
-		isp_set_param((isp_param_t*)&wav,len,parm);
-	}
-
+	if (!strcmp(parm[0], "show"))
+		isp_param_show((struct isp_param_s *)&wav, len);
+	else
+		isp_set_param((struct isp_param_s *)&wav, len, parm);
 }
-static unsigned int gamma[10][257] =
-	{
-		// curve_ratio = 1.0
+static unsigned int gamma[10][257] = {
+		/* curve_ratio = 1.0 */
 		{
 			0x00000000,
 			0x00000004,
@@ -559,7 +578,7 @@ static unsigned int gamma[10][257] =
 			0x000003FC,
 			0x000003FF,
 		},
-		// curve_ratio = 0.1
+		/* curve_ratio = 0.1 */
 		{
 			0x00000000,
 			0x0000024C,
@@ -819,7 +838,7 @@ static unsigned int gamma[10][257] =
 			0x000003FF,
 			0x000003FF,
 		},
-		// curve_ratio = 0.2
+		/* curve_ratio = 0.2 */
 		{
 			0x00000000,
 			0x00000152,
@@ -1079,7 +1098,7 @@ static unsigned int gamma[10][257] =
 			0x000003FF,
 			0x000003FF,
 		},
-		// curve_ratio = 0.3
+		/* curve_ratio = 0.3 */
 		{
 			0x00000000,
 			0x000000C2,
@@ -1339,7 +1358,7 @@ static unsigned int gamma[10][257] =
 			0x000003FF,
 			0x000003FF,
 		},
-		// curve_ratio = 0.4
+		/* curve_ratio = 0.4 */
 		{
 			0x00000000,
 			0x0000006F,
@@ -1599,7 +1618,7 @@ static unsigned int gamma[10][257] =
 			0x000003FE,
 			0x000003FF,
 		},
-		// curve_ratio = 0.5
+		/* curve_ratio = 0.5 */
 		{
 			0x00000000,
 			0x00000040,
@@ -1859,7 +1878,7 @@ static unsigned int gamma[10][257] =
 			0x000003FE,
 			0x000003FF,
 		},
-		// curve_ratio = 0.6
+		/* curve_ratio = 0.6 */
 		{
 			0x00000000,
 			0x00000025,
@@ -2119,7 +2138,7 @@ static unsigned int gamma[10][257] =
 			0x000003FE,
 			0x000003FF,
 		},
-		// curve_ratio = 0.7
+		/* curve_ratio = 0.7 */
 		{
 			0x00000000,
 			0x00000015,
@@ -2379,7 +2398,7 @@ static unsigned int gamma[10][257] =
 			0x000003FD,
 			0x000003FF,
 		},
-		// curve_ratio = 0.8
+		/* curve_ratio = 0.8 */
 		{
 			0x00000000,
 			0x0000000C,
@@ -2639,7 +2658,7 @@ static unsigned int gamma[10][257] =
 			0x000003FD,
 			0x000003FF,
 		},
-		// curve_ratio = 0.9
+		/* curve_ratio = 0.9 */
 		{
 			0x00000000,
 			0x00000007,
@@ -2901,99 +2920,89 @@ static unsigned int gamma[10][257] =
 		},
 	};
 
-// echo 0x00000rgb > .../gamma_table_curve_ratio
-// curve_ratio_r/g/b: '0' for straight, '1' for ^0.1, ..., '9' for ^0.9
+/* echo 0x00000rgb > .../gamma_table_curve_ratio */
+/* curve_ratio_r/g/b: '0' for straight,
+ * '1' for ^0.1, ..., '9' for ^0.9 */
 
-bool set_gamma_table_with_curve_ratio(unsigned int r,unsigned int g,unsigned int b)
+bool set_gamma_table_with_curve_ratio(unsigned int r,
+		unsigned int g, unsigned int b)
 {
-
-
-    bool flag = false;
+	bool flag = false;
 	unsigned int i = 0;
 
-    // parameter validation check
-    if ((r>9) || (g>9) || (b>9))
-    {
-        return false;
-    }
+	/* parameter validation check */
+	if ((r > 9) || (g > 9) || (b > 9))
+		return false;
 
-    // store gamma table enable/disable status
-    flag = (RD(0x2d30)&0x10000000)?true:false;
+	/* store gamma table enable/disable status */
+	flag = (RD(0x2d30)&0x10000000)?true:false;
 
-    // gamma table disable, gamma table vbus mode
-    WR(0x2d30, 0x00000001);
+	/* gamma table disable, gamma table vbus mode */
+	WR(0x2d30, 0x00000001);
 
-    // point to gamma_r
-    WR(0x2dc2, 0x00000000);
-    // write gamma_r
-    for (i = 0; i < 257; i++)
-    {
-        WR(0x2dc3, gamma[r][i]);
-    }
+	/* point to gamma_r */
+	WR(0x2dc2, 0x00000000);
+	/* write gamma_r */
+	for (i = 0; i < 257; i++)
+		WR(0x2dc3, gamma[r][i]);
 
-    // point to gamma_r
-    WR(0x2dc2, 0x00000000);
-    // varify gamma_r
-    for (i = 0; i < 257; i++)
-    {
-        if (gamma[r][i] != RD(0x2dc3))
-        {
-            // retrieve gamma table enable/disable status, gamma table hardware mode
-            WR(0x2d30, (flag?0x10000000:0x00000000));
-            // return with failure
-            return false;
-        }
-    }
+	/* point to gamma_r */
+	WR(0x2dc2, 0x00000000);
+	/* varify gamma_r */
+	for (i = 0; i < 257; i++) {
+		if (gamma[r][i] != RD(0x2dc3)) {
+			/* retrieve gamma table enable/disable status,
+			 *gamma table hardware mode */
+			WR(0x2d30, (flag?0x10000000:0x00000000));
+			/* return with failure */
+			return false;
+		}
+	}
 
-    // point to gamma_g
-    WR(0x2dc2, 0x00000200);
-    // write gamma_g
-    for (i = 0; i < 257; i++)
-    {
-        WR(0x2dc3, gamma[g][i]);
-    }
+	/* point to gamma_g */
+	WR(0x2dc2, 0x00000200);
+	/* write gamma_g */
+	for (i = 0; i < 257; i++)
+		WR(0x2dc3, gamma[g][i]);
 
-    // point to gamma_g
-    WR(0x2dc2, 0x00000200);
-    // varify gamma_g
-    for (i = 0; i < 257; i++)
-    {
-        if (gamma[g][i] != RD(0x2dc3))
-        {
-            // retrieve gamma table enable/disable status, gamma table hardware mode
-            WR(0x2d30, (flag?0x10000000:0x00000000));
-            // return with failure
-            return false;
-        }
-    }
+	/* point to gamma_g */
+	WR(0x2dc2, 0x00000200);
+	/* varify gamma_g */
+	for (i = 0; i < 257; i++) {
+		if (gamma[g][i] != RD(0x2dc3)) {
+			/* retrieve gamma table enable/disable status,
+			 *gamma table hardware mode */
+			WR(0x2d30, (flag?0x10000000:0x00000000));
+			/* return with failure */
+			return false;
+		}
+	}
 
-    // point to gamma_b
-    WR(0x2dc2, 0x00000400);
-    // write gamma_b
-    for (i = 0; i < 257; i++)
-    {
-        WR(0x2dc3, gamma[b][i]);
-    }
+	/* point to gamma_b */
+	WR(0x2dc2, 0x00000400);
+	/* write gamma_b */
+	for (i = 0; i < 257; i++)
+		WR(0x2dc3, gamma[b][i]);
 
-    // point to gamma_b
-    WR(0x2dc2, 0x00000400);
-    // varify gamma_b
-    for (i = 0; i < 257; i++)
-    {
-        if (gamma[b][i] != RD(0x2dc3))
-        {
-            // retrieve gamma table enable/disable status, gamma table hardware mode
-            WR(0x2d30, (flag?0x10000000:0x00000000));
-            // return with failure
-            return false;
-        }
-    }
+	/* point to gamma_b */
+	WR(0x2dc2, 0x00000400);
+	/* varify gamma_b */
+	for (i = 0; i < 257; i++) {
+		if (gamma[b][i] != RD(0x2dc3)) {
+			/* retrieve gamma table enable/disable status,
+			 * gamma table hardware mode */
+			WR(0x2d30, (flag?0x10000000:0x00000000));
+			/* return with failure */
+			return false;
+		}
+	}
 
-    // retrieve gamma table enable/disable status, gamma table hardware mode
-    WR(0x2d30, (flag?0x10000000:0x00000000));
+	/* retrieve gamma table enable/disable status,
+	 *  gamma table hardware mode */
+	WR(0x2d30, (flag?0x10000000:0x00000000));
 
-    // return with success
-    return true;
+	/* return with success */
+	return true;
 }
 
 

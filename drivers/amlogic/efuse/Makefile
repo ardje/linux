@@ -1,6 +1,9 @@
-#                             
-# Makefile for eFuse.         
-#                             
-                              
-obj-$(CONFIG_EFUSE) += efuse_bch_8.o efuse_version.o efuse_hw.o efuse.o 
-                              
+#
+# Makefile for eFuse.
+#
+
+ifneq ($(CONFIG_ARM64),y)
+obj-$(CONFIG_EFUSE) += efuse_version.o efuse_hw.o efuse.o
+else
+obj-$(CONFIG_EFUSE) += efuse_hw64.o efuse64.o
+endif

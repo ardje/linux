@@ -56,88 +56,6 @@ static inline int notify_page_fault(struct pt_regs *regs, unsigned int fsr)
  * This is useful to dump out the page tables associated with
  * 'addr' in mm 'mm'.
  */
-int fixup_pte(struct mm_struct *mm, struct vm_area_struct *vma, unsigned long addr, unsigned int fsr)
-{
-	pgd_t *pgd;
-	int ret = 1;
-
-	if (!mm)
-		mm = &init_mm;
-
-	printk(KERN_ALERT "pgd = %p\n", mm->pgd);
-	pgd = pgd_offset(mm, addr);
-	printk(KERN_ALERT "[%08lx] *pgd=%08llx",
-			addr, (long long)pgd_val(*pgd));
-
-	do {
-		pud_t *pud;
-		pmd_t *pmd;
-		pte_t *pte;
-		pte_t entry;
-		spinlock_t *ptl;
-
-		if (pgd_none(*pgd))
-			break;
-
-		if (pgd_bad(*pgd)) {
-			printk("(bad)");
-			break;
-		}
-
-		pud = pud_offset(pgd, addr);
-		if (PTRS_PER_PUD != 1)
-			printk(", *pud=%08llx", (long long)pud_val(*pud));
-
-		if (pud_none(*pud))
-			break;
-
-		if (pud_bad(*pud)) {
-			printk("(bad)");
-			break;
-		}
-
-		pmd = pmd_offset(pud, addr);
-		if (PTRS_PER_PMD != 1)
-			printk(", *pmd=%08llx", (long long)pmd_val(*pmd));
-
-		if (pmd_none(*pmd))
-			break;
-
-		if (pmd_bad(*pmd)) {
-			printk("(bad)");
-			break;
-		}
-
-		/* We must not map this if we have highmem enabled */
-		if (PageHighMem(pfn_to_page(pmd_val(*pmd) >> PAGE_SHIFT)))
-			break;
-		pte = pte_offset_map(pmd, addr);
-		printk(", *pte=%08llx", (long long)pte_val(*pte));
-#ifndef CONFIG_ARM_LPAE
-		printk(", *ppte=%08llx",
-		       (long long)pte_val(pte[PTE_HWTABLE_PTRS]));
-#endif
-		entry = *pte;
-		if(pte_present(entry) && !(fsr & FSR_WRITE) && (fsr_fs(fsr) == 7)){
-			ret = 0;
-			if(!pte_young(entry)){
-				ptl = pte_lockptr(mm, pmd);
-				spin_lock(ptl);
-
-				entry = pte_mkyoung(entry);
-				ptep_set_access_flags(vma, addr, pte, entry, 0);
-
-				pte_unmap_unlock(pte, ptl);
-				break;
-			}
-		}
-
-		pte_unmap(pte);
-	} while(0);
-	printk("\n");
-
-	return ret;
-}
 void show_pte(struct mm_struct *mm, unsigned long addr)
 {
 	pgd_t *pgd;
@@ -207,8 +125,6 @@ void show_pte(struct mm_struct *mm, unsigned long addr)
 { }
 #endif					/* CONFIG_MMU */
 
-static int __kprobes
-do_user_fault_inatomic(struct mm_struct *mm, unsigned long addr, unsigned int fsr);
 /*
  * Oops.  The kernel tried to access some page that wasn't present.
  */
@@ -216,17 +132,12 @@ static void
 __do_kernel_fault(struct mm_struct *mm, unsigned long addr, unsigned int fsr,
 		  struct pt_regs *regs)
 {
-	int ret;
-
 	/*
 	 * Are we prepared to handle this kernel fault?
 	 */
 	if (fixup_exception(regs))
 		return;
 
-	ret = do_user_fault_inatomic(mm, addr, fsr);
-	if(ret == 0)
-		return;
 	/*
 	 * No handler, we'll have to terminate things with extreme prejudice.
 	 */
@@ -309,42 +220,6 @@ static inline bool access_error(unsigned int fsr, struct vm_area_struct *vma)
 	return vma->vm_flags & mask ? false : true;
 }
 
-static int __kprobes
-do_user_fault_inatomic(struct mm_struct *mm, unsigned long addr, unsigned int fsr)
-{
-	struct vm_area_struct *vma;
-	int fault;
-
-	if(!mm)
-		return 1;
-
-	vma = find_vma(mm, addr);
-	fault = VM_FAULT_BADMAP;
-	if (unlikely(!vma))
-		goto out;
-	if (unlikely(vma->vm_start > addr))
-		goto check_stack;
-
-	/*
-	 * Ok, we have a good vm_area for this
-	 * memory access, so we can handle it.
-	 */
-good_area:
-	if (access_error(fsr, vma)) {
-		fault = VM_FAULT_BADACCESS;
-		goto out;
-	}
-
-	return fixup_pte(mm, vma, addr & PAGE_MASK, fsr);
-
-check_stack:
-	/* Don't allow expansion below FIRST_USER_ADDRESS */
-	if (vma->vm_flags & VM_GROWSDOWN &&
-	    addr >= FIRST_USER_ADDRESS && !expand_stack(vma, addr))
-		goto good_area;
-out:
-	return fault;
-}
 static int __kprobes
 __do_page_fault(struct mm_struct *mm, unsigned long addr, unsigned int fsr,
 		unsigned int flags, struct task_struct *tsk)
@@ -574,8 +449,16 @@ do_translation_fault(unsigned long addr, unsigned int fsr,
 
 	if (pud_none(*pud_k))
 		goto bad_area;
-	if (!pud_present(*pud))
+	if (!pud_present(*pud)) {
 		set_pud(pud, *pud_k);
+		/*
+		 * There is a small window during free_pgtables() where the
+		 * user *pud entry is 0 but the TLB has not been invalidated
+		 * and we get a level 2 (pmd) translation fault caused by the
+		 * intermediate TLB caching of the old level 1 (pud) entry.
+		 */
+		flush_tlb_kernel_page(addr);
+	}
 
 	pmd = pmd_offset(pud, addr);
 	pmd_k = pmd_offset(pud_k, addr);
@@ -598,8 +481,9 @@ do_translation_fault(unsigned long addr, unsigned int fsr,
 #endif
 	if (pmd_none(pmd_k[index]))
 		goto bad_area;
+	if (!pmd_present(pmd[index]))
+		copy_pmd(pmd, pmd_k);
 
-	copy_pmd(pmd, pmd_k);
 	return 0;
 
 bad_area:
@@ -619,12 +503,14 @@ do_translation_fault(unsigned long addr, unsigned int fsr,
  * Some section permission faults need to be handled gracefully.
  * They can happen due to a __{get,put}_user during an oops.
  */
+#ifndef CONFIG_ARM_LPAE
 static int
 do_sect_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 {
 	do_bad_area(addr, fsr, regs);
 	return 0;
 }
+#endif /* CONFIG_ARM_LPAE */
 
 /*
  * This abort handler always returns "fault".

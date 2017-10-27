@@ -1,9 +1,7 @@
 /*******************************************************************************
  * This file contains main functions related to iSCSI Parameter negotiation.
  *
- * \u00a9 Copyright 2007-2011 RisingTide Systems LLC.
- *
- * Licensed to the Linux Foundation under the General Public License (GPL) version 2.
+ * (c) Copyright 2007-2013 Datera, Inc.
  *
  * Author: Nicholas A. Bellinger <nab@linux-iscsi.org>
  *
@@ -806,6 +804,22 @@ static void iscsi_check_proposer_for_optional_reply(struct iscsi_param *param)
 		if (!strcmp(param->name, MAXRECVDATASEGMENTLENGTH))
 			SET_PSTATE_REPLY_OPTIONAL(param);
 		/*
+		 * The GlobalSAN iSCSI Initiator for MacOSX does
+		 * not respond to MaxBurstLength, FirstBurstLength,
+		 * DefaultTime2Wait or DefaultTime2Retain parameter keys.
+		 * So, we set them to 'reply optional' here, and assume the
+		 * the defaults from iscsi_parameters.h if the initiator
+		 * is not RFC compliant and the keys are not negotiated.
+		 */
+		if (!strcmp(param->name, MAXBURSTLENGTH))
+			SET_PSTATE_REPLY_OPTIONAL(param);
+		if (!strcmp(param->name, FIRSTBURSTLENGTH))
+			SET_PSTATE_REPLY_OPTIONAL(param);
+		if (!strcmp(param->name, DEFAULTTIME2WAIT))
+			SET_PSTATE_REPLY_OPTIONAL(param);
+		if (!strcmp(param->name, DEFAULTTIME2RETAIN))
+			SET_PSTATE_REPLY_OPTIONAL(param);
+		/*
 		 * Required for gPXE iSCSI boot client
 		 */
 		if (!strcmp(param->name, MAXCONNECTIONS))
@@ -1166,7 +1180,7 @@ static int iscsi_check_acceptor_state(struct iscsi_param *param, char *value,
 			unsigned long long tmp;
 			int rc;
 
-			rc = strict_strtoull(param->value, 0, &tmp);
+			rc = kstrtoull(param->value, 0, &tmp);
 			if (rc < 0)
 				return -1;
 
@@ -1783,9 +1797,6 @@ void iscsi_set_connection_parameters(
 		 * this key is not sent over the wire.
 		 */
 		if (!strcmp(param->name, MAXXMITDATASEGMENTLENGTH)) {
-			if (param_list->iser == true)
-				continue;
-
 			ops->MaxXmitDataSegmentLength =
 				simple_strtoul(param->value, &tmpptr, 0);
 			pr_debug("MaxXmitDataSegmentLength:     %s\n",

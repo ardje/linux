@@ -125,16 +125,11 @@ int config_ep_by_speed(struct usb_gadget *g,
 
 ep_found:
 	/* commit results */
-	_ep->maxpacket = usb_endpoint_maxp(chosen_desc) & 0x7ff;
+	_ep->maxpacket = usb_endpoint_maxp(chosen_desc);
 	_ep->desc = chosen_desc;
 	_ep->comp_desc = NULL;
 	_ep->maxburst = 0;
-	_ep->mult = 1;
-
-	if (g->speed == USB_SPEED_HIGH && (usb_endpoint_xfer_isoc(_ep->desc) ||
-				usb_endpoint_xfer_int(_ep->desc)))
-		_ep->mult = ((usb_endpoint_maxp(_ep->desc) & 0x1800) >> 11) + 1;
-
+	_ep->mult = 0;
 	if (!want_comp_desc)
 		return 0;
 
@@ -151,7 +146,7 @@ ep_found:
 		switch (usb_endpoint_type(_ep->desc)) {
 		case USB_ENDPOINT_XFER_ISOC:
 			/* mult: bits 1:0 of bmAttributes */
-			_ep->mult = (comp_desc->bmAttributes & 0x3) + 1;
+			_ep->mult = comp_desc->bmAttributes & 0x3;
 		case USB_ENDPOINT_XFER_BULK:
 		case USB_ENDPOINT_XFER_INT:
 			_ep->maxburst = comp_desc->bMaxBurst + 1;
@@ -359,7 +354,7 @@ static u8 encode_bMaxPower(enum usb_device_speed speed,
 		return DIV_ROUND_UP(val, 8);
 	default:
 		return DIV_ROUND_UP(val, 2);
-	};
+	}
 }
 
 static int config_buf(struct usb_configuration *config,
@@ -533,7 +528,7 @@ static int bos_desc(struct usb_composite_dev *cdev)
 	usb_ext->bLength = USB_DT_USB_EXT_CAP_SIZE;
 	usb_ext->bDescriptorType = USB_DT_DEVICE_CAPABILITY;
 	usb_ext->bDevCapabilityType = USB_CAP_TYPE_EXT;
-	usb_ext->bmAttributes = cpu_to_le32(USB_LPM_SUPPORT | USB_BESL_SUPPORT);
+	usb_ext->bmAttributes = cpu_to_le32(USB_LPM_SUPPORT);
 
 	/*
 	 * The Superspeed USB Capability descriptor shall be implemented by all
@@ -764,7 +759,6 @@ int usb_add_config(struct usb_composite_dev *cdev,
 	if (status)
 		goto done;
 
-	usb_ep_autoconfig_reset(cdev->gadget);
 	status = bind(config);
 	if (status < 0) {
 		while (!list_empty(&config->functions)) {
@@ -1327,7 +1321,9 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 		value = min(w_length, (u16) 1);
 		break;
 
-	/* function drivers must handle get/set altsetting */
+	/* function drivers must handle get/set altsetting; if there's
+	 * no get() method, we know only altsetting zero works.
+	 */
 	case USB_REQ_SET_INTERFACE:
 		if (ctrl->bRequestType != USB_RECIP_INTERFACE)
 			goto unknown;
@@ -1336,13 +1332,7 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 		f = cdev->config->interface[intf];
 		if (!f)
 			break;
-
-		/*
-		 * If there's no get_alt() method, we know only altsetting zero
-		 * works. There is no need to check if set_alt() is not NULL
-		 * as we check this in usb_add_function().
-		 */
-		if (w_value && !f->get_alt)
+		if (w_value && !f->set_alt)
 			break;
 		value = f->set_alt(f, w_index, w_value);
 		if (value == USB_GADGET_DELAYED_STATUS) {
@@ -1463,8 +1453,22 @@ unknown:
 			struct usb_configuration	*c;
 
 			c = cdev->config;
-			if (c && c->setup)
+			if (!c)
+				goto done;
+
+			/* try current config's setup */
+			if (c->setup) {
 				value = c->setup(c, ctrl);
+				goto done;
+			}
+
+			/* try the only function in the current config */
+			if (!list_is_singular(&c->functions))
+				goto done;
+			f = list_first_entry(&c->functions, struct usb_function,
+					     list);
+			if (f->setup)
+				value = f->setup(f, ctrl);
 		}
 
 		goto done;
@@ -1509,17 +1513,15 @@ void composite_disconnect(struct usb_gadget *gadget)
 
 /*-------------------------------------------------------------------------*/
 
-static ssize_t composite_show_suspended(struct device *dev,
-					struct device_attribute *attr,
-					char *buf)
+static ssize_t suspended_show(struct device *dev, struct device_attribute *attr,
+			      char *buf)
 {
 	struct usb_gadget *gadget = dev_to_usb_gadget(dev);
 	struct usb_composite_dev *cdev = get_gadget_data(gadget);
 
 	return sprintf(buf, "%d\n", cdev->suspended);
 }
-
-static DEVICE_ATTR(suspended, 0444, composite_show_suspended, NULL);
+static DEVICE_ATTR_RO(suspended);
 
 static void __composite_unbind(struct usb_gadget *gadget, bool unbind_driver)
 {
@@ -1664,14 +1666,14 @@ static int composite_bind(struct usb_gadget *gadget,
 	cdev = kzalloc(sizeof *cdev, GFP_KERNEL);
 	if (!cdev)
 		return status;
-        gadget->priv_data = &cdev->is_lock;
+
+	gadget->priv_data = &cdev->is_lock;
 	spin_lock_init(&cdev->lock);
 	cdev->gadget = gadget;
 	set_gadget_data(gadget, cdev);
 	INIT_LIST_HEAD(&cdev->configs);
 	INIT_LIST_HEAD(&cdev->gstrings);
-
-       wake_lock_init(&cdev->wake_lock, WAKE_LOCK_SUSPEND,  "usb_composite");
+	wake_lock_init(&cdev->wake_lock, WAKE_LOCK_SUSPEND,  "usb_composite");
 	status = composite_dev_prepare(composite, cdev);
 	if (status)
 		goto fail;
@@ -1729,7 +1731,7 @@ composite_resume(struct usb_gadget *gadget)
 {
 	struct usb_composite_dev	*cdev = get_gadget_data(gadget);
 	struct usb_function		*f;
-	u8				maxpower;
+	u16				maxpower;
 
 	/* REVISIT:  should we have config level
 	 * suspend/resume callbacks?

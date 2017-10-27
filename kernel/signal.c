@@ -2047,8 +2047,8 @@ static bool do_signal_stop(int signr)
 		if (task_set_jobctl_pending(current, signr | gstop))
 			sig->group_stop_count++;
 
-		for (t = next_thread(current); t != current;
-		     t = next_thread(t)) {
+		t = current;
+		while_each_thread(current, t) {
 			/*
 			 * Setting state to TASK_STOPPED for a group
 			 * stop is always done with the siglock held,
@@ -2723,7 +2723,7 @@ COMPAT_SYSCALL_DEFINE2(rt_sigpending, compat_sigset_t __user *, uset,
 
 #ifndef HAVE_ARCH_COPY_SIGINFO_TO_USER
 
-int copy_siginfo_to_user(siginfo_t __user *to, siginfo_t *from)
+int copy_siginfo_to_user(siginfo_t __user *to, const siginfo_t *from)
 {
 	int err;
 
@@ -2768,8 +2768,7 @@ int copy_siginfo_to_user(siginfo_t __user *to, siginfo_t *from)
 		 * Other callers might not initialize the si_lsb field,
 		 * so check explicitly for the right codes here.
 		 */
-		if (from->si_signo == SIGBUS &&
-		    (from->si_code == BUS_MCEERR_AR || from->si_code == BUS_MCEERR_AO))
+		if (from->si_code == BUS_MCEERR_AR || from->si_code == BUS_MCEERR_AO)
 			err |= __put_user(from->si_addr_lsb, &to->si_addr_lsb);
 #endif
 		break;
@@ -3004,9 +3003,11 @@ static int do_rt_sigqueueinfo(pid_t pid, int sig, siginfo_t *info)
 	 * Nor can they impersonate a kill()/tgkill(), which adds source info.
 	 */
 	if ((info->si_code >= 0 || info->si_code == SI_TKILL) &&
-	    (task_pid_vnr(current) != pid))
+	    (task_pid_vnr(current) != pid)) {
+		/* We used to allow any < 0 si_code */
+		WARN_ON_ONCE(info->si_code < 0);
 		return -EPERM;
-
+	}
 	info->si_signo = sig;
 
 	/* POSIX.1b doesn't mention process groups.  */
@@ -3034,7 +3035,7 @@ COMPAT_SYSCALL_DEFINE3(rt_sigqueueinfo,
 			int, sig,
 			struct compat_siginfo __user *, uinfo)
 {
-	siginfo_t info = {};
+	siginfo_t info;
 	int ret = copy_siginfo_from_user32(&info, uinfo);
 	if (unlikely(ret))
 		return ret;
@@ -3051,10 +3052,12 @@ static int do_rt_tgsigqueueinfo(pid_t tgid, pid_t pid, int sig, siginfo_t *info)
 	/* Not even root can pretend to send signals from the kernel.
 	 * Nor can they impersonate a kill()/tgkill(), which adds source info.
 	 */
-	if ((info->si_code >= 0 || info->si_code == SI_TKILL) &&
-	    (task_pid_vnr(current) != pid))
+	if (((info->si_code >= 0 || info->si_code == SI_TKILL)) &&
+	    (task_pid_vnr(current) != pid)) {
+		/* We used to allow any < 0 si_code */
+		WARN_ON_ONCE(info->si_code < 0);
 		return -EPERM;
-
+	}
 	info->si_signo = sig;
 
 	return do_send_specific(tgid, pid, sig, info);
@@ -3078,7 +3081,7 @@ COMPAT_SYSCALL_DEFINE4(rt_tgsigqueueinfo,
 			int, sig,
 			struct compat_siginfo __user *, uinfo)
 {
-	siginfo_t info = {};
+	siginfo_t info;
 
 	if (copy_siginfo_from_user32(&info, uinfo))
 		return -EFAULT;
@@ -3122,8 +3125,7 @@ int do_sigaction(int sig, struct k_sigaction *act, struct k_sigaction *oact)
 			rm_from_queue_full(&mask, &t->signal->shared_pending);
 			do {
 				rm_from_queue_full(&mask, &t->pending);
-				t = next_thread(t);
-			} while (t != current);
+			} while_each_thread(current, t);
 		}
 	}
 
@@ -3391,7 +3393,7 @@ COMPAT_SYSCALL_DEFINE4(rt_sigaction, int, sig,
 		new_ka.sa.sa_restorer = compat_ptr(restorer);
 #endif
 		ret |= copy_from_user(&mask, &act->sa_mask, sizeof(mask));
-		ret |= __get_user(new_ka.sa.sa_flags, &act->sa_flags);
+		ret |= get_user(new_ka.sa.sa_flags, &act->sa_flags);
 		if (ret)
 			return -EFAULT;
 		sigset_from_compat(&new_ka.sa.sa_mask, &mask);
@@ -3403,7 +3405,7 @@ COMPAT_SYSCALL_DEFINE4(rt_sigaction, int, sig,
 		ret = put_user(ptr_to_compat(old_ka.sa.sa_handler), 
 			       &oact->sa_handler);
 		ret |= copy_to_user(&oact->sa_mask, &mask, sizeof(mask));
-		ret |= __put_user(old_ka.sa.sa_flags, &oact->sa_flags);
+		ret |= put_user(old_ka.sa.sa_flags, &oact->sa_flags);
 #ifdef __ARCH_HAS_SA_RESTORER
 		ret |= put_user(ptr_to_compat(old_ka.sa.sa_restorer),
 				&oact->sa_restorer);
@@ -3547,7 +3549,7 @@ SYSCALL_DEFINE0(pause)
 
 #endif
 
-static int sigsuspend(sigset_t *set)
+int sigsuspend(sigset_t *set)
 {
 	current->saved_sigmask = current->blocked;
 	set_current_blocked(set);

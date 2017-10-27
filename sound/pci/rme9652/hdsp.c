@@ -584,10 +584,6 @@ static int snd_hammerfall_get_buffer(struct pci_dev *pci, struct snd_dma_buffer 
 {
 	dmab->dev.type = SNDRV_DMA_TYPE_DEV;
 	dmab->dev.dev = snd_dma_pci_data(pci);
-	if (snd_dma_get_reserved_buf(dmab, snd_dma_pci_buf_id(pci))) {
-		if (dmab->bytes >= size)
-			return 0;
-	}
 	if (snd_dma_alloc_pages(SNDRV_DMA_TYPE_DEV, snd_dma_pci_data(pci),
 				size, dmab) < 0)
 		return -ENOMEM;
@@ -596,10 +592,8 @@ static int snd_hammerfall_get_buffer(struct pci_dev *pci, struct snd_dma_buffer 
 
 static void snd_hammerfall_free_buffer(struct snd_dma_buffer *dmab, struct pci_dev *pci)
 {
-	if (dmab->area) {
-		dmab->dev.dev = NULL; /* make it anonymous */
-		snd_dma_reserve_buf(dmab, snd_dma_pci_buf_id(pci));
-	}
+	if (dmab->area)
+		snd_dma_free_pages(dmab);
 }
 
 
@@ -2923,7 +2917,7 @@ static int snd_hdsp_get_dds_offset(struct snd_kcontrol *kcontrol, struct snd_ctl
 {
 	struct hdsp *hdsp = snd_kcontrol_chip(kcontrol);
 
-	ucontrol->value.integer.value[0] = hdsp_dds_offset(hdsp);
+	ucontrol->value.enumerated.item[0] = hdsp_dds_offset(hdsp);
 	return 0;
 }
 
@@ -2935,7 +2929,7 @@ static int snd_hdsp_put_dds_offset(struct snd_kcontrol *kcontrol, struct snd_ctl
 
 	if (!snd_hdsp_use_is_exclusive(hdsp))
 		return -EBUSY;
-	val = ucontrol->value.integer.value[0];
+	val = ucontrol->value.enumerated.item[0];
 	spin_lock_irq(&hdsp->lock);
 	if (val != hdsp_dds_offset(hdsp))
 		change = (hdsp_set_dds_offset(hdsp, val) == 0) ? 1 : 0;
@@ -4845,6 +4839,7 @@ static int snd_hdsp_hwdep_ioctl(struct snd_hwdep *hw, struct file *file, unsigne
 			if ((err = hdsp_get_iobox_version(hdsp)) < 0)
 				return err;
 		}
+		memset(&hdsp_version, 0, sizeof(hdsp_version));
 		hdsp_version.io_type = hdsp->io_type;
 		hdsp_version.firmware_rev = hdsp->firmware_rev;
 		if ((err = copy_to_user(argp, &hdsp_version, sizeof(hdsp_version))))
@@ -5412,7 +5407,6 @@ static int snd_hdsp_probe(struct pci_dev *pci,
 static void snd_hdsp_remove(struct pci_dev *pci)
 {
 	snd_card_free(pci_get_drvdata(pci));
-	pci_set_drvdata(pci, NULL);
 }
 
 static struct pci_driver hdsp_driver = {

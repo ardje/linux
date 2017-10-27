@@ -14,20 +14,20 @@
 #define __ISP_STATE_MACHINE_H
 #include "isp_drv.h"
 
-typedef enum isp_auto_exposure_state_e {
+enum isp_auto_exposure_state_e {
 	AE_INIT,
 	AE_SHUTTER_ADJUST,
 	AE_GAIN_ADJUST,
 	AE_REST,
-} isp_auto_exposure_state_t;
+};
 
-typedef enum isp_auto_white_balance_state_e {
+enum isp_auto_white_balance_state_e {
 	AWB_IDLE,
 	AWB_INIT,
 	AWB_CHECK,
-} isp_auto_white_balance_state_t;
+};
 
-typedef enum af_state_e {
+enum af_state_e {
 	AF_NULL,
 	AF_DETECT_INIT,
 	AF_GET_STEPS_INFO,
@@ -40,12 +40,12 @@ typedef enum af_state_e {
 	AF_CLIMBING,
 	AF_FINE,
 	AF_SUCCESS,
-} af_state_t;
-typedef enum isp_capture_state_e {
+};
+enum isp_capture_state_e {
 	CAPTURE_NULL,
 	CAPTURE_INIT,
-	CAPTURE_PRE_WAIT,//for time lapse
-	CAPTURE_FLASH_ON,//turn on flash for red eye
+	CAPTURE_PRE_WAIT,/* for time lapse */
+	CAPTURE_FLASH_ON,/* turn on flash for red eye */
 	CAPTURE_TR_WAIT,
 	CAPTURE_TUNE_3A,
 	CAPTURE_LOW_GAIN,
@@ -55,16 +55,16 @@ typedef enum isp_capture_state_e {
 	CAPTURE_FLASHW,
 	CAPTURE_MULTI,
 	CAPTURE_END,
-}isp_capture_state_t;
+};
 
-typedef enum isp_ae_status_s {
+enum isp_ae_status_s {
 	ISP_AE_STATUS_NULL = 0,
 	ISP_AE_STATUS_UNSTABLE,
 	ISP_AE_STATUS_STABLE,
 	ISP_AE_STATUS_UNTUNEABLE,
-}isp_ae_status_t;
+};
 
-typedef struct isp_ae_sm_s {
+struct isp_ae_sm_s {
 	unsigned int pixel_sum;
 	unsigned int sub_pixel_sum;
 	unsigned int win_l;
@@ -84,23 +84,23 @@ typedef struct isp_ae_sm_s {
 	unsigned int countlimit_g;
 	unsigned int countlimit_b;
 	unsigned int tf_ratio;
-    unsigned int change_step;
-	unsigned int max_lumasum1;  //low
+	unsigned int change_step;
+	unsigned int max_lumasum1;  /* low */
 	unsigned int max_lumasum2;
 	unsigned int max_lumasum3;
-	unsigned int max_lumasum4;	//high
+	unsigned int max_lumasum4;	/* high */
 	int targ;
 
-	isp_auto_exposure_state_t isp_ae_state;
-}isp_ae_sm_t;
+	enum isp_auto_exposure_state_e isp_ae_state;
+};
 
-typedef enum isp_awb_status_s {
+enum isp_awb_status_s {
 	ISP_AWB_STATUS_NULL = 0,
 	ISP_AWB_STATUS_UNSTABLE,
 	ISP_AWB_STATUS_STABLE,
-}isp_awb_status_t;
+};
 
-typedef struct isp_awb_sm_s {
+struct isp_awb_sm_s {
 	enum isp_awb_status_s status;
 	unsigned int pixel_sum;
 	unsigned int win_l;
@@ -117,69 +117,76 @@ typedef struct isp_awb_sm_s {
 	unsigned char w;
 	unsigned char coun;
 
-	isp_auto_white_balance_state_t isp_awb_state;
+	enum isp_auto_white_balance_state_e isp_awb_state;
 
-}isp_awb_sm_t;
+};
 
-typedef enum isp_flash_status_s {
+enum isp_flash_status_s {
 	ISP_FLASH_STATUS_NULL = 0,
 	ISP_FLASH_STATUS_ON,
 	ISP_FLASH_STATUS_OFF,
-}isp_flash_status_t;
+};
 
-typedef enum isp_env_status_s {
+enum isp_env_status_s {
 	ENV_NULL = 0,
 	ENV_HIGH,
 	ENV_MID,
 	ENV_LOW,
-}isp_env_status_t;
-typedef struct isp_af_sm_s {
-	af_state_t state;
-} isp_af_sm_t;
+};
 
-typedef struct isp_capture_sm_s {
+struct isp_af_sm_s {
+	enum af_state_e state;
+};
+
+struct isp_capture_sm_s {
 	unsigned int adj_cnt;
 	unsigned int max_ac_sum;
 	unsigned int tr_time;
 	unsigned int fr_time;
 	unsigned char flash_on;
-	flash_mode_t  flash_mode;
-	isp_capture_state_t capture_state;
-} isp_capture_sm_t;
+	enum flash_mode_s  flash_mode;
+	enum isp_capture_state_e capture_state;
+};
 
-typedef struct isp_sm_s {
+struct isp_sm_s {
 	enum isp_ae_status_s status;
 	enum isp_flash_status_s flash;
 	enum isp_env_status_s env;
 	bool ae_down;
-	af_state_t af_state;
-	isp_ae_sm_t isp_ae_parm;
-	isp_awb_sm_t isp_awb_parm;
-	isp_af_sm_t af_sm;
-	isp_capture_sm_t cap_sm;
-} isp_sm_t;
+	enum af_state_e af_state;
+	struct isp_ae_sm_s isp_ae_parm;
+	struct isp_awb_sm_s isp_awb_parm;
+	struct isp_af_sm_s af_sm;
+	struct isp_capture_sm_s cap_sm;
+};
 
-typedef struct isp_ae_to_sensor_s {
-	volatile unsigned int send;
-	volatile unsigned int new_step;
-	volatile unsigned int shutter;
-	volatile unsigned int gain;
-} isp_ae_to_sensor_t;
+struct isp_ae_to_sensor_s {
+/* volatile unsigned int send; */
+/* volatile unsigned int new_step; */
+/* volatile unsigned int shutter; */
+/* volatile unsigned int gain; */
+	unsigned int send;
+	unsigned int new_step;
+	unsigned int shutter;
+	unsigned int gain;
+};
 
-extern void isp_sm_init(isp_dev_t *devp);
-extern void isp_sm_uninit(isp_dev_t *devp);
-extern void af_sm_init(isp_dev_t *devp);
-extern void capture_sm_init(isp_dev_t *devp);
-extern void isp_set_flash_mode(isp_dev_t *devp);
-extern void isp_ae_sm(isp_dev_t *devp);
-extern void isp_awb_sm(isp_dev_t *devp);
-extern void isp_af_fine_tune(isp_dev_t *devp);
-extern void isp_af_detect(isp_dev_t *devp);
-extern int isp_capture_sm(isp_dev_t *devp);
+extern struct isp_ae_to_sensor_s ae_sens;
+
+extern void isp_sm_init(struct isp_dev_s *devp);
+extern void isp_sm_uninit(struct isp_dev_s *devp);
+extern void af_sm_init(struct isp_dev_s *devp);
+extern void capture_sm_init(struct isp_dev_s *devp);
+extern void isp_set_flash_mode(struct isp_dev_s *devp);
+extern void isp_ae_sm(struct isp_dev_s *devp);
+extern void isp_awb_sm(struct isp_dev_s *devp);
+extern void isp_af_fine_tune(struct isp_dev_s *devp);
+extern void isp_af_detect(struct isp_dev_s *devp);
+extern int isp_capture_sm(struct isp_dev_s *devp);
 extern unsigned long long div64(unsigned long long n, unsigned long long d);
-extern void isp_af_save_current_para(isp_dev_t *devp);
-extern void isp_set_manual_exposure(isp_dev_t *devp);
-extern unsigned int isp_tune_exposure(isp_dev_t *devp);
+extern void isp_af_save_current_para(struct isp_dev_s *devp);
+extern void isp_set_manual_exposure(struct isp_dev_s *devp);
+extern unsigned int isp_tune_exposure(struct isp_dev_s *devp);
 #endif
 
 

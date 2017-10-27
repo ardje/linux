@@ -124,8 +124,8 @@ static int get_serial_info(struct usb_serial_port *port,
 		return -EFAULT;
 
 	memset(&tmp, 0, sizeof(tmp));
-	tmp.line            = port->serial->minor;
-	tmp.port            = port->number;
+	tmp.line            = port->minor;
+	tmp.port            = port->port_number;
 	tmp.baud_base       = tty_get_baud_rate(port->port.tty);
 	tmp.close_delay	    = port->port.close_delay / 10;
 	tmp.closing_wait    = port->port.closing_wait == ASYNC_CLOSING_WAIT_NONE ?
@@ -480,12 +480,8 @@ static struct urb *usb_wwan_setup_urb(struct usb_serial_port *port,
 	struct urb *urb;
 
 	urb = usb_alloc_urb(0, GFP_KERNEL);	/* No ISO */
-	if (urb == NULL) {
-		dev_dbg(&serial->interface->dev,
-			"%s: alloc for endpoint %d failed.\n", __func__,
-			endpoint);
+	if (!urb)
 		return NULL;
-	}
 
 	/* Fill URB using supplied data. */
 	usb_fill_bulk_urb(urb, serial->dev,

@@ -1,42 +1,41 @@
 /*
- * AMLOGIC Audio/Video streaming port driver.
+ * drivers/amlogic/amports/esparser.h
+ *
+ * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the named License,
- * or any later version.
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA
- *
- * Author:  Tim Yao <timyao@amlogic.com>
- *
- */
+*/
 
 #ifndef ESPARSER_H
 #define ESPARSER_H
 
-
-
 extern s32 esparser_init(struct stream_buf_s *buf);
- 
+
 extern void esparser_release(struct stream_buf_s *buf);
 
 extern ssize_t drm_write(struct file *file,
-                       struct stream_buf_s *stbuf,
-                       const char __user *buf, size_t count);
+		struct stream_buf_s *stbuf,
+		const char __user *buf, size_t count);
 
 extern s32 esparser_init(struct stream_buf_s *buf);
+extern s32 esparser_init_s(struct stream_buf_s *buf);
 extern void esparser_release(struct stream_buf_s *buf);
 extern ssize_t esparser_write(struct file *file,
-                              struct stream_buf_s *stbuf,
-                              const char __user *buf, size_t count);
+	struct stream_buf_s *stbuf,
+	const char __user *buf, size_t count);
+extern ssize_t esparser_write_ex(struct file *file,
+			struct stream_buf_s *stbuf,
+			const char __user *buf, size_t count,
+			int is_phy);
 
 extern s32 es_vpts_checkin_us64(struct stream_buf_s *buf, u64 us64);
 
@@ -47,11 +46,16 @@ extern int es_vpts_checkin(struct stream_buf_s *buf, u32 pts);
 extern int es_apts_checkin(struct stream_buf_s *buf, u32 pts);
 
 extern void esparser_audio_reset(struct stream_buf_s *buf);
+extern void esparser_audio_reset_s(struct stream_buf_s *buf);
 
 extern void esparser_sub_reset(void);
 
-#if MESON_CPU_TYPE >= MESON_CPU_TYPE_MESON6
-// TODO: move to register headers
+
+#ifdef CONFIG_AM_DVB
+extern int tsdemux_set_reset_flag(void);
+#endif
+
+/* TODO: move to register headers */
 #define ES_PACK_SIZE_BIT                8
 #define ES_PACK_SIZE_WID                24
 
@@ -113,7 +117,7 @@ extern void esparser_sub_reset(void);
 #define PS_CFG_SRC_SEL_BIT              24
 #define PS_CFG_SRC_SEL_MASK             (3<<PS_CFG_SRC_SEL_BIT)
 #define PS_CFG_SRC_SEL_FETCH            (0<<PS_CFG_SRC_SEL_BIT)
-#define PS_CFG_SRC_SEL_AUX1             (1<<PS_CFG_SRC_SEL_BIT) // from NDMA
+#define PS_CFG_SRC_SEL_AUX1             (1<<PS_CFG_SRC_SEL_BIT)	/*from NDMA */
 #define PS_CFG_SRC_SEL_AUX2             (2<<PS_CFG_SRC_SEL_BIT)
 #define PS_CFG_SRC_SEL_AUX3             (3<<PS_CFG_SRC_SEL_BIT)
 #define PS_CFG_PFIFO_EMPTY_CNT_BIT      16
@@ -145,39 +149,7 @@ extern void esparser_sub_reset(void);
 #define TS_HIU_ENABLE              5
 #define USE_HI_BSF_INTERFACE       7
 
+#define DRM_PRNT(fmt, args...)
+#define  TRACE()	pr_info("drm--[%s::%d]\n", __func__, __LINE__)
 
-
-#define DRM_PRNT(fmt,args...) //printk(KERN_INFO "[trackdrm]" fmt,##args)
-#define  TRACE()	printk("drm--[%s::%d]\n",__FUNCTION__,__LINE__)
-
-
-typedef enum {
-    DRM_LEVEL1     = 1,
-    DRM_LEVEL2     = 2,
-    DRM_LEVEL3     = 3,
-    DRM_NONE       = 4, 
-} drm_level_t;
-
-
-#define TYPE_DRMINFO   0x80
-
-typedef struct drm_info {
-    drm_level_t drm_level;
-	int drm_flag;
-	int drm_hasesdata;
-	int drm_priv;
-    unsigned int drm_pktsize;
-	unsigned int drm_pktpts;
-	unsigned int drm_phy;
-	unsigned int drm_vir;
-	unsigned int drm_remap;
-	int data_offset;
-	int extpad[8];
-} drminfo_t;
-
-
-
-#endif
-
-#endif /* ESPARSER_H */
-
+#endif				/* ESPARSER_H */

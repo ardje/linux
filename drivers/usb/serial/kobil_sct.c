@@ -51,7 +51,6 @@
 
 
 /* Function prototypes */
-static int kobil_attach(struct usb_serial *serial);
 static int kobil_port_probe(struct usb_serial_port *probe);
 static int kobil_port_remove(struct usb_serial_port *probe);
 static int  kobil_open(struct tty_struct *tty, struct usb_serial_port *port);
@@ -87,7 +86,6 @@ static struct usb_serial_driver kobil_device = {
 	.description =		"KOBIL USB smart card terminal",
 	.id_table =		id_table,
 	.num_ports =		1,
-	.attach =		kobil_attach,
 	.port_probe =		kobil_port_probe,
 	.port_remove =		kobil_port_remove,
 	.ioctl =		kobil_ioctl,
@@ -114,16 +112,6 @@ struct kobil_private {
 	__u16 device_type;
 };
 
-
-static int kobil_attach(struct usb_serial *serial)
-{
-	if (serial->num_interrupt_out < serial->num_ports) {
-		dev_err(&serial->interface->dev, "missing interrupt-out endpoint\n");
-		return -ENODEV;
-	}
-
-	return 0;
-}
 
 static int kobil_port_probe(struct usb_serial_port *port)
 {
@@ -205,7 +193,7 @@ static int kobil_open(struct tty_struct *tty, struct usb_serial_port *port)
 			  KOBIL_TIMEOUT
 	);
 	dev_dbg(dev, "%s - Send get_HW_version URB returns: %i\n", __func__, result);
-	dev_dbg(dev, "Harware version: %i.%i.%i\n", transfer_buffer[0],
+	dev_dbg(dev, "Hardware version: %i.%i.%i\n", transfer_buffer[0],
 		transfer_buffer[1], transfer_buffer[2]);
 
 	/* get firmware version */

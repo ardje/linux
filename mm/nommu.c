@@ -15,6 +15,7 @@
 
 #include <linux/export.h>
 #include <linux/mm.h>
+#include <linux/vmacache.h>
 #include <linux/mman.h>
 #include <linux/swap.h>
 #include <linux/file.h>
@@ -56,11 +57,11 @@
 void *high_memory;
 struct page *mem_map;
 unsigned long max_mapnr;
-unsigned long num_physpages;
 unsigned long highest_memmap_pfn;
 struct percpu_counter vm_committed_as;
 int sysctl_overcommit_memory = OVERCOMMIT_GUESS; /* heuristic overcommit */
 int sysctl_overcommit_ratio = 50; /* default is 50% */
+unsigned long sysctl_overcommit_kbytes __read_mostly;
 int sysctl_max_map_count = DEFAULT_MAX_MAP_COUNT;
 int sysctl_nr_trim_pages = CONFIG_NOMMU_INITIAL_TRIM_EXCESS;
 unsigned long sysctl_user_reserve_kbytes __read_mostly = 1UL << 17; /* 128MB */
@@ -85,7 +86,6 @@ unsigned long vm_memory_committed(void)
 EXPORT_SYMBOL_GPL(vm_memory_committed);
 
 EXPORT_SYMBOL(mem_map);
-EXPORT_SYMBOL(num_physpages);
 
 /* list of mapped, potentially shareable regions */
 static struct kmem_cache *vm_region_jar;
@@ -282,6 +282,10 @@ EXPORT_SYMBOL(vmalloc_to_pfn);
 
 long vread(char *buf, char *addr, unsigned long count)
 {
+	/* Don't allow overflow */
+	if ((unsigned long) buf + count < count)
+		count = -(unsigned long) buf;
+
 	memcpy(buf, addr, count);
 	return count;
 }
@@ -650,7 +654,7 @@ static void __put_nommu_region(struct vm_region *region)
 		up_write(&nommu_region_sem);
 
 		if (region->vm_file)
-			vmr_fput(region);
+			fput(region->vm_file);
 
 		/* IO memory and memory shared directly out of the pagecache
 		 * from ramfs/tmpfs mustn't be released here */
@@ -765,16 +769,23 @@ static void add_vma_to_mm(struct mm_struct *mm, struct vm_area_struct *vma)
  */
 static void delete_vma_from_mm(struct vm_area_struct *vma)
 {
+	int i;
 	struct address_space *mapping;
 	struct mm_struct *mm = vma->vm_mm;
+	struct task_struct *curr = current;
 
 	kenter("%p", vma);
 
 	protect_vma(vma, 0);
 
 	mm->map_count--;
-	if (mm->mmap_cache == vma)
-		mm->mmap_cache = NULL;
+	for (i = 0; i < VMACACHE_SIZE; i++) {
+		/* if the vma is cached, invalidate the entire cache */
+		if (curr->vmacache[i] == vma) {
+			vmacache_invalidate(curr->mm);
+			break;
+		}
+	}
 
 	/* remove the VMA from the mapping */
 	if (vma->vm_file) {
@@ -808,7 +819,7 @@ static void delete_vma(struct mm_struct *mm, struct vm_area_struct *vma)
 	if (vma->vm_ops && vma->vm_ops->close)
 		vma->vm_ops->close(vma);
 	if (vma->vm_file)
-		vma_fput(vma);
+		fput(vma->vm_file);
 	put_nommu_region(vma->vm_region);
 	kmem_cache_free(vm_area_cachep, vma);
 }
@@ -822,8 +833,8 @@ struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr)
 	struct vm_area_struct *vma;
 
 	/* check the cache first */
-	vma = ACCESS_ONCE(mm->mmap_cache);
-	if (vma && vma->vm_start <= addr && vma->vm_end > addr)
+	vma = vmacache_find(mm, addr);
+	if (likely(vma))
 		return vma;
 
 	/* trawl the list (there may be multiple mappings in which addr
@@ -832,7 +843,7 @@ struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr)
 		if (vma->vm_start > addr)
 			return NULL;
 		if (vma->vm_end > addr) {
-			mm->mmap_cache = vma;
+			vmacache_update(addr, vma);
 			return vma;
 		}
 	}
@@ -871,8 +882,8 @@ static struct vm_area_struct *find_vma_exact(struct mm_struct *mm,
 	unsigned long end = addr + len;
 
 	/* check the cache first */
-	vma = mm->mmap_cache;
-	if (vma && vma->vm_start == addr && vma->vm_end == end)
+	vma = vmacache_find_exact(mm, addr, end);
+	if (vma)
 		return vma;
 
 	/* trawl the list (there may be multiple mappings in which addr
@@ -883,7 +894,7 @@ static struct vm_area_struct *find_vma_exact(struct mm_struct *mm,
 		if (vma->vm_start > addr)
 			return NULL;
 		if (vma->vm_end == end) {
-			mm->mmap_cache = vma;
+			vmacache_update(addr, vma);
 			return vma;
 		}
 	}
@@ -935,7 +946,7 @@ static int validate_mmap_request(struct file *file,
 		struct address_space *mapping;
 
 		/* files must support mmap */
-		if (!file->f_op || !file->f_op->mmap)
+		if (!file->f_op->mmap)
 			return -ENODEV;
 
 		/* work out if what we've got could possibly be shared
@@ -1374,7 +1385,7 @@ unsigned long do_mmap_pgoff(struct file *file,
 					goto error_just_free;
 				}
 			}
-			vmr_fput(region);
+			fput(region->vm_file);
 			kmem_cache_free(vm_region_jar, region);
 			region = pregion;
 			result = start;
@@ -1450,10 +1461,10 @@ error_just_free:
 	up_write(&nommu_region_sem);
 error:
 	if (region->vm_file)
-		vmr_fput(region);
+		fput(region->vm_file);
 	kmem_cache_free(vm_region_jar, region);
 	if (vma->vm_file)
-		vma_fput(vma);
+		fput(vma->vm_file);
 	kmem_cache_free(vm_area_cachep, vma);
 	kleave(" = %d", ret);
 	return ret;
@@ -1869,10 +1880,6 @@ unsigned long arch_get_unmapped_area(struct file *file, unsigned long addr,
 	return -ENOMEM;
 }
 
-void arch_unmap_area(struct mm_struct *mm, unsigned long addr)
-{
-}
-
 void unmap_mapping_range(struct address_space *mapping,
 			 loff_t const holebegin, loff_t const holelen,
 			 int even_cows)
@@ -1898,7 +1905,7 @@ EXPORT_SYMBOL(unmap_mapping_range);
  */
 int __vm_enough_memory(struct mm_struct *mm, long pages, int cap_sys_admin)
 {
-	long free, allowed, reserve;
+	unsigned long free, allowed, reserve;
 
 	vm_acct_memory(pages);
 
@@ -1950,20 +1957,19 @@ int __vm_enough_memory(struct mm_struct *mm, long pages, int cap_sys_admin)
 		goto error;
 	}
 
-	allowed = totalram_pages * sysctl_overcommit_ratio / 100;
+	allowed = vm_commit_limit();
 	/*
 	 * Reserve some 3% for root
 	 */
 	if (!cap_sys_admin)
 		allowed -= sysctl_admin_reserve_kbytes >> (PAGE_SHIFT - 10);
-	allowed += total_swap_pages;
 
 	/*
 	 * Don't let a single process grow so big a user can't recover
 	 */
 	if (mm) {
 		reserve = sysctl_user_reserve_kbytes >> (PAGE_SHIFT - 10);
-		allowed -= min_t(long, mm->total_vm / 32, reserve);
+		allowed -= min(mm->total_vm / 32, reserve);
 	}
 
 	if (percpu_counter_read_positive(&vm_committed_as) < allowed)

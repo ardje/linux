@@ -14,10 +14,6 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  *  General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License along
- *  with this program; if not, write to the Free Software Foundation, Inc.,
- *  59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
- *
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
 #include <linux/module.h>
@@ -27,6 +23,8 @@
 #include <linux/slab.h>
 #include <linux/cpu.h>
 #include <linux/gpucore_cooling.h>
+#include <linux/thermal_core.h>
+#include <linux/device.h>
 
 /**
  * struct gpucore_cooling_device - data for cooling device with gpucore
@@ -50,6 +48,20 @@ static DEFINE_MUTEX(cooling_gpucore_lock);
 
 /* notify_table passes value to the gpucore_ADJUST callback function. */
 #define NOTIFY_INVALID NULL
+
+static struct device_node *np;
+static int save_flag = -1;
+
+void save_gpucore_thermal_para(struct device_node *n)
+{
+	if (!n)
+		return;
+
+	if (save_flag == -1) {
+		save_flag = 1;
+		np = n;
+	}
+}
 
 /**
  * get_idr - function to get a unique id.
@@ -103,8 +115,8 @@ static int gpucore_get_max_state(struct thermal_cooling_device *cdev,
 				 unsigned long *state)
 {
 	struct gpucore_cooling_device *gpucore_device = cdev->devdata;
-	*state=gpucore_device->max_gpu_core_num;
-	pr_debug( "max Gpu core=%ld\n",*state);
+	*state = gpucore_device->max_gpu_core_num;
+	pr_debug("max Gpu core=%ld\n", *state);
 	return 0;
 }
 
@@ -122,8 +134,8 @@ static int gpucore_get_cur_state(struct thermal_cooling_device *cdev,
 				 unsigned long *state)
 {
 	struct gpucore_cooling_device *gpucore_device = cdev->devdata;
-	*state=gpucore_device->gpucore_state;
-	pr_debug( "current state=%ld\n",*state);
+	*state = gpucore_device->gpucore_state;
+	pr_debug("current state=%ld\n", *state);
 	return 0;
 }
 
@@ -143,19 +155,87 @@ static int gpucore_set_cur_state(struct thermal_cooling_device *cdev,
 	struct gpucore_cooling_device *gpucore_device = cdev->devdata;
 	int set_max_num;
 	mutex_lock(&cooling_gpucore_lock);
-	if(gpucore_device->stop_flag){
+	if (gpucore_device->stop_flag) {
 		mutex_unlock(&cooling_gpucore_lock);
 		return 0;
 	}
-	if((state & GPU_STOP) ==GPU_STOP){
-		gpucore_device->stop_flag=1;
-		state=state&(~GPU_STOP);
+	if ((state & GPU_STOP) == GPU_STOP) {
+		gpucore_device->stop_flag = 1;
+		state = state&(~GPU_STOP);
 	}
 	mutex_unlock(&cooling_gpucore_lock);
-	gpucore_device->gpucore_state=state;
-	set_max_num=gpucore_device->max_gpu_core_num-state;
+	set_max_num = gpucore_device->max_gpu_core_num - state;
+	/* pp should not be 0 */
+	if (!set_max_num)
+		return -EINVAL;
+
+	gpucore_device->gpucore_state = state;
 	gpucore_device->set_max_pp_num((unsigned int)set_max_num);
-	pr_debug( "need set max gpu num=%d,state=%ld\n",set_max_num,state);
+	pr_debug("need set max gpu num=%d,state=%ld\n", set_max_num, state);
+	return 0;
+}
+
+/*
+ * Simple mathematics model for gpu core power:
+ * just for ipa hook
+ */
+static int gpucore_get_requested_power(struct thermal_cooling_device *cdev,
+				       struct thermal_zone_device *tz,
+				       u32 *power)
+{
+	*power = 0;
+
+	return 0;
+}
+
+static int gpucore_state2power(struct thermal_cooling_device *cdev,
+			       struct thermal_zone_device *tz,
+			       unsigned long state, u32 *power)
+{
+	*power  = 0;
+
+	return 0;
+}
+
+static int gpucore_power2state(struct thermal_cooling_device *cdev,
+			       struct thermal_zone_device *tz, u32 power,
+			       unsigned long *state)
+{
+	cdev->ops->get_cur_state(cdev, state);
+	return 0;
+}
+
+static int gpucore_notify_state(struct thermal_cooling_device *cdev,
+				struct thermal_zone_device *tz,
+				enum thermal_trip_type type)
+{
+	unsigned long cur_state;
+	long upper = -1;
+	int i;
+	struct thermal_instance *ins;
+
+	switch (type) {
+	case THERMAL_TRIP_HOT:
+		if (tz->enter_hot) {
+			for (i = 0; i < tz->trips; i++) {
+				ins = get_thermal_instance(tz, cdev, i);
+				if (ins && ins->upper > upper)
+					upper = ins->upper;
+			}
+			cdev->ops->get_cur_state(cdev, &cur_state);
+			cur_state += 1;
+			/* do not exceed upper levels */
+			if (upper != -1 && cur_state > upper)
+				cur_state = upper;
+			cdev->ops->set_cur_state(cdev, cur_state);
+		} else {
+			cur_state = 0;
+			cdev->ops->set_cur_state(cdev, cur_state);
+		}
+		break;
+	default:
+		break;
+	}
 	return 0;
 }
 
@@ -164,6 +244,10 @@ static struct thermal_cooling_device_ops const gpucore_cooling_ops = {
 	.get_max_state = gpucore_get_max_state,
 	.get_cur_state = gpucore_get_cur_state,
 	.set_cur_state = gpucore_set_cur_state,
+	.state2power   = gpucore_state2power,
+	.power2state   = gpucore_power2state,
+	.notify_state  = gpucore_notify_state,
+	.get_requested_power = gpucore_get_requested_power,
 };
 
 /**
@@ -177,19 +261,22 @@ static struct thermal_cooling_device_ops const gpucore_cooling_ops = {
  * Return: a valid struct thermal_cooling_device pointer on success,
  * on failure, it returns a corresponding ERR_PTR().
  */
- struct gpucore_cooling_device * gpucore_cooling_alloc(void)
+struct gpucore_cooling_device *gpucore_cooling_alloc(void)
 {
 	struct gpucore_cooling_device *gcdev;
-	gcdev=kzalloc(sizeof(struct gpucore_cooling_device), GFP_KERNEL);
-	if (!gcdev)
+	gcdev = kzalloc(sizeof(struct gpucore_cooling_device), GFP_KERNEL);
+	if (!gcdev) {
+		pr_err("%s, %d, allocate memory fail\n", __func__, __LINE__);
 		return ERR_PTR(-ENOMEM);
-	memset(gcdev,0,sizeof(*gcdev));
+	}
+	memset(gcdev, 0, sizeof(*gcdev));
+	if (save_flag == 1)
+		gcdev->np = np;
 	return gcdev;
 }
 EXPORT_SYMBOL_GPL(gpucore_cooling_alloc);
 
-struct thermal_cooling_device *
-gpucore_cooling_register(struct gpucore_cooling_device *gpucore_dev)
+int gpucore_cooling_register(struct gpucore_cooling_device *gpucore_dev)
 {
 	struct thermal_cooling_device *cool_dev;
 	char dev_name[THERMAL_NAME_LENGTH];
@@ -197,22 +284,21 @@ gpucore_cooling_register(struct gpucore_cooling_device *gpucore_dev)
 	ret = get_idr(&gpucore_idr, &gpucore_dev->id);
 	if (ret) {
 		kfree(gpucore_dev);
-		return ERR_PTR(-EINVAL);
+		return -EINVAL;
 	}
 
 	snprintf(dev_name, sizeof(dev_name), "thermal-gpucore-%d",
 		 gpucore_dev->id);
 
-	cool_dev = thermal_cooling_device_register(dev_name, gpucore_dev,
-						   &gpucore_cooling_ops);
+	gpucore_dev->gpucore_state = 0;
+	cool_dev = thermal_of_cooling_device_register(gpucore_dev->np,
+			dev_name, gpucore_dev, &gpucore_cooling_ops);
 	if (!cool_dev) {
-		
 		release_idr(&gpucore_idr, gpucore_dev->id);
 		kfree(gpucore_dev);
-		return ERR_PTR(-EINVAL);
+		return -EINVAL;
 	}
 	gpucore_dev->cool_dev = cool_dev;
-	gpucore_dev->gpucore_state = 0;
 	return 0;
 }
 EXPORT_SYMBOL_GPL(gpucore_cooling_register);

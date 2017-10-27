@@ -78,7 +78,7 @@ struct usb_hub {
 
 /**
  * struct usb port - kernel's representation of a usb port
- * @child: usb device attatched to the port
+ * @child: usb device attached to the port
  * @dev: generic device interface
  * @port_owner: port's owner
  * @connect_type: port's connect type
@@ -103,7 +103,7 @@ extern int usb_hub_create_port_device(struct usb_hub *hub,
 		int port1);
 extern void usb_hub_remove_port_device(struct usb_hub *hub,
 		int port1);
-extern int usb_hub_set_port_power(struct usb_device *hdev,
+extern int usb_hub_set_port_power(struct usb_device *hdev, struct usb_hub *hub,
 		int port1, bool set);
 extern struct usb_hub *usb_hub_to_struct_hub(struct usb_device *hdev);
 extern int hub_port_debounce(struct usb_hub *hub, int port1,

@@ -189,9 +189,6 @@ ssize_t splice_to_pipe(struct pipe_inode_info *pipe,
 	unsigned int spd_pages = spd->nr_pages;
 	int ret, do_wakeup, page_nr;
 
-	if (!spd_pages)
-		return 0;
-
 	ret = 0;
 	do_wakeup = 0;
 	page_nr = 0;
@@ -215,7 +212,6 @@ ssize_t splice_to_pipe(struct pipe_inode_info *pipe,
 			buf->len = spd->partial[page_nr].len;
 			buf->private = spd->partial[page_nr].private;
 			buf->ops = spd->ops;
-			buf->flags = 0;
 			if (spd->flags & SPLICE_F_GIFT)
 				buf->flags |= PIPE_BUF_FLAG_GIFT;
 
@@ -717,7 +713,7 @@ static int pipe_to_sendpage(struct pipe_inode_info *pipe,
 	loff_t pos = sd->pos;
 	int more;
 
-	if (!likely(file->f_op && file->f_op->sendpage))
+	if (!likely(file->f_op->sendpage))
 		return -EINVAL;
 
 	more = (sd->flags & SPLICE_F_MORE) ? MSG_MORE : 0;
@@ -953,7 +949,6 @@ ssize_t __splice_from_pipe(struct pipe_inode_info *pipe, struct splice_desc *sd,
 
 	splice_from_pipe_begin(sd);
 	do {
-		cond_resched();
 		ret = splice_from_pipe_next(pipe, sd);
 		if (ret > 0)
 			ret = splice_from_pipe_feed(pipe, sd, actor);
@@ -1017,16 +1012,12 @@ generic_file_splice_write(struct pipe_inode_info *pipe, struct file *out,
 	struct address_space *mapping = out->f_mapping;
 	struct inode *inode = mapping->host;
 	struct splice_desc sd = {
+		.total_len = len,
 		.flags = flags,
+		.pos = *ppos,
 		.u.file = out,
 	};
 	ssize_t ret;
-
-	ret = generic_write_checks(out, ppos, &len, S_ISBLK(inode->i_mode));
-	if (ret)
-		return ret;
-	sd.total_len = len;
-	sd.pos = *ppos;
 
 	pipe_lock(pipe);
 
@@ -1120,40 +1111,26 @@ EXPORT_SYMBOL(generic_splice_sendpage);
 /*
  * Attempt to initiate a splice from pipe to file.
  */
-long do_splice_from(struct pipe_inode_info *pipe, struct file *out,
-		    loff_t *ppos, size_t len, unsigned int flags)
+static long do_splice_from(struct pipe_inode_info *pipe, struct file *out,
+			   loff_t *ppos, size_t len, unsigned int flags)
 {
 	ssize_t (*splice_write)(struct pipe_inode_info *, struct file *,
 				loff_t *, size_t, unsigned int);
-	int ret;
 
-	if (unlikely(!(out->f_mode & FMODE_WRITE)))
-		return -EBADF;
-
-	if (unlikely(out->f_flags & O_APPEND))
-		return -EINVAL;
-
-	ret = rw_verify_area(WRITE, out, ppos, len);
-	if (unlikely(ret < 0))
-		return ret;
-
-	if (out->f_op && out->f_op->splice_write)
+	if (out->f_op->splice_write)
 		splice_write = out->f_op->splice_write;
 	else
 		splice_write = default_file_splice_write;
 
-	file_start_write(out);
-	ret = splice_write(pipe, out, ppos, len, flags);
-	file_end_write(out);
-	return ret;
+	return splice_write(pipe, out, ppos, len, flags);
 }
 
 /*
  * Attempt to initiate a splice from a file to a pipe.
  */
-long do_splice_to(struct file *in, loff_t *ppos,
-		  struct pipe_inode_info *pipe, size_t len,
-		  unsigned int flags)
+static long do_splice_to(struct file *in, loff_t *ppos,
+			 struct pipe_inode_info *pipe, size_t len,
+			 unsigned int flags)
 {
 	ssize_t (*splice_read)(struct file *, loff_t *,
 			       struct pipe_inode_info *, size_t, unsigned int);
@@ -1166,7 +1143,7 @@ long do_splice_to(struct file *in, loff_t *ppos,
 	if (unlikely(ret < 0))
 		return ret;
 
-	if (in->f_op && in->f_op->splice_read)
+	if (in->f_op->splice_read)
 		splice_read = in->f_op->splice_read;
 	else
 		splice_read = default_file_splice_read;
@@ -1194,7 +1171,7 @@ ssize_t splice_direct_to_actor(struct file *in, struct splice_desc *sd,
 	long ret, bytes;
 	umode_t i_mode;
 	size_t len;
-	int i, flags, more;
+	int i, flags;
 
 	/*
 	 * We require the input being a regular file, as we don't want to
@@ -1237,7 +1214,6 @@ ssize_t splice_direct_to_actor(struct file *in, struct splice_desc *sd,
 	 * Don't block on output, we have to drain the direct pipe.
 	 */
 	sd->flags &= ~SPLICE_F_NONBLOCK;
-	more = sd->flags & SPLICE_F_MORE;
 
 	while (len) {
 		size_t read_len;
@@ -1250,15 +1226,6 @@ ssize_t splice_direct_to_actor(struct file *in, struct splice_desc *sd,
 		read_len = ret;
 		sd->total_len = read_len;
 
-		/*
-		 * If more data is pending, set SPLICE_F_MORE
-		 * If this is the last data and SPLICE_F_MORE was not set
-		 * initially, clears it.
-		 */
-		if (read_len < len)
-			sd->flags |= SPLICE_F_MORE;
-		else if (!more)
-			sd->flags &= ~SPLICE_F_MORE;
 		/*
 		 * NOTE: nonblocking mode only applies to the input. We
 		 * must not do the output in nonblocking mode as then we
@@ -1344,13 +1311,22 @@ long do_splice_direct(struct file *in, loff_t *ppos, struct file *out,
 	};
 	long ret;
 
+	if (unlikely(!(out->f_mode & FMODE_WRITE)))
+		return -EBADF;
+
+	if (unlikely(out->f_flags & O_APPEND))
+		return -EINVAL;
+
+	ret = rw_verify_area(WRITE, out, opos, len);
+	if (unlikely(ret < 0))
+		return ret;
+
 	ret = splice_direct_to_actor(in, &sd, direct_splice_actor);
 	if (ret > 0)
 		*ppos = sd.pos;
 
 	return ret;
 }
-EXPORT_SYMBOL(do_splice_direct);
 
 static int splice_pipe_to_pipe(struct pipe_inode_info *ipipe,
 			       struct pipe_inode_info *opipe,
@@ -1400,7 +1376,19 @@ static long do_splice(struct file *in, loff_t __user *off_in,
 			offset = out->f_pos;
 		}
 
+		if (unlikely(!(out->f_mode & FMODE_WRITE)))
+			return -EBADF;
+
+		if (unlikely(out->f_flags & O_APPEND))
+			return -EINVAL;
+
+		ret = rw_verify_area(WRITE, out, &offset, len);
+		if (unlikely(ret < 0))
+			return ret;
+
+		file_start_write(out);
 		ret = do_splice_from(ipipe, out, &offset, len, flags);
+		file_end_write(out);
 
 		if (!off_out)
 			out->f_pos = offset;

@@ -9,8 +9,8 @@
 #include <subdev/bios/dp.h>
 #include <subdev/bios/gpio.h>
 #include <subdev/bios/init.h>
+#include <subdev/bios/ramcfg.h>
 #include <subdev/devinit.h>
-#include <subdev/clock.h>
 #include <subdev/i2c.h>
 #include <subdev/vga.h>
 #include <subdev/gpio.h>
@@ -300,9 +300,9 @@ init_wrauxr(struct nvbios_init *init, u32 addr, u8 data)
 static void
 init_prog_pll(struct nvbios_init *init, u32 id, u32 freq)
 {
-	struct nouveau_clock *clk = nouveau_clock(init->bios);
-	if (clk && clk->pll_set && init_exec(init)) {
-		int ret = clk->pll_set(clk, id, freq);
+	struct nouveau_devinit *devinit = nouveau_devinit(init->bios);
+	if (devinit->pll_set && init_exec(init)) {
+		int ret = devinit->pll_set(devinit, id, freq);
 		if (ret)
 			warn("failed to prog pll 0x%08x to %dkHz\n", id, freq);
 	}
@@ -392,43 +392,14 @@ init_unknown_script(struct nouveau_bios *bios)
 	return 0x0000;
 }
 
-static u16
-init_ram_restrict_table(struct nvbios_init *init)
-{
-	struct nouveau_bios *bios = init->bios;
-	struct bit_entry bit_M;
-	u16 data = 0x0000;
-
-	if (!bit_entry(bios, 'M', &bit_M)) {
-		if (bit_M.version == 1 && bit_M.length >= 5)
-			data = nv_ro16(bios, bit_M.offset + 3);
-		if (bit_M.version == 2 && bit_M.length >= 3)
-			data = nv_ro16(bios, bit_M.offset + 1);
-	}
-
-	if (data == 0x0000)
-		warn("ram restrict table not found\n");
-	return data;
-}
-
 static u8
 init_ram_restrict_group_count(struct nvbios_init *init)
 {
-	struct nouveau_bios *bios = init->bios;
-	struct bit_entry bit_M;
-
-	if (!bit_entry(bios, 'M', &bit_M)) {
-		if (bit_M.version == 1 && bit_M.length >= 5)
-			return nv_ro08(bios, bit_M.offset + 2);
-		if (bit_M.version == 2 && bit_M.length >= 3)
-			return nv_ro08(bios, bit_M.offset + 0);
-	}
-
-	return 0x00;
+	return nvbios_ramcfg_count(init->bios);
 }
 
 static u8
-init_ram_restrict_strap(struct nvbios_init *init)
+init_ram_restrict(struct nvbios_init *init)
 {
 	/* This appears to be the behaviour of the VBIOS parser, and *is*
 	 * important to cache the NV_PEXTDEV_BOOT0 on later chipsets to
@@ -439,18 +410,8 @@ init_ram_restrict_strap(struct nvbios_init *init)
 	 * in case *not* re-reading the strap causes similar breakage.
 	 */
 	if (!init->ramcfg || init->bios->version.major < 0x70)
-		init->ramcfg = init_rd32(init, 0x101000);
-	return (init->ramcfg & 0x00000003c) >> 2;
-}
-
-static u8
-init_ram_restrict(struct nvbios_init *init)
-{
-	u8  strap = init_ram_restrict_strap(init);
-	u16 table = init_ram_restrict_table(init);
-	if (table)
-		return nv_ro08(init->bios, table + strap);
-	return 0x00;
+		init->ramcfg = 0x80000000 | nvbios_ramcfg_index(init->bios);
+	return (init->ramcfg & 0x7fffffff);
 }
 
 static u8
@@ -1456,7 +1417,7 @@ init_configure_mem(struct nvbios_init *init)
 	data = init_rdvgai(init, 0x03c4, 0x01);
 	init_wrvgai(init, 0x03c4, 0x01, data | 0x20);
 
-	while ((addr = nv_ro32(bios, sdata)) != 0xffffffff) {
+	for (; (addr = nv_ro32(bios, sdata)) != 0xffffffff; sdata += 4) {
 		switch (addr) {
 		case 0x10021c: /* CKE_NORMAL */
 		case 0x1002d0: /* CMD_REFRESH */
@@ -2215,5 +2176,5 @@ nvbios_init(struct nouveau_subdev *subdev, bool execute)
 		ret = nvbios_exec(&init);
 	}
 
-	return 0;
+	return ret;
 }

@@ -349,15 +349,8 @@ int radeon_sa_bo_new(struct radeon_device *rdev,
 			/* see if we can skip over some allocations */
 		} while (radeon_sa_bo_next_hole(sa_manager, fences, tries));
 
-		for (i = 0; i < RADEON_NUM_RINGS; ++i) {
-			if (fences[i])
-				radeon_fence_ref(fences[i]);
-		}
-
 		spin_unlock(&sa_manager->wq.lock);
 		r = radeon_fence_wait_any(rdev, fences, false);
-		for (i = 0; i < RADEON_NUM_RINGS; ++i)
-			radeon_fence_unref(&fences[i]);
 		spin_lock(&sa_manager->wq.lock);
 		/* if we have nothing to wait for block */
 		if (r == -ENOENT && block) {
@@ -409,13 +402,15 @@ void radeon_sa_bo_dump_debug_info(struct radeon_sa_manager *sa_manager,
 
 	spin_lock(&sa_manager->wq.lock);
 	list_for_each_entry(i, &sa_manager->olist, olist) {
+		uint64_t soffset = i->soffset + sa_manager->gpu_addr;
+		uint64_t eoffset = i->eoffset + sa_manager->gpu_addr;
 		if (&i->olist == sa_manager->hole) {
 			seq_printf(m, ">");
 		} else {
 			seq_printf(m, " ");
 		}
-		seq_printf(m, "[0x%08x 0x%08x] size %8d",
-			   i->soffset, i->eoffset, i->eoffset - i->soffset);
+		seq_printf(m, "[0x%010llx 0x%010llx] size %8lld",
+			   soffset, eoffset, eoffset - soffset);
 		if (i->fence) {
 			seq_printf(m, " protected by 0x%016llx on ring %d",
 				   i->fence->seq, i->fence->ring);

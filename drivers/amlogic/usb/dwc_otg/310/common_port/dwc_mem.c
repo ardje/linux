@@ -29,7 +29,7 @@ struct allocation_manager {
 	uint32_t max;
 };
 
-static struct allocation_manager *manager = NULL;
+static struct allocation_manager *manager;
 
 static int add_allocation(void *ctx, uint32_t size, char const *func, int line, void *addr,
 			  int dma)
@@ -39,9 +39,8 @@ static int add_allocation(void *ctx, uint32_t size, char const *func, int line, 
 	DWC_ASSERT(manager != NULL, "manager not allocated");
 
 	a = __DWC_ALLOC_ATOMIC(manager->mem_ctx, sizeof(*a));
-	if (!a) {
+	if (!a)
 		return -DWC_E_NO_MEMORY;
-	}
 
 	a->func = __DWC_ALLOC_ATOMIC(manager->mem_ctx, DWC_STRLEN(func) + 1);
 	if (!a->func) {
@@ -63,9 +62,8 @@ static int add_allocation(void *ctx, uint32_t size, char const *func, int line, 
 	manager->total += size;
 	manager->cur += size;
 
-	if (manager->max < manager->cur) {
+	if (manager->max < manager->cur)
 		manager->max = manager->cur;
-	}
 
 	return 0;
 }
@@ -75,9 +73,8 @@ static struct allocation *find_allocation(void *ctx, void *addr)
 	struct allocation *a;
 
 	DWC_CIRCLEQ_FOREACH(a, &manager->allocations, entry) {
-		if (a->ctx == ctx && a->addr == addr) {
+		if (a->ctx == ctx && a->addr == addr)
 			return a;
-		}
 	}
 
 	return NULL;
@@ -107,14 +104,12 @@ int dwc_memory_debug_start(void *mem_ctx)
 {
 	DWC_ASSERT(manager == NULL, "Memory debugging has already started\n");
 
-	if (manager) {
+	if (manager)
 		return -DWC_E_BUSY;
-	}
 
 	manager = __DWC_ALLOC(mem_ctx, sizeof(*manager));
-	if (!manager) {
+	if (!manager)
 		return -DWC_E_NO_MEMORY;
-	}
 
 	DWC_CIRCLEQ_INIT(&manager->allocations);
 	manager->mem_ctx = mem_ctx;
@@ -166,9 +161,8 @@ void *dwc_alloc_debug(void *mem_ctx, uint32_t size, char const *func, int line)
 {
 	void *addr = __DWC_ALLOC(mem_ctx, size);
 
-	if (!addr) {
+	if (!addr)
 		return NULL;
-	}
 
 	if (add_allocation(mem_ctx, size, func, line, addr, 0)) {
 		__DWC_FREE(mem_ctx, addr);
@@ -183,9 +177,8 @@ void *dwc_alloc_atomic_debug(void *mem_ctx, uint32_t size, char const *func,
 {
 	void *addr = __DWC_ALLOC_ATOMIC(mem_ctx, size);
 
-	if (!addr) {
+	if (!addr)
 		return NULL;
-	}
 
 	if (add_allocation(mem_ctx, size, func, line, addr, 0)) {
 		__DWC_FREE(mem_ctx, addr);
@@ -206,9 +199,8 @@ void *dwc_dma_alloc_debug(void *dma_ctx, uint32_t size, dwc_dma_t *dma_addr,
 {
 	void *addr = __DWC_DMA_ALLOC(dma_ctx, size, dma_addr);
 
-	if (!addr) {
+	if (!addr)
 		return NULL;
-	}
 
 	if (add_allocation(dma_ctx, size, func, line, addr, 1)) {
 		__DWC_DMA_FREE(dma_ctx, size, addr, *dma_addr);
@@ -223,9 +215,8 @@ void *dwc_dma_alloc_atomic_debug(void *dma_ctx, uint32_t size,
 {
 	void *addr = __DWC_DMA_ALLOC_ATOMIC(dma_ctx, size, dma_addr);
 
-	if (!addr) {
+	if (!addr)
 		return NULL;
-	}
 
 	if (add_allocation(dma_ctx, size, func, line, addr, 1)) {
 		__DWC_DMA_FREE(dma_ctx, size, addr, *dma_addr);

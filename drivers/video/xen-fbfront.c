@@ -35,6 +35,7 @@
 #include <xen/interface/io/fbif.h>
 #include <xen/interface/io/protocols.h>
 #include <xen/xenbus.h>
+#include <xen/platform_pci.h>
 
 struct xenfb_info {
 	unsigned char		*fb;
@@ -643,6 +644,7 @@ static void xenfb_backend_changed(struct xenbus_device *dev,
 		break;
 
 	case XenbusStateInitWait:
+InitWait:
 		xenbus_switch_state(dev, XenbusStateConnected);
 		break;
 
@@ -653,8 +655,7 @@ static void xenfb_backend_changed(struct xenbus_device *dev,
 		 * get Connected twice here.
 		 */
 		if (dev->state != XenbusStateConnected)
-			/* no InitWait seen yet, fudge it */
-			xenbus_switch_state(dev, XenbusStateConnected);
+			goto InitWait; /* no InitWait seen yet, fudge it */
 
 		if (xenbus_scanf(XBT_NIL, info->xbdev->otherend,
 				 "request-update", "%d", &val) < 0)
@@ -692,11 +693,14 @@ static DEFINE_XENBUS_DRIVER(xenfb, ,
 
 static int __init xenfb_init(void)
 {
-	if (!xen_pv_domain())
+	if (!xen_domain())
 		return -ENODEV;
 
 	/* Nothing to do if running in dom0. */
 	if (xen_initial_domain())
+		return -ENODEV;
+
+	if (!xen_has_pv_devices())
 		return -ENODEV;
 
 	return xenbus_register_frontend(&xenfb_driver);

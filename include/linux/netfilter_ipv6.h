@@ -11,12 +11,12 @@
 
 
 #ifdef CONFIG_NETFILTER
-extern int ip6_route_me_harder(struct sk_buff *skb);
-extern __sum16 nf_ip6_checksum(struct sk_buff *skb, unsigned int hook,
-				    unsigned int dataoff, u_int8_t protocol);
+int ip6_route_me_harder(struct sk_buff *skb);
+__sum16 nf_ip6_checksum(struct sk_buff *skb, unsigned int hook,
+			unsigned int dataoff, u_int8_t protocol);
 
-extern int ipv6_netfilter_init(void);
-extern void ipv6_netfilter_fini(void);
+int ipv6_netfilter_init(void);
+void ipv6_netfilter_fini(void);
 
 /*
  * Hook functions for ipv6 to allow xt_* modules to be built-in even
@@ -24,7 +24,7 @@ extern void ipv6_netfilter_fini(void);
  */
 struct nf_ipv6_ops {
 	int (*chk_addr)(struct net *net, const struct in6_addr *addr,
-			 struct net_device *dev, int strict);
+			const struct net_device *dev, int strict);
 };
 
 extern const struct nf_ipv6_ops __rcu *nf_ipv6_ops;

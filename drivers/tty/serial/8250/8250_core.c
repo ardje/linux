@@ -686,16 +686,22 @@ static int size_fifo(struct uart_8250_port *up)
  */
 static unsigned int autoconfig_read_divisor_id(struct uart_8250_port *p)
 {
-	unsigned char old_lcr;
-	unsigned int id, old_dl;
+	unsigned char old_dll, old_dlm, old_lcr;
+	unsigned int id;
 
 	old_lcr = serial_in(p, UART_LCR);
 	serial_out(p, UART_LCR, UART_LCR_CONF_MODE_A);
-	old_dl = serial_dl_read(p);
-	serial_dl_write(p, 0);
-	id = serial_dl_read(p);
-	serial_dl_write(p, old_dl);
 
+	old_dll = serial_in(p, UART_DLL);
+	old_dlm = serial_in(p, UART_DLM);
+
+	serial_out(p, UART_DLL, 0);
+	serial_out(p, UART_DLM, 0);
+
+	id = serial_in(p, UART_DLL) | serial_in(p, UART_DLM) << 8;
+
+	serial_out(p, UART_DLL, old_dll);
+	serial_out(p, UART_DLM, old_dlm);
 	serial_out(p, UART_LCR, old_lcr);
 
 	return id;
@@ -2316,7 +2322,7 @@ serial8250_do_set_termios(struct uart_port *port, struct ktermios *termios,
 
 	if (up->capabilities & UART_CAP_FIFO && port->fifosize > 1) {
 		fcr = uart_config[port->type].fcr;
-		if (baud < 2400 || fifo_bug) {
+		if ((baud < 2400 && !up->dma) || fifo_bug) {
 			fcr &= ~UART_FCR_TRIGGER_MASK;
 			fcr |= UART_FCR_TRIGGER_1;
 		}
@@ -2350,7 +2356,7 @@ serial8250_do_set_termios(struct uart_port *port, struct ktermios *termios,
 	port->read_status_mask = UART_LSR_OE | UART_LSR_THRE | UART_LSR_DR;
 	if (termios->c_iflag & INPCK)
 		port->read_status_mask |= UART_LSR_FE | UART_LSR_PE;
-	if (termios->c_iflag & (BRKINT | PARMRK))
+	if (termios->c_iflag & (IGNBRK | BRKINT | PARMRK))
 		port->read_status_mask |= UART_LSR_BI;
 
 	/*
@@ -2425,6 +2431,24 @@ serial8250_do_set_termios(struct uart_port *port, struct ktermios *termios,
 		serial_port_out(port, UART_LCR, cval | UART_LCR_DLAB);
 
 	serial_dl_write(up, quot);
+
+	/*
+	 * XR17V35x UARTs have an extra fractional divisor register (DLD)
+	 *
+	 * We need to recalculate all of the registers, because DLM and DLL
+	 * are already rounded to a whole integer.
+	 *
+	 * When recalculating we use a 32x clock instead of a 16x clock to
+	 * allow 1-bit for rounding in the fractional part.
+	 */
+	if (up->port.type == PORT_XR17V35X) {
+		unsigned int baud_x32 = (port->uartclk * 2) / baud;
+		u16 quot = baud_x32 / 32;
+		u8 quot_frac = DIV_ROUND_CLOSEST(baud_x32 % 32, 2);
+
+		serial_dl_write(up, quot);
+		serial_port_out(port, 0x2, quot_frac & 0xf);
+	}
 
 	/*
 	 * LCR DLAB must be set to enable 64-byte FIFO mode. If the FCR
@@ -3060,7 +3084,7 @@ void serial8250_resume_port(int line)
  */
 static int serial8250_probe(struct platform_device *dev)
 {
-	struct plat_serial8250_port *p = dev->dev.platform_data;
+	struct plat_serial8250_port *p = dev_get_platdata(&dev->dev);
 	struct uart_8250_port uart;
 	int ret, i, irqflag = 0;
 

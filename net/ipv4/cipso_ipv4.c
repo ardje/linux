@@ -31,8 +31,7 @@
  * the GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program;  if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ * along with this program;  if not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -1336,8 +1335,7 @@ static int cipso_v4_parsetag_rbm(const struct cipso_v4_doi *doi_def,
 	secattr->flags |= NETLBL_SECATTR_MLS_LVL;
 
 	if (tag_len > 4) {
-		secattr->attr.mls.cat =
-		                       netlbl_secattr_catmap_alloc(GFP_ATOMIC);
+		secattr->attr.mls.cat = netlbl_secattr_catmap_alloc(GFP_ATOMIC);
 		if (secattr->attr.mls.cat == NULL)
 			return -ENOMEM;
 
@@ -1432,8 +1430,7 @@ static int cipso_v4_parsetag_enum(const struct cipso_v4_doi *doi_def,
 	secattr->flags |= NETLBL_SECATTR_MLS_LVL;
 
 	if (tag_len > 4) {
-		secattr->attr.mls.cat =
-			               netlbl_secattr_catmap_alloc(GFP_ATOMIC);
+		secattr->attr.mls.cat = netlbl_secattr_catmap_alloc(GFP_ATOMIC);
 		if (secattr->attr.mls.cat == NULL)
 			return -ENOMEM;
 
@@ -1527,8 +1524,7 @@ static int cipso_v4_parsetag_rng(const struct cipso_v4_doi *doi_def,
 	secattr->flags |= NETLBL_SECATTR_MLS_LVL;
 
 	if (tag_len > 4) {
-		secattr->attr.mls.cat =
-			               netlbl_secattr_catmap_alloc(GFP_ATOMIC);
+		secattr->attr.mls.cat = netlbl_secattr_catmap_alloc(GFP_ATOMIC);
 		if (secattr->attr.mls.cat == NULL)
 			return -ENOMEM;
 
@@ -1649,10 +1645,6 @@ int cipso_v4_validate(const struct sk_buff *skb, unsigned char **option)
 				goto validate_return_locked;
 			}
 
-		if (opt_iter + 1 == opt_len) {
-			err_offset = opt_iter;
-			goto validate_return_locked;
-		}
 		tag_len = tag[1];
 		if (tag_len > (opt_len - opt_iter)) {
 			err_offset = opt_iter + 1;

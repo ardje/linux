@@ -1,76 +1,87 @@
+/*
+ * sound/soc/aml/m8/aml_audio_hw.h
+ *
+ * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+*/
+
 #ifndef __AML_AUDIO_HW_H__
 #define __AML_AUDIO_HW_H__
-#include <mach/power_gate.h>
-#if MESON_CPU_TYPE < MESON_CPU_TYPE_MESON6
-#define AUDIO_CLK_GATE_ON(a)
-#define AUDIO_CLK_GATE_OFF(a)
-#else
+
 #define AUDIO_CLK_GATE_ON(a) CLK_GATE_ON(a)
 #define AUDIO_CLK_GATE_OFF(a) CLK_GATE_OFF(a)
-#endif
 
-typedef struct {
-    unsigned short pll;
-    unsigned short mux;
-    unsigned short devisor;
-} _aiu_clk_setting_t;
+struct _aiu_clk_setting_t {
+	unsigned short pll;
+	unsigned short mux;
+	unsigned short devisor;
+};
 
-typedef struct {
-    unsigned short chstat0_l;
-    unsigned short chstat1_l;
-    unsigned short chstat0_r;
-    unsigned short chstat1_r;
-} _aiu_958_channel_status_t;
+struct _aiu_958_channel_status_t {
+	unsigned short chstat0_l;
+	unsigned short chstat1_l;
+	unsigned short chstat0_r;
+	unsigned short chstat1_r;
+};
 
-typedef struct {
-    /* audio clock */
-    unsigned short clock;
-    /* analog output */
-    unsigned short i2s_mode;
-    unsigned short i2s_dac_mode;
-    unsigned short i2s_preemphsis;
-    /* digital output */
-    unsigned short i958_buf_start_addr;
-    unsigned short i958_buf_blksize;
-    unsigned short i958_int_flag;
-    unsigned short i958_mode;
-    unsigned short i958_sync_mode;
-    unsigned short i958_preemphsis;
-    unsigned short i958_copyright;
-    unsigned short bpf;
-    unsigned short brst;
-    unsigned short length;
-    unsigned short paddsize;
-    _aiu_958_channel_status_t chan_status;
-} audio_output_config_t;
+struct audio_output_config_t {
+	/* audio clock */
+	unsigned short clock;
+	/* analog output */
+	unsigned short i2s_mode;
+	unsigned short i2s_dac_mode;
+	unsigned short i2s_preemphsis;
+	/* digital output */
+	unsigned short i958_buf_start_addr;
+	unsigned short i958_buf_blksize;
+	unsigned short i958_int_flag;
+	unsigned short i958_mode;
+	unsigned short i958_sync_mode;
+	unsigned short i958_preemphsis;
+	unsigned short i958_copyright;
+	unsigned short bpf;
+	unsigned short brst;
+	unsigned short length;
+	unsigned short paddsize;
+	struct _aiu_958_channel_status_t chan_status;
+};
 
-typedef struct {
-    unsigned short int_flag;
-    unsigned short bpf;
-    unsigned short brst;
-    unsigned short length;
-    unsigned short paddsize;
-    _aiu_958_channel_status_t *chan_stat;
-} _aiu_958_raw_setting_t;
+struct _aiu_958_raw_setting_t {
+	unsigned short int_flag;
+	unsigned short bpf;
+	unsigned short brst;
+	unsigned short length;
+	unsigned short paddsize;
+	struct _aiu_958_channel_status_t *chan_stat;
+};
 
 enum {
 	I2SIN_MASTER_MODE = 0,
-	I2SIN_SLAVE_MODE  =   1<<0,
-	SPDIFIN_MODE   = 1<<1,
+	I2SIN_SLAVE_MODE = 1 << 0,
+	SPDIFIN_MODE = 1 << 1,
 };
 enum {
-	AML_AUDIO_NA = 0,	
-	AML_AUDIO_SPDIFIN = 1<<0,
-	AML_AUDIO_SPDIFOUT = 1<<1,
-	AML_AUDIO_I2SIN = 1<<2,
-	AML_AUDIO_I2SOUT = 1<<3,
-	AML_AUDIO_PCMIN = 1<<4,
-	AML_AUDIO_PCMOUT = 1<<5,				
+	AML_AUDIO_NA = 0,
+	AML_AUDIO_SPDIFIN = 1 << 0,
+	AML_AUDIO_SPDIFOUT = 1 << 1,
+	AML_AUDIO_I2SIN = 1 << 2,
+	AML_AUDIO_I2SOUT = 1 << 3,
+	AML_AUDIO_PCMIN = 1 << 4,
+	AML_AUDIO_PCMOUT = 1 << 5,
 };
 
 #define AUDIO_CLK_256FS             0
 #define AUDIO_CLK_384FS             1
-#define AUDIO_CLK_128FS             2
 
 #define AUDIO_CLK_FREQ_192  0
 #define AUDIO_CLK_FREQ_1764 1
@@ -86,8 +97,6 @@ enum {
 #define AUDIO_CLK_FREQ_16		10
 #define AUDIO_CLK_FREQ_22		11
 #define AUDIO_CLK_FREQ_24		12
-#define AUDIO_CLK_FREQ_3528     13
-#define AUDIO_CLK_FREQ_384      14
 
 #define AIU_958_MODE_RAW    0
 #define AIU_958_MODE_PCM16  1
@@ -103,10 +112,14 @@ enum {
 #define AUDIO_ALGOUT_DAC_FORMAT_LEFT_JUSTIFY    1
 
 extern unsigned ENABLE_IEC958;
+extern unsigned IEC958_MODE;
+extern unsigned I2S_MODE;
+extern unsigned audio_in_source;
 
+void set_i2s_source(unsigned source);
 void audio_set_aiubuf(u32 addr, u32 size, unsigned int channel);
-void audio_set_958outbuf(u32 addr, u32 size, int channels, int flag);
-void audio_in_i2s_set_buf(u32 addr, u32 size,u32 i2s_mode, u32 i2s_sync);
+void audio_set_958outbuf(u32 addr, u32 size, int flag);
+void audio_in_i2s_set_buf(u32 addr, u32 size, u32 i2s_mode, u32 i2s_sync);
 void audio_in_spdif_set_buf(u32 addr, u32 size);
 void audio_in_i2s_enable(int flag);
 void audio_in_spdif_enable(int flag);
@@ -114,8 +127,8 @@ unsigned int audio_in_i2s_rd_ptr(void);
 unsigned int audio_in_i2s_wr_ptr(void);
 unsigned int audio_in_spdif_wr_ptr(void);
 void audio_set_i2s_mode(u32 mode);
-void audio_set_i2s_clk(unsigned freq, unsigned fs_config, unsigned mpll);
-void audio_set_958_clk(unsigned freq, unsigned fs_config);
+void audio_set_i2s_clk_div(void);
+void audio_set_spdif_clk_div(void);
 void audio_enable_ouput(int flag);
 unsigned int read_i2s_rd_ptr(void);
 void audio_i2s_unmute(void);
@@ -125,7 +138,7 @@ void aml_audio_i2s_mute(void);
 void audio_util_set_dac_format(unsigned format);
 void audio_util_set_dac_i2s_format(unsigned format);
 void audio_util_set_dac_958_format(unsigned format);
-void audio_set_958_mode(unsigned mode, _aiu_958_raw_setting_t * set);
+void audio_set_958_mode(unsigned mode, struct _aiu_958_raw_setting_t *set);
 unsigned int read_i2s_mute_swap_reg(void);
 void audio_i2s_swap_left_right(unsigned int flag);
 int if_audio_out_enable(void);
@@ -140,16 +153,15 @@ unsigned int read_iec958_rd_ptr(void);
 void audio_in_spdif_enable(int flag);
 unsigned audio_spdifout_pg_enable(unsigned char enable);
 unsigned audio_aiu_pg_enable(unsigned char enable);
+void audio_mute_left_right(unsigned flag);
+void audio_i2s_958_same_source(unsigned int same);
 
-#include "mach/cpu.h"
+extern unsigned int IEC958_mode_codec;
+extern unsigned int clk81;
 
 /*OVERCLOCK == 1,our SOC privide 512fs mclk,OVERCLOCK == 0 ,256fs*/
-#if MESON_CPU_TYPE >= MESON_CPU_TYPE_MESON6TV
 #define OVERCLOCK 0
-#define IEC958_OVERCLOCK 0
-#else
-#define OVERCLOCK 1
-#endif
+#define IEC958_OVERCLOCK 1
 
 #if (OVERCLOCK == 1)
 #define MCLKFS_RATIO 512
@@ -157,11 +169,10 @@ unsigned audio_aiu_pg_enable(unsigned char enable);
 #define MCLKFS_RATIO 256
 #endif
 
-#define I2S_PLL_SRC         1   // MPLL0
-#define MPLL_I2S_CNTL		HHI_MPLL_CNTL7  
+#define I2S_PLL_SRC         1	/* MPLL0 */
+#define MPLL_I2S_CNTL		HHI_MPLL_MP0
 
-#define I958_PLL_SRC        2   // MPLL1
-#define MPLL_958_CNTL		HHI_MPLL_CNTL8
-
+#define I958_PLL_SRC        2	/* MPLL1 */
+#define MPLL_958_CNTL		HHI_MPLL_MP1
 
 #endif

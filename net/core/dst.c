@@ -280,13 +280,10 @@ void dst_release(struct dst_entry *dst)
 {
 	if (dst) {
 		int newrefcnt;
-		unsigned short nocache = dst->flags & DST_NOCACHE;
 
 		newrefcnt = atomic_dec_return(&dst->__refcnt);
-		if (unlikely(newrefcnt < 0))
-			net_warn_ratelimited("%s: dst:%p refcnt:%d\n",
-					     __func__, dst, newrefcnt);
-		if (!newrefcnt && unlikely(nocache))
+		WARN_ON(newrefcnt < 0);
+		if (unlikely(dst->flags & DST_NOCACHE) && !newrefcnt)
 			call_rcu(&dst->rcu_head, dst_destroy_rcu);
 	}
 }
@@ -381,7 +378,7 @@ static void dst_ifdown(struct dst_entry *dst, struct net_device *dev,
 static int dst_dev_event(struct notifier_block *this, unsigned long event,
 			 void *ptr)
 {
-	struct net_device *dev = ptr;
+	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
 	struct dst_entry *dst, *last = NULL;
 
 	switch (event) {

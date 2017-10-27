@@ -1,54 +1,54 @@
 /******************** (C) COPYRIGHT 2012 STMicroelectronics ********************
-*
-* File Name		: l3gd20_gyr_sysfs.c
-* Authors		: MEMS Motion Sensors Products Div- Application Team
-*			: Matteo Dameno (matteo.dameno@st.com)
-*			: Denis Ciocca (denis.ciocca@st.com)
-*			: Both authors are willing to be considered the contact
-*			: and update points for the driver.
-* Version		: V 1.2.1 sysfs
-* Date			: 2012/Jul/10
-* Description		: L3GD20 digital output gyroscope sensor API
-*
-********************************************************************************
-*
-* This program is free software; you can redistribute it and/or modify
-* it under the terms of the GNU General Public License version 2 as
-* published by the Free Software Foundation.
-*
-* THE PRESENT SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES
-* OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED, FOR THE SOLE
-* PURPOSE TO SUPPORT YOUR APPLICATION DEVELOPMENT.
-* AS A RESULT, STMICROELECTRONICS SHALL NOT BE HELD LIABLE FOR ANY DIRECT,
-* INDIRECT OR CONSEQUENTIAL DAMAGES WITH RESPECT TO ANY CLAIMS ARISING FROM THE
-* CONTENT OF SUCH SOFTWARE AND/OR THE USE MADE BY CUSTOMERS OF THE CODING
-* INFORMATION CONTAINED HEREIN IN CONNECTION WITH THEIR PRODUCTS.
-*
-********************************************************************************
-* REVISON HISTORY
-*
-* VERSION	| DATE		| AUTHORS	  | DESCRIPTION
-* 1.0		| 2010/May/02	| Carmine Iascone | First Release
-* 1.1.3		| 2011/Jun/24	| Matteo Dameno	  | Corrects ODR Bug
-* 1.1.4		| 2011/Sep/02	| Matteo Dameno	  | SMB Bus Mng,
-*		|		|		  | forces BDU setting
-* 1.1.5		| 2011/Sep/24	| Matteo Dameno	  | Introduces FIFO Feat.
-* 1.1.5.2	| 2011/Nov/11	| Matteo Dameno	  | enable gpio_int to be
-*		|		|		  | passed as parameter at
-*		|		|		  | module loading time;
-*		|		|		  | corrects polling
-*		|		|		  | bug at end of probing;
-* 1.1.5.3	| 2011/Dec/20	| Matteo Dameno	  | corrects error in
-*		|		|		  | I2C SADROOT; Modifies
-*		|		|		  | resume suspend func.
-* 1.1.5.4	| 2012/Jan/09	| Matteo Dameno	  | moved under input/misc;
-* 1.1.5.5	| 2012/Mar/30	| Matteo Dameno	  | moved watermark, use_smbus,
-*		|		|		  | fifomode @ struct foo_status
-*		|		|		  | sysfs range input format
-*		|		|		  | changed to decimal
-* 1.2		| 2012/Jul/10	| Denis Ciocca	  | input_poll_dev removal
-* 1.2.1		| 2012/Jul/10	| Denis Ciocca	  | added high resolution timers
-*******************************************************************************/
+ *
+ * File Name		: l3gd20_gyr_sysfs.c
+ * Authors		: MEMS Motion Sensors Products Div- Application Team
+ *			: Matteo Dameno (matteo.dameno@st.com)
+ *			: Denis Ciocca (denis.ciocca@st.com)
+ *			: Both authors are willing to be considered the contact
+ *			: and update points for the driver.
+ * Version		: V 1.2.1 sysfs
+ * Date			: 2012/Jul/10
+ * Description		: L3GD20 digital output gyroscope sensor API
+ *
+ *******************************************************************************
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * THE PRESENT SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES
+ * OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED, FOR THE SOLE
+ * PURPOSE TO SUPPORT YOUR APPLICATION DEVELOPMENT.
+ * AS A RESULT, STMICROELECTRONICS SHALL NOT BE HELD LIABLE FOR ANY DIRECT,
+ * INDIRECT OR CONSEQUENTIAL DAMAGES WITH RESPECT TO ANY CLAIMS ARISING FROM THE
+ * CONTENT OF SUCH SOFTWARE AND/OR THE USE MADE BY CUSTOMERS OF THE CODING
+ * INFORMATION CONTAINED HEREIN IN CONNECTION WITH THEIR PRODUCTS.
+ *
+ *******************************************************************************
+ * REVISON HISTORY
+ *
+ * VERSION	| DATE		| AUTHORS	  | DESCRIPTION
+ * 1.0		| 2010/May/02	| Carmine Iascone | First Release
+ * 1.1.3		| 2011/Jun/24	| Matteo Dameno	  | Corrects ODR Bug
+ * 1.1.4		| 2011/Sep/02	| Matteo Dameno	  | SMB Bus Mng,
+ *		|		|		  | forces BDU setting
+ * 1.1.5		| 2011/Sep/24	| Matteo Dameno	 | Introduces FIFO Feat.
+ * 1.1.5.2	| 2011/Nov/11	| Matteo Dameno	  | enable gpio_int to be
+ *		|		|		  | passed as parameter at
+ *		|		|		  | module loading time;
+ *		|		|		  | corrects polling
+ *		|		|		  | bug at end of probing;
+ * 1.1.5.3	| 2011/Dec/20	| Matteo Dameno	  | corrects error in
+ *		|		|		  | I2C SADROOT; Modifies
+ *		|		|		  | resume suspend func.
+ * 1.1.5.4	| 2012/Jan/09	| Matteo Dameno	  | moved under input/misc;
+ * 1.1.5.5	| 2012/Mar/30	| Matteo Dameno	  | moved watermark, use_smbus,
+ *		|		|		  | fifomode @ struct foo_status
+ *		|		|		  | sysfs range input format
+ *		|		|		  | changed to decimal
+ * 1.2		| 2012/Jul/10	| Denis Ciocca	  | input_poll_dev removal
+ * 1.2.1	| 2012/Jul/10	| Denis Ciocca | added high resolution timers
+ ******************************************************************************/
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -64,8 +64,14 @@
 #include <linux/earlysuspend.h>
 
 
-#include <linux/sensor/l3gd20.h>
-#include <linux/sensor/sensor_common.h> 
+#include <linux/amlogic/sensor/l3gd20.h>
+#include <linux/amlogic/sensor/sensor_common.h>
+
+#if 1
+#define dprintk(x...) printk(x)
+#else
+#define dprintk(x...)
+#endif
 
 /* Maximum polled-device-reported rot speed value value in dps */
 #define FS_MAX		32768
@@ -229,30 +235,30 @@ struct l3gd20_gyr_status {
 	ktime_t ktime;
 	struct work_struct polling_task;
 
-	int is_sleep ;
+	int is_sleep;
 #ifdef CONFIG_HAS_EARLYSUSPEND
-       struct early_suspend early_suspend;
+	struct early_suspend early_suspend;
 #endif
 };
-static struct l3gd20_gyr_status * g_stat = NULL;
+static struct l3gd20_gyr_status *g_stat;
 
 static void l3gd20_gyr_early_suspend(struct early_suspend *h);
 static void l3gd20_gyr_late_resume(struct early_suspend *h);
 
 static int l3gd20_gyr_i2c_read(struct l3gd20_gyr_status *stat, u8 *buf,
-									int len)
+		int len)
 {
 	int ret;
 	u8 reg = buf[0];
 	u8 cmd = reg;
 
-/*
-	if (len > sizeof(buf))
-			dev_err(&stat->client->dev,
-				"read error insufficient buffer length: "
-				"len:%d, buf size=%d\n",
-				len, sizeof(buf));
-*/
+	/*
+	   if (len > sizeof(buf))
+	   dev_err(&stat->client->dev,
+	   "read error insufficient buffer length: "
+	   "len:%d, buf size=%d\n",
+	   len, sizeof(buf));
+	 */
 	if (len > 1)
 		cmd = (I2C_AUTO_INCREMENT | reg);
 	if (stat->use_smbus) {
@@ -261,24 +267,25 @@ static int l3gd20_gyr_i2c_read(struct l3gd20_gyr_status *stat, u8 *buf,
 			buf[0] = ret & 0xff;
 #ifdef DEBUG
 			dev_warn(&stat->client->dev,
-				"i2c_smbus_read_byte_data: ret=0x%02x, len:%d ,"
+				"i2c_smbus_read_byte_data: ret=0x%02x, len:%d",
+				ret, len,
 				"command=0x%02x, buf[0]=0x%02x\n",
-				ret, len, cmd , buf[0]);
+				cmd , buf[0]);
 #endif
 		} else if (len > 1) {
 			ret = i2c_smbus_read_i2c_block_data(stat->client,
-								cmd, len, buf);
+					cmd, len, buf);
 #ifdef DEBUG
 			dev_warn(&stat->client->dev,
-				"i2c_smbus_read_i2c_block_data: ret:%d len:%d, "
-				"command=0x%02x, ",
-				ret, len, cmd);
+				"i2c_smbus_read_i2c_block_data: ret:%d len:%d,",
+				ret, len,
+				"command=0x%02x", cmd);
 			unsigned int ii;
 			for (ii = 0; ii < len; ii++)
-				printk(KERN_DEBUG "buf[%d]=0x%02x,",
-								ii, buf[ii]);
+				dprintk(KERN_DEBUG "buf[%d]=0x%02x,",
+						ii, buf[ii]);
 
-			printk("\n");
+			dprintk("\n");
 #endif
 		} else
 			ret = -1;
@@ -300,7 +307,7 @@ static int l3gd20_gyr_i2c_read(struct l3gd20_gyr_status *stat, u8 *buf,
 }
 
 static int l3gd20_gyr_i2c_write(struct l3gd20_gyr_status *stat, u8 *buf,
-									int len)
+		int len)
 {
 	int ret;
 	u8 reg, value;
@@ -314,28 +321,29 @@ static int l3gd20_gyr_i2c_write(struct l3gd20_gyr_status *stat, u8 *buf,
 	if (stat->use_smbus) {
 		if (len == 1) {
 			ret = i2c_smbus_write_byte_data(stat->client,
-								reg, value);
+					reg, value);
 #ifdef DEBUG
 			dev_warn(&stat->client->dev,
-				"i2c_smbus_write_byte_data: ret=%d, len:%d, "
+				"i2c_smbus_write_byte_data: ret=%d, len:%d,",
+				ret, len,
 				"command=0x%02x, value=0x%02x\n",
-				ret, len, reg , value);
+				 reg , value);
 #endif
 			return ret;
 		} else if (len > 1) {
 			ret = i2c_smbus_write_i2c_block_data(stat->client,
-							reg, len, buf + 1);
+					reg, len, buf + 1);
 #ifdef DEBUG
 			dev_warn(&stat->client->dev,
-				"i2c_smbus_write_i2c_block_data: ret=%d, "
-				"len:%d, command=0x%02x, ",
-				ret, len, reg);
+				"i2c_smbus_write_i2c_block_data: ret=%d,",
+				ret, len,
+				"len:%d, command=0x%02x", reg);
 			unsigned int ii;
 			for (ii = 0; ii < (len + 1); ii++)
-				printk(KERN_DEBUG "value[%d]=0x%02x,",
-								ii, buf[ii]);
+				dprintk(KERN_DEBUG "value[%d]=0x%02x,",
+						ii, buf[ii]);
 
-			printk("\n");
+			dprintk("\n");
 #endif
 			return ret;
 		}
@@ -351,19 +359,19 @@ static int l3gd20_gyr_register_write(struct l3gd20_gyr_status *stat,
 {
 	int err;
 
-		/* Sets configuration register at reg_address
-		 *  NOTE: this is a straight overwrite  */
-		buf[0] = reg_address;
-		buf[1] = new_value;
-		err = l3gd20_gyr_i2c_write(stat, buf, 1);
-		if (err < 0)
-			return err;
+	/* Sets configuration register at reg_address
+	 *  NOTE: this is a straight overwrite  */
+	buf[0] = reg_address;
+	buf[1] = new_value;
+	err = l3gd20_gyr_i2c_write(stat, buf, 1);
+	if (err < 0)
+		return err;
 
 	return err;
 }
 
 static int l3gd20_gyr_register_read(struct l3gd20_gyr_status *stat,
-							u8 *buf, u8 reg_address)
+		u8 *buf, u8 reg_address)
 {
 
 	int err = -1;
@@ -373,7 +381,7 @@ static int l3gd20_gyr_register_read(struct l3gd20_gyr_status *stat,
 }
 
 static int l3gd20_gyr_register_update(struct l3gd20_gyr_status *stat,
-			u8 *buf, u8 reg_address, u8 mask, u8 new_bit_values)
+		u8 *buf, u8 reg_address, u8 mask, u8 new_bit_values)
 {
 	int err = -1;
 	u8 init_val;
@@ -390,7 +398,7 @@ static int l3gd20_gyr_register_update(struct l3gd20_gyr_status *stat,
 
 
 static int l3gd20_gyr_update_watermark(struct l3gd20_gyr_status *stat,
-								u8 watermark)
+		u8 watermark)
 {
 	int res = 0;
 	u8 buf[2];
@@ -399,25 +407,25 @@ static int l3gd20_gyr_update_watermark(struct l3gd20_gyr_status *stat,
 	mutex_lock(&stat->lock);
 	new_value = (watermark % 0x20);
 	res = l3gd20_gyr_register_update(stat, buf, FIFO_CTRL_REG,
-			 FIFO_WATERMARK_MASK, new_value);
+			FIFO_WATERMARK_MASK, new_value);
 	if (res < 0) {
 		dev_err(&stat->client->dev, "failed to update watermark\n");
 		return res;
 	}
 	dev_dbg(&stat->client->dev, "%s new_value:0x%02x,watermark:0x%02x\n",
-						__func__, new_value, watermark);
+			__func__, new_value, watermark);
 
 	stat->resume_state[RES_FIFO_CTRL_REG] =
 		((FIFO_WATERMARK_MASK & new_value) |
-		(~FIFO_WATERMARK_MASK &
-				stat->resume_state[RES_FIFO_CTRL_REG]));
+		 (~FIFO_WATERMARK_MASK &
+		  stat->resume_state[RES_FIFO_CTRL_REG]));
 	stat->watermark = new_value;
 	mutex_unlock(&stat->lock);
 	return res;
 }
 
 static int l3gd20_gyr_update_fifomode(struct l3gd20_gyr_status *stat,
-								u8 fifomode)
+		u8 fifomode)
 {
 	int res;
 	u8 buf[2];
@@ -425,19 +433,19 @@ static int l3gd20_gyr_update_fifomode(struct l3gd20_gyr_status *stat,
 
 	new_value = fifomode;
 	res = l3gd20_gyr_register_update(stat, buf, FIFO_CTRL_REG,
-					FIFO_MODE_MASK, new_value);
+			FIFO_MODE_MASK, new_value);
 	if (res < 0) {
 		dev_err(&stat->client->dev, "failed to update fifoMode\n");
 		return res;
 	}
 	/*
 	dev_dbg(&stat->client->dev, "new_value:0x%02x,prev fifomode:0x%02x\n",
-				__func__, new_value, stat->fifomode);
+	__func__, new_value, stat->fifomode);
 	 */
 	stat->resume_state[RES_FIFO_CTRL_REG] =
 		((FIFO_MODE_MASK & new_value) |
-		(~FIFO_MODE_MASK &
-				stat->resume_state[RES_FIFO_CTRL_REG]));
+		 (~FIFO_MODE_MASK &
+		  stat->resume_state[RES_FIFO_CTRL_REG]));
 	stat->fifomode = new_value;
 
 	return res;
@@ -455,13 +463,13 @@ static int l3gd20_gyr_fifo_reset(struct l3gd20_gyr_status *stat)
 	res = l3gd20_gyr_update_fifomode(stat, oldmode);
 	if (res >= 0)
 		dev_dbg(&stat->client->dev, "%s fifo reset to: 0x%02x\n",
-							__func__, oldmode);
+				__func__, oldmode);
 
 	return res;
 }
 
 static int l3gd20_gyr_fifo_hwenable(struct l3gd20_gyr_status *stat,
-								u8 enable)
+		u8 enable)
 {
 	int res;
 	u8 buf[2];
@@ -473,37 +481,36 @@ static int l3gd20_gyr_fifo_hwenable(struct l3gd20_gyr_status *stat,
 			FIFO_ENABLE, set);
 	if (res < 0) {
 		dev_err(&stat->client->dev, "fifo_hw switch to:0x%02x failed\n",
-									set);
+				set);
 		return res;
 	}
 	stat->resume_state[RES_CTRL_REG5] =
 		((FIFO_ENABLE & set) |
-		(~FIFO_ENABLE & stat->resume_state[RES_CTRL_REG5]));
+		 (~FIFO_ENABLE & stat->resume_state[RES_CTRL_REG5]));
 	dev_dbg(&stat->client->dev, "%s set to:0x%02x\n", __func__, set);
 	return res;
 }
 
 static int l3gd20_gyr_manage_int2settings(struct l3gd20_gyr_status *stat,
-								u8 fifomode)
+		u8 fifomode)
 {
 	int res;
 	u8 buf[2];
 	bool enable_fifo_hw;
 	bool recognized_mode = false;
 	u8 int2bits = I2_NONE;
-/*
-	if (stat->polling_enabled) {
-		fifomode = FIFO_MODE_BYPASS;
-		dbg_warn(&stat->client->dev, "in polling mode, fifo mode forced"
-							" to BYPASS mode\n");
-	}
-*/
+	/*
+	   if (stat->polling_enabled) {
+	   fifomode = FIFO_MODE_BYPASS;
+	   dbg_warn(&stat->client->dev, "in polling mode, fifo mode forced"
+	   " to BYPASS mode\n");
+	   }
+	 */
 
 
 	switch (fifomode) {
 	case FIFO_MODE_FIFO:
 		recognized_mode = true;
-
 		if (stat->polling_enabled) {
 			int2bits = I2_NONE;
 			enable_fifo_hw = false;
@@ -512,63 +519,63 @@ static int l3gd20_gyr_manage_int2settings(struct l3gd20_gyr_status *stat,
 			enable_fifo_hw = true;
 		}
 		res = l3gd20_gyr_register_update(stat, buf, CTRL_REG3,
-					I2_MASK, int2bits);
+				I2_MASK, int2bits);
 		if (res < 0) {
-			dev_err(&stat->client->dev, "%s : failed to update "
-							"CTRL_REG3:0x%02x\n",
-							__func__, fifomode);
+			dev_err(&stat->client->dev,
+				"%s:fail to update CTRL_REG3:0x%02x\n",
+				__func__, fifomode);
 			goto err_mutex_unlock;
 		}
 		stat->resume_state[RES_CTRL_REG3] =
 			((I2_MASK & int2bits) |
-			(~(I2_MASK) & stat->resume_state[RES_CTRL_REG3]));
+			 (~(I2_MASK)
+			  & stat->resume_state[RES_CTRL_REG3]));
 		/* enable_fifo_hw = true; */
 		break;
 
 	case FIFO_MODE_BYPASS:
 		recognized_mode = true;
-
 		if (stat->polling_enabled)
 			int2bits = I2_NONE;
 		else
 			int2bits = I2_DRDY;
 
 		res = l3gd20_gyr_register_update(stat, buf, CTRL_REG3,
-					I2_MASK, int2bits);
+				I2_MASK, int2bits);
 		if (res < 0) {
-			dev_err(&stat->client->dev, "%s : failed to update"
-						" to CTRL_REG3:0x%02x\n",
-							__func__, fifomode);
+			dev_err(&stat->client->dev,
+				"%s : failed to update to CTRL_REG3:0x%02x\n",
+				__func__, fifomode);
 			goto err_mutex_unlock;
 		}
 		stat->resume_state[RES_CTRL_REG3] =
 			((I2_MASK & int2bits) |
-			(~I2_MASK & stat->resume_state[RES_CTRL_REG3]));
+			 (~I2_MASK & stat->resume_state[RES_CTRL_REG3]));
 		enable_fifo_hw = false;
 		break;
 
 	default:
 		recognized_mode = false;
 		res = l3gd20_gyr_register_update(stat, buf, CTRL_REG3,
-					I2_MASK, I2_NONE);
+				I2_MASK, I2_NONE);
 		if (res < 0) {
-			dev_err(&stat->client->dev, "%s : failed to update "
-						"CTRL_REG3:0x%02x\n",
-						__func__, fifomode);
+			dev_err(&stat->client->dev,
+				"%s : failed to update CTRL_REG3:0x%02x\n",
+				__func__, fifomode);
 			goto err_mutex_unlock;
 		}
 		enable_fifo_hw = false;
 		stat->resume_state[RES_CTRL_REG3] =
 			((I2_MASK & 0x00) |
-			(~I2_MASK & stat->resume_state[RES_CTRL_REG3]));
+			 (~I2_MASK & stat->resume_state[RES_CTRL_REG3]));
 		break;
 
 	}
 	if (recognized_mode) {
 		res = l3gd20_gyr_update_fifomode(stat, fifomode);
 		if (res < 0) {
-			dev_err(&stat->client->dev, "%s : failed to "
-						"set fifoMode\n", __func__);
+			dev_err(&stat->client->dev,
+				"%s : failed to set fifoMode\n", __func__);
 			goto err_mutex_unlock;
 		}
 	}
@@ -581,43 +588,43 @@ err_mutex_unlock:
 
 
 static int l3gd20_gyr_update_fs_range(struct l3gd20_gyr_status *stat,
-							u8 new_fs)
+		u8 new_fs)
 {
-	int res ;
+	int res;
 	u8 buf[2];
 
 	u32 sensitivity;
 
-	switch(new_fs) {
-		case L3GD20_GYR_FS_250DPS:
-			sensitivity = SENSITIVITY_250;
-			break;
-		case L3GD20_GYR_FS_500DPS:
-			sensitivity = SENSITIVITY_500;
-			break;
-		case L3GD20_GYR_FS_2000DPS:
-			sensitivity = SENSITIVITY_2000;
-			break;
-		default:
-			dev_err(&stat->client->dev, "invalid g range "
-						"requested: %u\n", new_fs);
-			return -EINVAL;
+	switch (new_fs) {
+	case L3GD20_GYR_FS_250DPS:
+		sensitivity = SENSITIVITY_250;
+		break;
+	case L3GD20_GYR_FS_500DPS:
+		sensitivity = SENSITIVITY_500;
+		break;
+	case L3GD20_GYR_FS_2000DPS:
+		sensitivity = SENSITIVITY_2000;
+		break;
+	default:
+		dev_err(&stat->client->dev,
+			"invalid g range requested: %u\n", new_fs);
+		return -EINVAL;
 	}
 
 
 	buf[0] = CTRL_REG4;
 
 	res = l3gd20_gyr_register_update(stat, buf, CTRL_REG4,
-							FS_MASK, new_fs);
+			FS_MASK, new_fs);
 
 	if (res < 0) {
 		dev_err(&stat->client->dev, "%s : failed to update fs:0x%02x\n",
-							__func__, new_fs);
+				__func__, new_fs);
 		return res;
 	}
 	stat->resume_state[RES_CTRL_REG4] =
 		((FS_MASK & new_fs) |
-		(~FS_MASK & stat->resume_state[RES_CTRL_REG4]));
+		 (~FS_MASK & stat->resume_state[RES_CTRL_REG4]));
 
 	stat->sensitivity = sensitivity;
 	return res;
@@ -625,7 +632,7 @@ static int l3gd20_gyr_update_fs_range(struct l3gd20_gyr_status *stat,
 
 
 static int l3gd20_gyr_update_odr(struct l3gd20_gyr_status *stat,
-			unsigned int poll_interval_ms)
+		unsigned int poll_interval_ms)
 {
 	int err = -1;
 	int i;
@@ -655,7 +662,7 @@ static int l3gd20_gyr_update_odr(struct l3gd20_gyr_status *stat,
 
 /* gyroscope data readout */
 static int l3gd20_gyr_get_data(struct l3gd20_gyr_status *stat,
-			     struct l3gd20_gyr_triple *data)
+		struct l3gd20_gyr_triple *data)
 {
 	int err;
 	unsigned char gyro_out[6];
@@ -673,28 +680,29 @@ static int l3gd20_gyr_get_data(struct l3gd20_gyr_status *stat,
 	hw_d[1] = (s32) ((s16)((gyro_out[3]) << 8) | gyro_out[2]);
 	hw_d[2] = (s32) ((s16)((gyro_out[5]) << 8) | gyro_out[4]);
 
-	//hw_d[0] = hw_d[0] * stat->sensitivity;
-	//hw_d[1] = hw_d[1] * stat->sensitivity;
-	//hw_d[2] = hw_d[2] * stat->sensitivity;
+	/* hw_d[0] = hw_d[0] * stat->sensitivity; */
+	/* hw_d[1] = hw_d[1] * stat->sensitivity; */
+	/* hw_d[2] = hw_d[2] * stat->sensitivity; */
 
 	data->x = ((stat->pdata->negate_x) ? (-hw_d[stat->pdata->axis_map_x])
-		   : (hw_d[stat->pdata->axis_map_x]));
+			: (hw_d[stat->pdata->axis_map_x]));
 	data->y = ((stat->pdata->negate_y) ? (-hw_d[stat->pdata->axis_map_y])
-		   : (hw_d[stat->pdata->axis_map_y]));
+			: (hw_d[stat->pdata->axis_map_y]));
 	data->z = ((stat->pdata->negate_z) ? (-hw_d[stat->pdata->axis_map_z])
-		   : (hw_d[stat->pdata->axis_map_z]));
+			: (hw_d[stat->pdata->axis_map_z]));
 
 #ifdef DEBUG
 	/* dev_info(&stat->client->dev, "gyro_out: x = %d, y = %d, z = %d\n",
-		data->x, data->y, data->z); */
+	   data->x, data->y, data->z); */
 #endif
 	return err;
 }
 
 static void l3gd20_gyr_report_values(struct l3gd20_gyr_status *stat,
-					struct l3gd20_gyr_triple *data)
+		struct l3gd20_gyr_triple *data)
 {
-	aml_sensor_report_gyr(stat->client, stat->input_dev, data->x, data->y, data->z);
+	aml_sensor_report_gyr(stat->client, stat->input_dev,
+		data->x, data->y, data->z);
 #if 0
 	input_report_abs(stat->input_dev, ABS_X, data->x);
 	input_report_abs(stat->input_dev, ABS_Y, data->y);
@@ -718,16 +726,16 @@ static int l3gd20_gyr_hw_init(struct l3gd20_gyr_status *stat)
 	buf[5] = stat->resume_state[RES_CTRL_REG5];
 
 	err = l3gd20_gyr_i2c_write(stat, buf, 5);
-	if (err < 0){
-		printk("%s, l3gd20_gyr_i2c_write 5 err\n");
+	if (err < 0) {
+		dprintk("l3gd20_gyr_i2c_write 5 err\n");
 		return err;
 	}
 
 	buf[0] = (FIFO_CTRL_REG);
 	buf[1] = stat->resume_state[RES_FIFO_CTRL_REG];
 	err = l3gd20_gyr_i2c_write(stat, buf, 1);
-	if (err < 0){
-		printk("%s, l3gd20_gyr_i2c_write 1 err\n");
+	if (err < 0) {
+		dprintk("l3gd20_gyr_i2c_write 1 err\n");
 		return err;
 	}
 	stat->hw_initialized = 1;
@@ -791,12 +799,12 @@ static int l3gd20_gyr_device_power_on(struct l3gd20_gyr_status *stat)
 
 	if (stat->hw_initialized) {
 		/* if (stat->pdata->gpio_int1) {
-			enable_irq(stat->irq1);
-			dev_info(&stat->client->dev,
-						"power on: irq1 enabled\n");
-		} */
+		   enable_irq(stat->irq1);
+		   dev_info(&stat->client->dev,
+		   "power on: irq1 enabled\n");
+		   } */
 		dev_dbg(&stat->client->dev, "stat->irq2 = %d\n",
-						stat->irq2);
+				stat->irq2);
 		if (stat->irq2 >= 0) {
 			enable_irq(stat->irq2);
 			dev_info(&stat->client->dev,
@@ -811,7 +819,7 @@ static int l3gd20_gyr_device_power_on(struct l3gd20_gyr_status *stat)
 static int l3gd20_gyr_enable(struct l3gd20_gyr_status *stat)
 {
 	int err;
-	if(stat->is_sleep == 1)
+	if (stat->is_sleep == 1)
 		return 0;
 	if (!atomic_cmpxchg(&stat->enabled, 0, 1)) {
 		err = l3gd20_gyr_device_power_on(stat);
@@ -827,10 +835,10 @@ static int l3gd20_gyr_enable(struct l3gd20_gyr_status *stat)
 
 static int l3gd20_gyr_disable(struct l3gd20_gyr_status *stat)
 {
-	if(stat->is_sleep == 1)
+	if (stat->is_sleep == 1)
 		return 0;
 	dev_info(&stat->client->dev, "%s: stat->enabled = %d\n", __func__,
-						atomic_read(&stat->enabled));
+			atomic_read(&stat->enabled));
 
 	if (atomic_cmpxchg(&stat->enabled, 1, 0)) {
 		cancel_work_sync(&stat->polling_task);
@@ -842,8 +850,8 @@ static int l3gd20_gyr_disable(struct l3gd20_gyr_status *stat)
 }
 
 static ssize_t attr_polling_rate_show(struct device *dev,
-				     struct device_attribute *attr,
-				     char *buf)
+		struct device_attribute *attr,
+		char *buf)
 {
 	int val;
 	struct l3gd20_gyr_status *stat = dev_get_drvdata(dev);
@@ -854,28 +862,28 @@ static ssize_t attr_polling_rate_show(struct device *dev,
 }
 
 static ssize_t attr_polling_rate_store(struct device *dev,
-				     struct device_attribute *attr,
-				     const char *buf, size_t size)
+		struct device_attribute *attr,
+		const char *buf, size_t size)
 {
 	int err;
 	struct l3gd20_gyr_status *stat = dev_get_drvdata(dev);
 	unsigned long interval_ms;
 
-	if (strict_strtoul(buf, 10, &interval_ms))
+	if (kstrtoul(buf, 10, &interval_ms))
 		return -EINVAL;
 	if (!interval_ms)
 		return -EINVAL;
 
 	mutex_lock(&stat->lock);
 	err = l3gd20_gyr_update_odr(stat, interval_ms);
-	if(err >= 0)
+	if (err >= 0)
 		stat->pdata->poll_interval = interval_ms;
 	mutex_unlock(&stat->lock);
 	return size;
 }
 
 static ssize_t attr_range_show(struct device *dev,
-			       struct device_attribute *attr, char *buf)
+		struct device_attribute *attr, char *buf)
 {
 	struct l3gd20_gyr_status *stat = dev_get_drvdata(dev);
 	int range = 0;
@@ -900,14 +908,14 @@ static ssize_t attr_range_show(struct device *dev,
 }
 
 static ssize_t attr_range_store(struct device *dev,
-			      struct device_attribute *attr,
-			      const char *buf, size_t size)
+		struct device_attribute *attr,
+		const char *buf, size_t size)
 {
 	struct l3gd20_gyr_status *stat = dev_get_drvdata(dev);
 	unsigned long val;
 	u8 range;
 	int err;
-	if (strict_strtoul(buf, 10, &val))
+	if (kstrtoul(buf, 10, &val))
 		return -EINVAL;
 	switch (val) {
 	case 250:
@@ -920,8 +928,8 @@ static ssize_t attr_range_store(struct device *dev,
 		range = L3GD20_GYR_FS_2000DPS;
 		break;
 	default:
-		dev_err(&stat->client->dev, "invalid range request: %lu,"
-				" discarded\n", val);
+		dev_err(&stat->client->dev,
+			"invalid range request: %lu, discarded\n", val);
 		return -EINVAL;
 	}
 	mutex_lock(&stat->lock);
@@ -934,7 +942,7 @@ static ssize_t attr_range_store(struct device *dev,
 }
 
 static ssize_t attr_enable_show(struct device *dev,
-			       struct device_attribute *attr, char *buf)
+		struct device_attribute *attr, char *buf)
 {
 	struct l3gd20_gyr_status *stat = dev_get_drvdata(dev);
 	int val = atomic_read(&stat->enabled);
@@ -942,13 +950,13 @@ static ssize_t attr_enable_show(struct device *dev,
 }
 
 static ssize_t attr_enable_store(struct device *dev,
-			       struct device_attribute *attr,
-			       const char *buf, size_t size)
+		struct device_attribute *attr,
+		const char *buf, size_t size)
 {
 	struct l3gd20_gyr_status *stat = dev_get_drvdata(dev);
 	unsigned long val;
 
-	if (strict_strtoul(buf, 10, &val))
+	if (kstrtoul(buf, 10, &val))
 		return -EINVAL;
 
 	if (val)
@@ -960,7 +968,7 @@ static ssize_t attr_enable_store(struct device *dev,
 }
 
 static ssize_t attr_polling_mode_show(struct device *dev,
-			       struct device_attribute *attr, char *buf)
+		struct device_attribute *attr, char *buf)
 {
 	int val = 0;
 	struct l3gd20_gyr_status *stat = dev_get_drvdata(dev);
@@ -973,13 +981,13 @@ static ssize_t attr_polling_mode_show(struct device *dev,
 }
 
 static ssize_t attr_polling_mode_store(struct device *dev,
-			       struct device_attribute *attr,
-			       const char *buf, size_t size)
+		struct device_attribute *attr,
+		const char *buf, size_t size)
 {
 	struct l3gd20_gyr_status *stat = dev_get_drvdata(dev);
 	unsigned long val;
 
-	if (strict_strtoul(buf, 10, &val))
+	if (kstrtoul(buf, 10, &val))
 		return -EINVAL;
 
 	mutex_lock(&stat->lock);
@@ -987,13 +995,13 @@ static ssize_t attr_polling_mode_store(struct device *dev,
 		stat->polling_enabled = true;
 		l3gd20_gyr_manage_int2settings(stat, stat->fifomode);
 		dev_info(dev, "polling mode enabled\n");
-		if (atomic_read(&stat->enabled)) {
-			hrtimer_start(&(stat->hr_timer), stat->ktime, HRTIMER_MODE_REL);
-		}
+		if (atomic_read(&stat->enabled))
+			hrtimer_start(&(stat->hr_timer), stat->ktime,
+				HRTIMER_MODE_REL);
+
 	} else {
-		if (stat->polling_enabled) {
+		if (stat->polling_enabled)
 			hrtimer_cancel(&stat->hr_timer);
-		}
 		stat->polling_enabled = false;
 		l3gd20_gyr_manage_int2settings(stat, stat->fifomode);
 		dev_info(dev, "polling mode disabled\n");
@@ -1003,14 +1011,14 @@ static ssize_t attr_polling_mode_store(struct device *dev,
 }
 
 static ssize_t attr_watermark_store(struct device *dev,
-				     struct device_attribute *attr,
-				     const char *buf, size_t size)
+		struct device_attribute *attr,
+		const char *buf, size_t size)
 {
 	struct l3gd20_gyr_status *stat = dev_get_drvdata(dev);
 	unsigned long watermark;
 	int res;
 
-	if (strict_strtoul(buf, 16, &watermark))
+	if (kstrtoul(buf, 16, &watermark))
 		return -EINVAL;
 
 	res = l3gd20_gyr_update_watermark(stat, watermark);
@@ -1021,7 +1029,7 @@ static ssize_t attr_watermark_store(struct device *dev,
 }
 
 static ssize_t attr_watermark_show(struct device *dev,
-			       struct device_attribute *attr, char *buf)
+		struct device_attribute *attr, char *buf)
 {
 	struct l3gd20_gyr_status *stat = dev_get_drvdata(dev);
 	int val = stat->watermark;
@@ -1029,17 +1037,17 @@ static ssize_t attr_watermark_show(struct device *dev,
 }
 
 static ssize_t attr_fifomode_store(struct device *dev,
-				     struct device_attribute *attr,
-				     const char *buf, size_t size)
+		struct device_attribute *attr,
+		const char *buf, size_t size)
 {
 	struct l3gd20_gyr_status *stat = dev_get_drvdata(dev);
 	unsigned long fifomode;
 	int res;
 
-	if (strict_strtoul(buf, 16, &fifomode))
+	if (kstrtoul(buf, 16, &fifomode))
 		return -EINVAL;
 	/* if (!fifomode)
-		return -EINVAL; */
+	   return -EINVAL; */
 
 	dev_dbg(dev, "%s, got value:0x%02x\n", __func__, (u8)fifomode);
 
@@ -1053,7 +1061,7 @@ static ssize_t attr_fifomode_store(struct device *dev,
 }
 
 static ssize_t attr_fifomode_show(struct device *dev,
-			       struct device_attribute *attr, char *buf)
+		struct device_attribute *attr, char *buf)
 {
 	struct l3gd20_gyr_status *stat = dev_get_drvdata(dev);
 	u8 val = stat->fifomode;
@@ -1062,14 +1070,14 @@ static ssize_t attr_fifomode_show(struct device *dev,
 
 #ifdef DEBUG
 static ssize_t attr_reg_set(struct device *dev, struct device_attribute *attr,
-				const char *buf, size_t size)
+		const char *buf, size_t size)
 {
 	int rc;
 	struct l3gd20_gyr_status *stat = dev_get_drvdata(dev);
 	u8 x[2];
 	unsigned long val;
 
-	if (strict_strtoul(buf, 16, &val))
+	if (kstrtoul(buf, 16, &val))
 		return -EINVAL;
 	mutex_lock(&stat->lock);
 	x[0] = stat->reg_addr;
@@ -1080,7 +1088,7 @@ static ssize_t attr_reg_set(struct device *dev, struct device_attribute *attr,
 }
 
 static ssize_t attr_reg_get(struct device *dev, struct device_attribute *attr,
-				char *buf)
+		char *buf)
 {
 	ssize_t ret;
 	struct l3gd20_gyr_status *stat = dev_get_drvdata(dev);
@@ -1096,12 +1104,12 @@ static ssize_t attr_reg_get(struct device *dev, struct device_attribute *attr,
 }
 
 static ssize_t attr_addr_set(struct device *dev, struct device_attribute *attr,
-				const char *buf, size_t size)
+		const char *buf, size_t size)
 {
 	struct l3gd20_gyr_status *stat = dev_get_drvdata(dev);
 	unsigned long val;
 
-	if (strict_strtoul(buf, 16, &val))
+	if (kstrtoul(buf, 16, &val))
 		return -EINVAL;
 
 	mutex_lock(&stat->lock);
@@ -1114,27 +1122,40 @@ static ssize_t attr_addr_set(struct device *dev, struct device_attribute *attr,
 }
 #endif /* DEBUG */
 
-static struct device_attribute attributes[] = {
-	__ATTR(pollrate_ms, 0666, attr_polling_rate_show,
-						attr_polling_rate_store),
-	__ATTR(range, 0666, attr_range_show, attr_range_store),
-	__ATTR(enable, 0666, attr_enable_show, attr_enable_store),
-	__ATTR(enable_polling, 0666, attr_polling_mode_show,
-						attr_polling_mode_store),
-	//__ATTR(enable, 0666, attr_polling_mode_show,
-	//					attr_polling_mode_store),
-	__ATTR(fifo_samples, 0666, attr_watermark_show, attr_watermark_store),
-	__ATTR(fifo_mode, 0666, attr_fifomode_show, attr_fifomode_store),
+static DEVICE_ATTR(pollrate_ms, 0666, attr_polling_rate_show,
+			attr_polling_rate_store);
+static DEVICE_ATTR(range, 0666, attr_range_show, attr_range_store);
+static DEVICE_ATTR(enable, 0666, attr_enable_show, attr_enable_store);
+static DEVICE_ATTR(enable_polling, 0666, attr_polling_mode_show,
+			attr_polling_mode_store);
+/*static DEVICE_ATTR(enable, 0666, attr_polling_mode_show,
+	attr_polling_mode_store); */
+static DEVICE_ATTR(fifo_samples, 0666, attr_watermark_show,
+	attr_watermark_store);
+static DEVICE_ATTR(fifo_mode, 0666, attr_fifomode_show, attr_fifomode_store);
 #ifdef DEBUG
-	__ATTR(reg_value, 0600, attr_reg_get, attr_reg_set),
-	__ATTR(reg_addr, 0200, NULL, attr_addr_set),
+static DEVICE_ATTR(reg_value, 0600, attr_reg_get, attr_reg_set);
+static DEVICE_ATTR(reg_addr, 0200, NULL, attr_addr_set);
 #endif
+
+static struct attribute *attributes[] = {
+	&dev_attr_pollrate_ms.attr,
+	&dev_attr_range.attr,
+	&dev_attr_enable.attr,
+	&dev_attr_enable_polling.attr,
+	&dev_attr_fifo_samples.attr,
+	&dev_attr_fifo_mode.attr,
+#ifdef DEBUG
+	&dev_attr_reg_value.attr,
+	&dev_attr_reg_addr.attr,
+#endif
+	NULL
 };
 
 static struct attribute_group l3gd20_attributes_group = {
-.attrs = attributes
+	.attrs = attributes
 };
-
+#if 0
 static int create_sysfs_interfaces(struct device *dev)
 {
 	int i;
@@ -1157,7 +1178,7 @@ static int remove_sysfs_interfaces(struct device *dev)
 		device_remove_file(dev, attributes + i);
 	return 0;
 }
-
+#endif
 static void l3gd20_gyr_report_triple(struct l3gd20_gyr_status *stat)
 {
 	int err;
@@ -1185,46 +1206,48 @@ static void l3gd20_gyr_irq2_fifo(struct l3gd20_gyr_status *stat)
 	workingmode = stat->fifomode;
 
 
-	dev_dbg(&stat->client->dev, "%s : fifomode:0x%02x\n", __func__,
-								workingmode);
+	dev_dbg(&stat->client->dev, "%s : fifomode:0x%02x\n",
+
+		__func__, workingmode);
 
 
 	switch (workingmode) {
 	case FIFO_MODE_BYPASS:
-	{
-		dev_dbg(&stat->client->dev, "%s : fifomode:0x%02x\n", __func__,
-							stat->fifomode);
+		dev_dbg(&stat->client->dev,
+			"%s : fifomode:0x%02x\n",
+			__func__, stat->fifomode);
 		l3gd20_gyr_report_triple(stat);
 		break;
-	}
 	case FIFO_MODE_FIFO:
 		samples = (stat->watermark)+1;
 		dev_dbg(&stat->client->dev,
 			"%s : FIFO_SRC_REG init samples:%d\n",
-							__func__, samples);
+			__func__, samples);
 		err = l3gd20_gyr_register_read(stat, buf, FIFO_SRC_REG);
 		if (err < 0)
 			dev_err(&stat->client->dev,
-					"error reading fifo source reg\n");
+				"error reading fifo source reg\n");
 
 		int_source = buf[0];
-		dev_dbg(&stat->client->dev, "%s :FIFO_SRC_REG content:0x%02x\n",
-							__func__, int_source);
+		dev_dbg(&stat->client->dev,
+			"%s :FIFO_SRC_REG content: 0x%02x\n",
+			__func__, int_source);
 
 		stored_samples = int_source & FIFO_STORED_DATA_MASK;
-		dev_dbg(&stat->client->dev, "%s : fifomode:0x%02x\n", __func__,
-						stat->fifomode);
+		dev_dbg(&stat->client->dev,
+			"%s : fifomode:0x%02x\n", __func__, stat->fifomode);
 
-		dev_dbg(&stat->client->dev, "%s : samples:%d stored:%d\n",
-				__func__, samples, stored_samples);
+		dev_dbg(&stat->client->dev,
+			"%s : samples:%d stored: %d\n",
+			__func__, samples, stored_samples);
 
 		for (; samples > 0; samples--) {
 #ifdef DEBUG
 			input_report_abs(stat->input_dev, ABS_MISC, 1);
 			input_sync(stat->input_dev);
 #endif
-			dev_dbg(&stat->client->dev, "%s : current sample:%d\n",
-							__func__, samples);
+			dev_dbg(&stat->client->dev,
+				"%s : current sample:%d\n", __func__, samples);
 
 			l3gd20_gyr_report_triple(stat);
 
@@ -1265,11 +1288,11 @@ static void l3gd20_gyr_irq2_work_func(struct work_struct *work)
 	struct l3gd20_gyr_status *stat =
 		container_of(work, struct l3gd20_gyr_status, irq2_work);
 	/* TODO  add interrupt service procedure.
-		 ie:l3gd20_gyr_irq2_XXX(stat); */
+ie:l3gd20_gyr_irq2_XXX(stat); */
 	l3gd20_gyr_irq2_fifo(stat);
 	/*  */
 	pr_debug("%s %s: IRQ2 served\n", L3GD20_GYR_DEV_NAME, __func__);
-/* exit: */
+	/* exit: */
 	enable_irq(stat->irq2);
 }
 
@@ -1292,38 +1315,38 @@ static int l3gd20_gyr_validate_pdata(struct l3gd20_gyr_status *stat)
 	/* checks for correctness of minimal polling period */
 	stat->pdata->min_interval =
 		max((unsigned int) L3GD20_GYR_MIN_POLL_PERIOD_MS,
-						stat->pdata->min_interval);
+				stat->pdata->min_interval);
 
 	stat->pdata->poll_interval = max(stat->pdata->poll_interval,
 			stat->pdata->min_interval);
 
 	if (stat->pdata->axis_map_x > 2 ||
-	    stat->pdata->axis_map_y > 2 ||
-	    stat->pdata->axis_map_z > 2) {
+			stat->pdata->axis_map_y > 2 ||
+			stat->pdata->axis_map_z > 2) {
 		dev_err(&stat->client->dev,
-			"invalid axis_map value x:%u y:%u z%u\n",
-			stat->pdata->axis_map_x,
-			stat->pdata->axis_map_y,
-			stat->pdata->axis_map_z);
+				"invalid axis_map value x:%u y:%u z%u\n",
+				stat->pdata->axis_map_x,
+				stat->pdata->axis_map_y,
+				stat->pdata->axis_map_z);
 		return -EINVAL;
 	}
 
 	/* Only allow 0 and 1 for negation boolean flag */
 	if (stat->pdata->negate_x > 1 ||
-	    stat->pdata->negate_y > 1 ||
-	    stat->pdata->negate_z > 1) {
+			stat->pdata->negate_y > 1 ||
+			stat->pdata->negate_z > 1) {
 		dev_err(&stat->client->dev,
-			"invalid negate value x:%u y:%u z:%u\n",
-			stat->pdata->negate_x,
-			stat->pdata->negate_y,
-			stat->pdata->negate_z);
+				"invalid negate value x:%u y:%u z:%u\n",
+				stat->pdata->negate_x,
+				stat->pdata->negate_y,
+				stat->pdata->negate_z);
 		return -EINVAL;
 	}
 
 	/* Enforce minimum polling interval */
 	if (stat->pdata->poll_interval < stat->pdata->min_interval) {
 		dev_err(&stat->client->dev,
-			"minimum poll interval violated\n");
+				"minimum poll interval violated\n");
 		return -EINVAL;
 	}
 	return 0;
@@ -1339,7 +1362,7 @@ static int l3gd20_gyr_input_init(struct l3gd20_gyr_status *stat)
 	if (!stat->input_dev) {
 		err = -ENOMEM;
 		dev_err(&stat->client->dev,
-			"input device allocation failed\n");
+				"input device allocation failed\n");
 		goto err0;
 	}
 
@@ -1368,8 +1391,8 @@ static int l3gd20_gyr_input_init(struct l3gd20_gyr_status *stat)
 	err = input_register_device(stat->input_dev);
 	if (err) {
 		dev_err(&stat->client->dev,
-			"unable to register input polled device %s\n",
-			stat->input_dev->name);
+				"unable to register input polled device %s\n",
+				stat->input_dev->name);
 		goto err1;
 	}
 
@@ -1394,15 +1417,15 @@ static void poll_function_work(struct work_struct *polling_task)
 	int err;
 
 	stat = container_of((struct work_struct *)polling_task,
-					struct l3gd20_gyr_status, polling_task);
+			struct l3gd20_gyr_status, polling_task);
 
 	err = l3gd20_gyr_get_data(stat, &data_out);
-	if (err < 0){
+	if (err < 0) {
 		dev_err(&stat->client->dev, "get_rotation_data failed.\n");
 		l3gd20_gyr_disable(stat);
-		if(stat->is_sleep == 0)
+		if (stat->is_sleep == 0)
 			l3gd20_gyr_enable(stat);
-	}else
+	} else
 		l3gd20_gyr_report_values(stat, &data_out);
 
 	hrtimer_start(&stat->hr_timer, stat->ktime, HRTIMER_MODE_REL);
@@ -1413,19 +1436,19 @@ enum hrtimer_restart poll_function_read(struct hrtimer *timer)
 	struct l3gd20_gyr_status *stat;
 
 	stat = container_of((struct hrtimer *)timer,
-				struct l3gd20_gyr_status, hr_timer);
+			struct l3gd20_gyr_status, hr_timer);
 
 	queue_work(l3gd20_gyr_workqueue, &stat->polling_task);
 	return HRTIMER_NORESTART;
 }
 
 static int l3gd20_gyr_probe(struct i2c_client *client,
-					const struct i2c_device_id *devid)
+		const struct i2c_device_id *devid)
 {
 	struct l3gd20_gyr_status *stat;
 
 	u32 smbus_func = I2C_FUNC_SMBUS_BYTE_DATA |
-			I2C_FUNC_SMBUS_WORD_DATA | I2C_FUNC_SMBUS_I2C_BLOCK ;
+		I2C_FUNC_SMBUS_WORD_DATA | I2C_FUNC_SMBUS_I2C_BLOCK;
 
 	int err = -1;
 
@@ -1434,7 +1457,7 @@ static int l3gd20_gyr_probe(struct i2c_client *client,
 	stat = kzalloc(sizeof(*stat), GFP_KERNEL);
 	if (stat == NULL) {
 		dev_err(&client->dev,
-			"failed to allocate memory for module data\n");
+				"failed to allocate memory for module data\n");
 		err = -ENOMEM;
 		goto err0;
 	}
@@ -1454,7 +1477,7 @@ static int l3gd20_gyr_probe(struct i2c_client *client,
 		}
 	}
 
-	if(l3gd20_gyr_workqueue == 0)
+	if (l3gd20_gyr_workqueue == 0)
 		l3gd20_gyr_workqueue = create_workqueue("l3gd20_gyr_workqueue");
 
 	hrtimer_init(&stat->hr_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
@@ -1470,22 +1493,22 @@ static int l3gd20_gyr_probe(struct i2c_client *client,
 			"failed to allocate memory for pdata: %d\n", err);
 		goto err1;
 	}
-	//stat->irq1 = -1;
+	/* stat->irq1 = -1; */
 	stat->irq2 = -1;
 
 	if (client->dev.platform_data == NULL) {
 		default_l3gd20_gyr_pdata.gpio_int1 = int1_gpio;
 		default_l3gd20_gyr_pdata.gpio_int2 = int2_gpio;
 
-		if(client->irq > 0){
-			//stat->irq2 = client->irq;
-		}
+		if (client->irq > 0)
+			/* stat->irq2 = client->irq; */
 		memcpy(stat->pdata, &default_l3gd20_gyr_pdata,
-							sizeof(*stat->pdata));
-		dev_info(&client->dev, "using default plaform_data,irq:%d\n", client->irq);
+				sizeof(*stat->pdata));
+		dev_info(&client->dev, "using default plaform_data,irq:%d\n",
+			client->irq);
 	} else {
 		memcpy(stat->pdata, client->dev.platform_data,
-						sizeof(*stat->pdata));
+				sizeof(*stat->pdata));
 	}
 
 	err = l3gd20_gyr_validate_pdata(stat);
@@ -1497,20 +1520,20 @@ static int l3gd20_gyr_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, stat);
 
 	/*
-	if (stat->pdata->init) {
-		err = stat->pdata->init();
-		if (err < 0) {
-			dev_err(&client->dev, "init failed: %d\n", err);
-			goto err1_1;
-		}
-	}
-	*/
+	   if (stat->pdata->init) {
+	   err = stat->pdata->init();
+	   if (err < 0) {
+	   dev_err(&client->dev, "init failed: %d\n", err);
+	   goto err1_1;
+	   }
+	   }
+	 */
 
 
 	memset(stat->resume_state, 0, ARRAY_SIZE(stat->resume_state));
 
 	stat->resume_state[RES_CTRL_REG1] = ALL_ZEROES | ENABLE_ALL_AXES
-								| PM_NORMAL;
+		| PM_NORMAL;
 	stat->resume_state[RES_CTRL_REG2] = ALL_ZEROES;
 	stat->resume_state[RES_CTRL_REG3] = ALL_ZEROES;
 	stat->resume_state[RES_CTRL_REG4] = ALL_ZEROES | BDU_ENABLE;
@@ -1544,10 +1567,15 @@ static int l3gd20_gyr_probe(struct i2c_client *client,
 	if (err < 0)
 		goto err3;
 
-   	err = create_sysfs_interfaces(&client->dev);
-	if(err < 0){
+	err = sysfs_create_group(&(stat->input_dev->dev.kobj),
+		&l3gd20_attributes_group);
+	if (err < 0)
+		goto err4;
+#if 0
+	err = create_sysfs_interfaces(&client->dev);
+	if (err < 0) {
 		dev_err(&client->dev,
-			 "%s device register failed\n", L3GD20_GYR_DEV_NAME);
+			"%s device register failed\n", L3GD20_GYR_DEV_NAME);
 		goto err4;
 	}
 	err = create_sysfs_interfaces(&(stat->input_dev->dev));
@@ -1556,7 +1584,7 @@ static int l3gd20_gyr_probe(struct i2c_client *client,
 			"%s device register failed\n", L3GD20_GYR_DEV_NAME);
 		goto err4;
 	}
-
+#endif
 	l3gd20_gyr_device_power_off(stat);
 
 	/* As default, do not report information */
@@ -1564,7 +1592,7 @@ static int l3gd20_gyr_probe(struct i2c_client *client,
 
 
 	if (stat->irq2 >= 0) {
-		dev_info(&client->dev, "%s: %s has set irq2 to irq:%d \n",
+		dev_info(&client->dev, "%s: %s has set irq2 to irq:%d\n",
 			L3GD20_GYR_DEV_NAME, __func__, stat->irq2);
 
 		INIT_WORK(&stat->irq2_work, l3gd20_gyr_irq2_work_func);
@@ -1572,8 +1600,8 @@ static int l3gd20_gyr_probe(struct i2c_client *client,
 			create_singlethread_workqueue("l3gd20_gyr_irq2_wq");
 		if (!stat->irq2_work_queue) {
 			err = -ENOMEM;
-			dev_err(&client->dev, "cannot create "
-						"work queue2: %d\n", err);
+			dev_err(&client->dev,
+				"cannot create work queue2: %d\n", err);
 			goto err5;
 		}
 
@@ -1591,7 +1619,7 @@ static int l3gd20_gyr_probe(struct i2c_client *client,
 
 	INIT_WORK(&stat->polling_task, poll_function_work);
 	dev_info(&client->dev, "%s probed: device created successfully\n",
-							L3GD20_GYR_DEV_NAME);
+			L3GD20_GYR_DEV_NAME);
 
 	g_stat = stat;
 #ifdef CONFIG_HAS_EARLYSUSPEND
@@ -1603,14 +1631,15 @@ static int l3gd20_gyr_probe(struct i2c_client *client,
 #endif
 	return 0;
 
-/*err7:
-	free_irq(stat->irq2, stat);
-*/
+	/*err7:
+	  free_irq(stat->irq2, stat);
+	 */
 err6:
 	destroy_workqueue(stat->irq2_work_queue);
 err5:
 	l3gd20_gyr_device_power_off(stat);
-	remove_sysfs_interfaces(&client->dev);
+	sysfs_remove_group(&(stat->input_dev->dev.kobj),
+		&l3gd20_attributes_group);
 err4:
 	l3gd20_gyr_input_cleanup(stat);
 err3:
@@ -1625,9 +1654,9 @@ err1:
 	destroy_workqueue(l3gd20_gyr_workqueue);
 	kfree(stat);
 err0:
-		pr_err("%s: Driver Initialization failed\n",
-							L3GD20_GYR_DEV_NAME);
-		return err;
+	pr_err("%s: Driver Initialization failed\n",
+			L3GD20_GYR_DEV_NAME);
+	return err;
 }
 
 static int l3gd20_gyr_remove(struct i2c_client *client)
@@ -1637,33 +1666,32 @@ static int l3gd20_gyr_remove(struct i2c_client *client)
 	dev_info(&stat->client->dev, "driver removing\n");
 
 	cancel_work_sync(&stat->polling_task);
-	if(!l3gd20_gyr_workqueue) {
+	if (!l3gd20_gyr_workqueue) {
 		flush_workqueue(l3gd20_gyr_workqueue);
 		destroy_workqueue(l3gd20_gyr_workqueue);
 	}
 	/*
-	if (stat->irq1 >= 0)
-	{
-		free_irq(stat->irq1, stat);
-		gpio_free(stat->pdata->gpio_int1);
-		destroy_workqueue(stat->irq1_work_queue);
-	}
-	*/
-	if(stat->irq2 > 0){
+	   if (stat->irq1 >= 0)
+	   {
+	   free_irq(stat->irq1, stat);
+	   gpio_free(stat->pdata->gpio_int1);
+	   destroy_workqueue(stat->irq1_work_queue);
+	   }
+	 */
+	if (stat->irq2 > 0) {
 		free_irq(stat->irq2, stat);
 		destroy_workqueue(stat->irq2_work_queue);
 	}
 
-	if (stat->pdata->gpio_int2 >= 0) {
+	if (stat->pdata->gpio_int2 >= 0)
 		gpio_free(stat->pdata->gpio_int2);
-	}
 
 
 	l3gd20_gyr_disable(stat);
 	l3gd20_gyr_input_cleanup(stat);
 
-//	remove_sysfs_interfaces(&client->dev);
-    sysfs_remove_group(&(stat->input_dev->dev.kobj),&l3gd20_attributes_group);
+	sysfs_remove_group(&(stat->input_dev->dev.kobj),
+		&l3gd20_attributes_group);
 	kfree(stat->pdata);
 	kfree(stat);
 	return 0;
@@ -1671,18 +1699,20 @@ static int l3gd20_gyr_remove(struct i2c_client *client)
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void l3gd20_gyr_early_suspend(struct early_suspend *h)
-//#define SLEEP
-//static int l3gd20_gyr_suspend(struct device *dev)
+	/* #define SLEEP */
+	/* static int l3gd20_gyr_suspend(struct device *dev) */
 {
+#if 0
 	int err = 0;
-#ifdef CONFIG_PM
-	struct l3gd20_gyr_status *stat = g_stat ;
 	u8 buf[2];
+#endif
+#ifdef CONFIG_PM
+	struct l3gd20_gyr_status *stat = g_stat;
 
-	pr_info( "%s suspend\n", __func__);
+	pr_info("%s suspend\n", __func__);
 
 	l3gd20_gyr_disable(stat);
-	
+
 	stat->is_sleep = 1;
 #if 0
 	if (atomic_read(&stat->enabled)) {
@@ -1702,19 +1732,20 @@ static void l3gd20_gyr_early_suspend(struct early_suspend *h)
 	}
 #endif
 #endif /*CONFIG_PM*/
-	return err;
+	return;
 }
 
 static void l3gd20_gyr_late_resume(struct early_suspend *h)
-//static int l3gd20_gyr_resume(struct device *dev)
+	/* static int l3gd20_gyr_resume(struct device *dev) */
 {
-	int err = 0;
 #ifdef CONFIG_PM
-	struct l3gd20_gyr_status *stat = g_stat ;
+	struct l3gd20_gyr_status *stat = g_stat;
+#if 0
+	int err = 0;
 	u8 buf[2];
+#endif
 
-
-	pr_info( "%s resume\n", __func__);
+	pr_info("%s resume\n", __func__);
 
 	stat->is_sleep = 0;
 
@@ -1725,7 +1756,8 @@ static void l3gd20_gyr_late_resume(struct early_suspend *h)
 		mutex_lock(&stat->lock);
 		if (stat->polling_enabled) {
 			dev_info(&stat->client->dev, "polling mode enabled\n");
-			hrtimer_init(&stat->hr_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+			hrtimer_init(&stat->hr_timer, CLOCK_MONOTONIC,
+				HRTIMER_MODE_REL);
 		}
 #ifdef SLEEP
 		err = l3gd20_gyr_register_update(stat, buf, CTRL_REG1,
@@ -1739,7 +1771,7 @@ static void l3gd20_gyr_late_resume(struct early_suspend *h)
 	}
 #endif
 #endif /*CONFIG_PM*/
-	return err;
+	return;
 }
 #endif
 
@@ -1751,15 +1783,15 @@ static const struct i2c_device_id l3gd20_gyr_id[] = {
 MODULE_DEVICE_TABLE(i2c, l3gd20_gyr_id);
 
 static const struct dev_pm_ops l3gd20_gyr_pm = {
-//	.suspend = l3gd20_gyr_suspend,
-//	.resume = l3gd20_gyr_resume,
+	/* .suspend = l3gd20_gyr_suspend, */
+	/* .resume = l3gd20_gyr_resume, */
 };
 
 static struct i2c_driver l3gd20_gyr_driver = {
 	.driver = {
-			.owner = THIS_MODULE,
-			.name = L3GD20_GYR_DEV_NAME,
-//			.pm = &l3gd20_gyr_pm,
+		.owner = THIS_MODULE,
+		.name = L3GD20_GYR_DEV_NAME,
+		/* .pm = &l3gd20_gyr_pm, */
 	},
 	.probe = l3gd20_gyr_probe,
 	.remove = l3gd20_gyr_remove,
@@ -1769,17 +1801,13 @@ static struct i2c_driver l3gd20_gyr_driver = {
 
 static int __init l3gd20_gyr_init(void)
 {
-
-	pr_info("%s: gyroscope sysfs driver init\n", L3GD20_GYR_DEV_NAME);
-
+	pr_info("Sensor: %s\n", __func__);
 	return i2c_add_driver(&l3gd20_gyr_driver);
 }
 
 static void __exit l3gd20_gyr_exit(void)
 {
-
-	pr_info("%s exit\n", L3GD20_GYR_DEV_NAME);
-
+	pr_info("Sensor: %s\n", __func__);
 	i2c_del_driver(&l3gd20_gyr_driver);
 	return;
 }

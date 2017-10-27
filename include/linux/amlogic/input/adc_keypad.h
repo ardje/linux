@@ -1,7 +1,7 @@
 #ifndef __LINUX_ADC_KEYPAD_H
 #define __LINUX_ADC_KEYPAD_H
 
-struct adc_key{
+struct adc_key {
 	int code;	/* input key code */
 	const char *name;
 	int chan;
@@ -9,7 +9,7 @@ struct adc_key{
 	int tolerance;
 };
 
-struct adc_kp_platform_data{
+struct adc_kp_platform_data {
 	struct adc_key *key;
 	int key_num;
 	int repeat_delay;

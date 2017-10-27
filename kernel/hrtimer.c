@@ -46,6 +46,7 @@
 #include <linux/sched.h>
 #include <linux/sched/sysctl.h>
 #include <linux/sched/rt.h>
+#include <linux/sched/deadline.h>
 #include <linux/timer.h>
 #include <linux/freezer.h>
 
@@ -799,7 +800,9 @@ void clock_was_set(void)
 
 /*
  * During resume we might have to reprogram the high resolution timer
- * interrupt (on the local CPU):
+ * interrupt on all online CPUs.  However, all other CPUs will be
+ * stopped with IRQs interrupts disabled so the clock_was_set() call
+ * must be deferred.
  */
 void hrtimers_resume(void)
 {
@@ -1630,7 +1633,7 @@ long hrtimer_nanosleep(struct timespec *rqtp, struct timespec __user *rmtp,
 	unsigned long slack;
 
 	slack = current->timer_slack_ns;
-	if (rt_task(current))
+	if (dl_task(current) || rt_task(current))
 		slack = 0;
 
 	hrtimer_init_on_stack(&t.timer, clockid, mode);
@@ -1679,7 +1682,7 @@ SYSCALL_DEFINE2(nanosleep, struct timespec __user *, rqtp,
 /*
  * Functions related to boot-time initialization:
  */
-static void __cpuinit init_hrtimers_cpu(int cpu)
+static void init_hrtimers_cpu(int cpu)
 {
 	struct hrtimer_cpu_base *cpu_base = &per_cpu(hrtimer_bases, cpu);
 	int i;
@@ -1760,7 +1763,7 @@ static void migrate_hrtimers(int scpu)
 
 #endif /* CONFIG_HOTPLUG_CPU */
 
-static int __cpuinit hrtimer_cpu_notify(struct notifier_block *self,
+static int hrtimer_cpu_notify(struct notifier_block *self,
 					unsigned long action, void *hcpu)
 {
 	int scpu = (long)hcpu;
@@ -1793,7 +1796,7 @@ static int __cpuinit hrtimer_cpu_notify(struct notifier_block *self,
 	return NOTIFY_OK;
 }
 
-static struct notifier_block __cpuinitdata hrtimers_nb = {
+static struct notifier_block hrtimers_nb = {
 	.notifier_call = hrtimer_cpu_notify,
 };
 

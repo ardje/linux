@@ -101,6 +101,7 @@ enum {
 	IPOIB_MCAST_FLAG_SENDONLY = 1,
 	IPOIB_MCAST_FLAG_BUSY	  = 2,	/* joining or already joined */
 	IPOIB_MCAST_FLAG_ATTACHED = 3,
+	IPOIB_MCAST_JOIN_STARTED  = 4,
 
 	MAX_SEND_CQE		  = 16,
 	IPOIB_CM_COPYBREAK	  = 256,
@@ -151,6 +152,7 @@ struct ipoib_mcast {
 	struct sk_buff_head pkt_queue;
 
 	struct net_device *dev;
+	struct completion done;
 };
 
 struct ipoib_rx_buf {
@@ -299,7 +301,7 @@ struct ipoib_dev_priv {
 
 	unsigned long flags;
 
-	struct mutex vlan_mutex;
+	struct rw_semaphore vlan_rwsem;
 
 	struct rb_root  path_tree;
 	struct list_head path_list;
@@ -460,7 +462,6 @@ void ipoib_send(struct net_device *dev, struct sk_buff *skb,
 		struct ipoib_ah *address, u32 qpn);
 void ipoib_reap_ah(struct work_struct *work);
 
-struct ipoib_path *__path_find(struct net_device *dev, void *gid);
 void ipoib_mark_paths_invalid(struct net_device *dev);
 void ipoib_flush_paths(struct net_device *dev);
 struct ipoib_dev_priv *ipoib_intf_alloc(const char *format);

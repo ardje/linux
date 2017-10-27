@@ -1,23 +1,19 @@
 /*
- * AMLOGIC Audio/Video streaming port driver.
+ * drivers/amlogic/amports/streambuf.h
+ *
+ * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the named License,
- * or any later version.
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA
- *
- * Author:  Tim Yao <timyao@amlogic.com>
- *
- */
+*/
 
 #ifndef STREAMBUF_H
 #define STREAMBUF_H
@@ -39,51 +35,78 @@
 #define INVALID_PTS 0xffffffff
 
 #define FETCHBUF_SIZE   (64*1024)
+#define USER_DATA_SIZE  (8*1024)
 
-typedef struct stream_buf_s {
-    s32   flag;
-    u32   type;
-    u32   buf_start;
-    u32   buf_size;
-    u32   default_buf_size;	
-    u32   canusebuf_size;	
-    u32   first_tstamp;
-    const ulong reg_base;
-    wait_queue_head_t   wq;
-    struct timer_list timer;
-    u32   wcnt;
-	u32	buf_wp;
-	u32	buf_rp;
-    u32 max_buffer_delay_ms;
-    u64 last_write_jiffies64;
-} stream_buf_t;
+struct stream_buf_s {
+	s32 flag;
+	u32 type;
+	unsigned long buf_start;
+	struct page *buf_pages;
+	int buf_page_num;
+	u32 buf_size;
+	u32 default_buf_size;
+	u32 canusebuf_size;
+	u32 first_tstamp;
+	const ulong reg_base;
+	wait_queue_head_t wq;
+	struct timer_list timer;
+	u32 wcnt;
+	u32 buf_wp;
+	u32 buf_rp;
+	u32 max_buffer_delay_ms;
+	u64 last_write_jiffies64;
+	void *write_thread;
+	int for_4k;
+} /*stream_buf_t */;
 
-typedef struct stream_port_s {
-    /* driver info */
-    const char *name;
-    struct device *class_dev;
-    const struct file_operations *fops;
+struct stream_port_s {
+	/* driver info */
+	const char *name;
+	struct device *class_dev;
+	const struct file_operations *fops;
 
-    /* ports control */
-    s32 type;
-    s32 flag;
-    s32 pcr_inited;
+	/* ports control */
+	s32 type;
+	s32 flag;
+	s32 pcr_inited;
 
-    /* decoder info */
-    s32 vformat;
-    s32 aformat;
-    s32 achanl;
-    s32 asamprate;
-    s32 adatawidth;
+	/* decoder info */
+	s32 vformat;
+	s32 aformat;
+	s32 achanl;
+	s32 asamprate;
+	s32 adatawidth;
 
-    /* parser info */
-    u32 vid;
-    u32 aid;
-    u32 sid;
-    u32 pcrid;
-} stream_port_t;
+	/* parser info */
+	u32 vid;
+	u32 aid;
+	u32 sid;
+	u32 pcrid;
+} /*stream_port_t */;
+enum drm_level_e {
+	DRM_LEVEL1 = 1,
+	DRM_LEVEL2 = 2,
+	DRM_LEVEL3 = 3,
+	DRM_NONE = 4,
+};
 
-extern ulong fetchbuf, *fetchbuf_remap;
+struct drm_info {
+	enum drm_level_e drm_level;
+	u32 drm_flag;
+	u32 drm_hasesdata;
+	u32 drm_priv;
+	u32 drm_pktsize;
+	u32 drm_pktpts;
+	u32 drm_phy;
+	u32 drm_vir;
+	u32 drm_remap;
+	u32 data_offset;
+	u32 extpad[8];
+} /*drminfo_t */;
+
+#define TYPE_DRMINFO   0x80
+
+extern void *fetchbuf;
 
 extern u32 stbuf_level(struct stream_buf_s *buf);
 extern u32 stbuf_rp(struct stream_buf_s *buf);
@@ -93,7 +116,7 @@ extern u32 stbuf_canusesize(struct stream_buf_s *buf);
 extern s32 stbuf_init(struct stream_buf_s *buf);
 extern s32 stbuf_wait_space(struct stream_buf_s *stream_buf, size_t count);
 extern void stbuf_release(struct stream_buf_s *buf);
-extern int  stbuf_change_size(struct stream_buf_s *buf, int size);
+extern int stbuf_change_size(struct stream_buf_s *buf, int size);
 extern int stbuf_fetch_init(void);
 extern void stbuf_fetch_release(void);
 extern u32 stbuf_sub_rp_get(void);
@@ -101,11 +124,8 @@ extern void stbuf_sub_rp_set(unsigned int sub_rp);
 extern u32 stbuf_sub_wp_get(void);
 extern u32 stbuf_sub_start_get(void);
 extern u32 stbuf_userdata_start_get(void);
-extern stream_buf_t* get_stream_buffer(int id);
+extern struct stream_buf_s *get_stream_buffer(int id);
 
-#if MESON_CPU_TYPE >= MESON_CPU_TYPE_MESON6TVD
 extern void stbuf_vdec2_init(struct stream_buf_s *buf);
-#endif
 
-#endif /* STREAMBUF_H */
-
+#endif				/* STREAMBUF_H */

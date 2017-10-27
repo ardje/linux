@@ -4,13 +4,10 @@
 
 # Each configuration option enables a list of files.
 
-obj-y	+= saradc/
-obj-y	+= remote/
-obj-y	+= new_remote/
-obj-y	+= keyboard/
-obj-y	+= touchscreen/
-obj-y	+= simcard_detect/
-obj-y	+= holdkey/
-obj-y   += call_key/
-obj-y   += sensor/
-obj-y   += gpio_key/
+obj-$(CONFIG_AM_INPUT) += saradc/
+obj-$(CONFIG_AM_INPUT) += remote/
+obj-$(CONFIG_AM_INPUT) += keyboard/
+obj-$(CONFIG_AM_INPUT) += gpio_key/
+obj-$(CONFIG_AM_INPUT) += sensor/
+obj-$(CONFIG_AM_INPUT) += avin_detect/
+

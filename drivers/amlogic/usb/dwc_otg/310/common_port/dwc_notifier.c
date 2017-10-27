@@ -26,25 +26,22 @@ typedef struct manager {
 	void *mem_ctx;
 	void *wkq_ctx;
 	dwc_workq_t *wq;
-//	dwc_mutex_t *mutex;
 	struct notifier_queue notifiers;
 } manager_t;
 
-static manager_t *manager = NULL;
+static manager_t *manager;
 
 static int create_manager(void *mem_ctx, void *wkq_ctx)
 {
 	manager = dwc_alloc(mem_ctx, sizeof(manager_t));
-	if (!manager) {
+	if (!manager)
 		return -DWC_E_NO_MEMORY;
-	}
 
 	DWC_CIRCLEQ_INIT(&manager->notifiers);
 
 	manager->wq = dwc_workq_alloc(wkq_ctx, "DWC Notification WorkQ");
-	if (!manager->wq) {
+	if (!manager->wq)
 		return -DWC_E_NO_MEMORY;
-	}
 
 	return 0;
 }
@@ -86,9 +83,8 @@ static observer_t *alloc_observer(void *mem_ctx, void *observer, char *notificat
 {
 	observer_t *new_observer = dwc_alloc(mem_ctx, sizeof(observer_t));
 
-	if (!new_observer) {
+	if (!new_observer)
 		return NULL;
-	}
 
 	DWC_CIRCLEQ_INIT_ENTRY(new_observer, list_entry);
 	new_observer->observer = observer;
@@ -107,14 +103,12 @@ static notifier_t *alloc_notifier(void *mem_ctx, void *object)
 {
 	notifier_t *notifier;
 
-	if (!object) {
+	if (!object)
 		return NULL;
-	}
 
 	notifier = dwc_alloc(mem_ctx, sizeof(notifier_t));
-	if (!notifier) {
+	if (!notifier)
 		return NULL;
-	}
 
 	DWC_CIRCLEQ_INIT(&notifier->observers);
 	DWC_CIRCLEQ_INIT_ENTRY(notifier, list_entry);
@@ -141,14 +135,12 @@ static notifier_t *find_notifier(void *object)
 
 	DWC_ASSERT(manager, "Notification manager not found");
 
-	if (!object) {
+	if (!object)
 		return NULL;
-	}
 
 	DWC_CIRCLEQ_FOREACH(notifier, &manager->notifiers, list_entry) {
-		if (notifier->object == object) {
+		if (notifier->object == object)
 			return notifier;
-		}
 	}
 
 	return NULL;
@@ -177,9 +169,8 @@ dwc_notifier_t *dwc_register_notifier(void *mem_ctx, void *object)
 	}
 
 	notifier = alloc_notifier(mem_ctx, object);
-	if (!notifier) {
+	if (!notifier)
 		return NULL;
-	}
 
 	DWC_CIRCLEQ_INSERT_TAIL(&manager->notifiers, notifier, list_entry);
 
@@ -225,9 +216,8 @@ int dwc_add_observer(void *observer, void *object, char *notification,
 	}
 
 	new_observer = alloc_observer(notifier->mem_ctx, observer, notification, callback, data);
-	if (!new_observer) {
+	if (!new_observer)
 		return -DWC_E_NO_MEMORY;
-	}
 
 	DWC_CIRCLEQ_INSERT_TAIL(&notifier->observers, new_observer, list_entry);
 
@@ -289,9 +279,8 @@ void dwc_notify(dwc_notifier_t *notifier, char *notification, void *notification
 	DWC_CIRCLEQ_FOREACH(o, &notifier->observers, list_entry) {
 		int len = DWC_STRLEN(notification);
 
-		if (DWC_STRLEN(o->notification) != len) {
+		if (DWC_STRLEN(o->notification) != len)
 			continue;
-		}
 
 		if (DWC_STRNCMP(o->notification, notification, len) == 0) {
 			cb_data_t *cb_data = dwc_alloc(notifier->mem_ctx, sizeof(cb_data_t));

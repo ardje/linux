@@ -11,9 +11,12 @@
  * version 2 as published by the Free Software Foundation.
  */
 
-#include <linux/platform_device.h>
+#include <linux/dma-mapping.h>
 #include <linux/module.h>
+#include <linux/of.h>
+#include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/usb/xhci_pdriver.h>
 
 #include "xhci.h"
 
@@ -67,6 +70,7 @@ static const struct hc_driver xhci_plat_xhci_driver = {
 	.check_bandwidth =	xhci_check_bandwidth,
 	.reset_bandwidth =	xhci_reset_bandwidth,
 	.address_device =	xhci_address_device,
+	.enable_device =	xhci_enable_device,
 	.update_hub_device =	xhci_update_hub_device,
 	.reset_device =		xhci_discover_or_reset_device,
 
@@ -84,6 +88,8 @@ static const struct hc_driver xhci_plat_xhci_driver = {
 
 static int xhci_plat_probe(struct platform_device *pdev)
 {
+	struct device_node	*node = pdev->dev.of_node;
+	struct usb_xhci_pdata	*pdata = dev_get_platdata(&pdev->dev);
 	const struct hc_driver	*driver;
 	struct xhci_hcd		*xhci;
 	struct resource         *res;
@@ -104,12 +110,22 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	if (!res)
 		return -ENODEV;
 
+	/* Initialize dma_mask and coherent_dma_mask to 32-bits */
+	ret = dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(32));
+	if (ret)
+		return ret;
+	if (!pdev->dev.dma_mask)
+		pdev->dev.dma_mask = &pdev->dev.coherent_dma_mask;
+	else
+		dma_set_mask(&pdev->dev, DMA_BIT_MASK(32));
+
 	hcd = usb_create_hcd(driver, &pdev->dev, dev_name(&pdev->dev));
 	if (!hcd)
 		return -ENOMEM;
 
 	hcd->rsrc_start = res->start;
 	hcd->rsrc_len = resource_size(res);
+	set_bit(HCD_FLAG_DWC3, &hcd->flags);
 
 	if (!request_mem_region(hcd->rsrc_start, hcd->rsrc_len,
 				driver->description)) {
@@ -128,9 +144,10 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	ret = usb_add_hcd(hcd, irq, IRQF_SHARED);
 	if (ret)
 		goto unmap_registers;
+	device_wakeup_enable(hcd->self.controller);
 
 	/* USB 2.0 roothub is stored in the platform_device now. */
-	hcd = dev_get_drvdata(&pdev->dev);
+	hcd = platform_get_drvdata(pdev);
 	xhci = hcd_to_xhci(hcd);
 	xhci->shared_hcd = usb_create_shared_hcd(driver, &pdev->dev,
 			dev_name(&pdev->dev), hcd);
@@ -139,6 +156,9 @@ static int xhci_plat_probe(struct platform_device *pdev)
 		goto dealloc_usb2_hcd;
 	}
 
+	if ((node && of_property_read_bool(node, "usb3-lpm-capable")) ||
+			(pdata && pdata->usb3_lpm_capable))
+		xhci->quirks |= XHCI_LPM_SUPPORT;
 	/*
 	 * Set the xHCI pointer before xhci_plat_setup() (aka hcd_driver.reset)
 	 * is called by usb_add_hcd().
@@ -174,8 +194,6 @@ static int xhci_plat_remove(struct platform_device *dev)
 	struct usb_hcd	*hcd = platform_get_drvdata(dev);
 	struct xhci_hcd	*xhci = hcd_to_xhci(hcd);
 
-	xhci->xhc_state |= XHCI_STATE_REMOVING;
-
 	usb_remove_hcd(xhci->shared_hcd);
 	usb_put_hcd(xhci->shared_hcd);
 
@@ -188,11 +206,54 @@ static int xhci_plat_remove(struct platform_device *dev)
 	return 0;
 }
 
+#ifdef CONFIG_PM
+static int xhci_plat_suspend(struct device *dev)
+{
+	struct usb_hcd	*hcd = dev_get_drvdata(dev);
+	struct xhci_hcd	*xhci = hcd_to_xhci(hcd);
+
+	/*
+	 * xhci_suspend() needs `do_wakeup` to know whether host is allowed
+	 * to do wakeup during suspend. Since xhci_plat_suspend is currently
+	 * only designed for system suspend, device_may_wakeup() is enough
+	 * to dertermine whether host is allowed to do wakeup. Need to
+	 * reconsider this when xhci_plat_suspend enlarges its scope, e.g.,
+	 * also applies to runtime suspend.
+	 */
+	return xhci_suspend(xhci, device_may_wakeup(dev));
+}
+
+static int xhci_plat_resume(struct device *dev)
+{
+	struct usb_hcd	*hcd = dev_get_drvdata(dev);
+	struct xhci_hcd	*xhci = hcd_to_xhci(hcd);
+
+	return xhci_resume(xhci, 0);
+}
+
+static const struct dev_pm_ops xhci_plat_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(xhci_plat_suspend, xhci_plat_resume)
+};
+#define DEV_PM_OPS	(&xhci_plat_pm_ops)
+#else
+#define DEV_PM_OPS	NULL
+#endif /* CONFIG_PM */
+
+#ifdef CONFIG_OF
+static const struct of_device_id usb_xhci_of_match[] = {
+	{ .compatible = "xhci-platform" },
+	{ },
+};
+MODULE_DEVICE_TABLE(of, usb_xhci_of_match);
+#endif
+
 static struct platform_driver usb_xhci_driver = {
 	.probe	= xhci_plat_probe,
 	.remove	= xhci_plat_remove,
 	.driver	= {
 		.name = "xhci-hcd",
+		.pm = DEV_PM_OPS,
+		.of_match_table = of_match_ptr(usb_xhci_of_match),
 	},
 };
 MODULE_ALIAS("platform:xhci-hcd");

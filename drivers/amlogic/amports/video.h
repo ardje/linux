@@ -1,60 +1,51 @@
 /*
- * AMLOGIC Audio/Video streaming port driver.
+ * drivers/amlogic/amports/video.h
+ *
+ * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the named License,
- * or any later version.
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA
- *
- * Author:  Tim Yao <timyao@amlogic.com>
- *
- */
+*/
 
 #ifndef VIDEO_H
 #define VIDEO_H
+#include "vpp.h"
 
 enum {
-    VIDEO_WIDEOPTION_NORMAL           = 0,
-    VIDEO_WIDEOPTION_FULL_STRETCH     = 1,
-    VIDEO_WIDEOPTION_4_3              = 2,
-    VIDEO_WIDEOPTION_16_9             = 3,
-	VIDEO_WIDEOPTION_NONLINEAR        = 4,
-    VIDEO_WIDEOPTION_NORMAL_NOSCALEUP = 5,
-	VIDEO_WIDEOPTION_4_3_IGNORE       = 6,
-	VIDEO_WIDEOPTION_4_3_LETTER_BOX   = 7,
-	VIDEO_WIDEOPTION_4_3_PAN_SCAN     = 8,
-	VIDEO_WIDEOPTION_4_3_COMBINED     = 9,
-	VIDEO_WIDEOPTION_16_9_IGNORE      = 10,
-	VIDEO_WIDEOPTION_16_9_LETTER_BOX  = 11,
-	VIDEO_WIDEOPTION_16_9_PAN_SCAN    = 12,
-	VIDEO_WIDEOPTION_16_9_COMBINED    = 13,
-    VIDEO_WIDEOPTION_MAX              = 14
+	VIDEO_WIDEOPTION_NORMAL = 0,
+	VIDEO_WIDEOPTION_FULL_STRETCH = 1,
+	VIDEO_WIDEOPTION_4_3 = 2,
+	VIDEO_WIDEOPTION_16_9 = 3,
+	VIDEO_WIDEOPTION_NONLINEAR = 4,
+	VIDEO_WIDEOPTION_NORMAL_NOSCALEUP = 5,
+	VIDEO_WIDEOPTION_4_3_IGNORE = 6,
+	VIDEO_WIDEOPTION_4_3_LETTER_BOX = 7,
+	VIDEO_WIDEOPTION_4_3_PAN_SCAN = 8,
+	VIDEO_WIDEOPTION_4_3_COMBINED = 9,
+	VIDEO_WIDEOPTION_16_9_IGNORE = 10,
+	VIDEO_WIDEOPTION_16_9_LETTER_BOX = 11,
+	VIDEO_WIDEOPTION_16_9_PAN_SCAN = 12,
+	VIDEO_WIDEOPTION_16_9_COMBINED = 13,
+	VIDEO_WIDEOPTION_MAX = 14
 };
 
-typedef  struct {
-    s32 x ;
-    s32 y ;
-    s32 w ;
-    s32 h ;
-} disp_rect_t;
-
+extern bool pre_scaler_en;
 #define VIDEO_NOTIFY_TRICK_WAIT   0x01
 #define VIDEO_NOTIFY_PROVIDER_GET 0x02
 #define VIDEO_NOTIFY_PROVIDER_PUT 0x04
 #define VIDEO_NOTIFY_FRAME_WAIT   0x08
 #define VIDEO_NOTIFY_POS_CHANGED  0x10
 
-#if MESON_CPU_TYPE >= MESON_CPU_TYPE_MESON6
-// TODO: move to register headers
+#if 1				/* MESON_CPU_TYPE >= MESON_CPU_TYPE_MESON6 */
+/* TODO: move to register headers */
 #define VPP_VADJ2_BLMINUS_EN        (1 << 3)
 #define VPP_VADJ2_EN                (1 << 2)
 #define VPP_VADJ1_BLMINUS_EN        (1 << 1)
@@ -77,6 +68,8 @@ typedef  struct {
 #define VD1_FMT_LUMA_WIDTH_BIT          16
 #define VD1_FMT_CHROMA_WIDTH_MASK       0xfff
 #define VD1_FMT_CHROMA_WIDTH_BIT        0
+
+#define VIU_MISC_AFBC_VD1           (1 << 20)
 
 #define VPP_VD2_ALPHA_WID           9
 #define VPP_VD2_ALPHA_MASK          0x1ff
@@ -173,6 +166,10 @@ typedef  struct {
 #define VPP_PHASECTL_INIRPTNUMT_BIT 5
 #define VPP_PHASECTL_INIRCVNUMT_BIT 0
 
+#define VPP_LINE_BUFFER_EN_BIT          21
+#define VPP_SC_PREHORZ_EN_BIT           20
+#define VPP_SC_PREVERT_EN_BIT           19
+#define VPP_LINE_BUFFER_EN          (1 << 21)
 #define VPP_SC_PREHORZ_EN           (1 << 20)
 #define VPP_SC_PREVERT_EN           (1 << 19)
 #define VPP_SC_VERT_EN              (1 << 18)
@@ -180,6 +177,8 @@ typedef  struct {
 #define VPP_SC_TOP_EN               (1 << 16)
 #define VPP_SC_V1OUT_EN             (1 << 15)
 #define VPP_SC_RGN14_HNOLINEAR      (1 << 12)
+#define VPP_SC_TOP_EN_WID	    1
+#define VPP_SC_TOP_EN_BIT	    16
 #define VPP_SC_BANK_LENGTH_WID      3
 #define VPP_SC_BANK_LENGTH_MASK     0x7
 #define VPP_SC_HBANK_LENGTH_BIT     8
@@ -203,19 +202,21 @@ typedef  struct {
 #define VPP_FORCE_FIELD_BOTTOM      (1 << 16)
 #define VPP_FOURCE_GO_FIELD         (1 << 15)
 #define VPP_FOURCE_GO_LINE          (1 << 14)
-#if MESON_CPU_TYPE >= MESON_CPU_TYPE_MESON8
+#if 1				/* MESON_CPU_TYPE >= MESON_CPU_TYPE_MESON8 */
 #define VPP_OFIFO_SIZE_WID          13
 #else
 #define VPP_OFIFO_SIZE_WID          12
-#endif // MESON_CPU_TYPE >= MESON_CPU_TYPE_MESON8
+#endif				/* MESON_CPU_TYPE >= MESON_CPU_TYPE_MESON8 */
 #define VPP_OFIFO_SIZE_MASK         0xfff
 #define VPP_OFIFO_SIZE_BIT          0
 
 #define VPP_COEF_IDXINC         (1 << 15)
 #define VPP_COEF_RD_CBUS        (1 << 14)
+#define VPP_COEF_SEP_EN	        (1 << 13)
 #define VPP_COEF_9BIT           (1 << 9)
 #define VPP_COEF_TYPE           (1 << 8)
 #define VPP_COEF_VERT           (0 << 8)
+#define VPP_COEF_VERT_CHROMA    (1 << 7)
 #define VPP_COEF_HORZ           (1 << 8)
 #define VPP_COEF_INDEX_MASK     0x7f
 #define VPP_COEF_INDEX_BIT      0
@@ -223,13 +224,36 @@ typedef  struct {
 #define P_VFIFO2VD_LINE_TOP_START P_ENCP_VFIFO2VD_LINE_TOP_START
 #endif
 
-#if MESON_CPU_TYPE < MESON_CPU_TYPE_MESON8
+#if 0				/* MESON_CPU_TYPE < MESON_CPU_TYPE_MESON8 */
 #define READ_VCBUS_REG(r) READ_CBUS_REG(r)
 #define WRITE_VCBUS_REG(r, val) WRITE_CBUS_REG(r, val)
-#define WRITE_VCBUS_REG_BITS(r, val, from, size) WRITE_CBUS_REG_BITS(r, val, from, size)
+#define WRITE_VCBUS_REG_BITS(r, val, from, size) \
+	WRITE_CBUS_REG_BITS(r, val, from, size)
 #define SET_VCBUS_REG_MASK(r, mask) SET_CBUS_REG_MASK(r, mask)
 #define CLEAR_VCBUS_REG_MASK(r, mask) CLEAR_CBUS_REG_MASK(r, mask)
 #endif
 
+#ifdef CONFIG_CLK81_DFS
+extern int check_and_set_clk81(void);
+#endif
 
-#endif /* VIDEO_H */
+#ifdef CONFIG_GAMMA_PROC
+extern int gamma_adjust(void);
+#endif
+#ifdef CONFIG_SCREEN_ON_EARLY
+extern void osd_resume_early(void);
+extern void vout_pll_resume_early(void);
+extern void resume_vout_early(void);
+extern int power_key_pressed;
+#endif
+
+#ifdef CONFIG_AM_VIDEO2
+extern void set_clone_frame_rate(unsigned int frame_rate, unsigned int delay);
+#endif
+
+extern void prot_get_parameter(u32 wide_mode, struct vframe_s *vf,
+			       struct vpp_frame_par_s *next_frame_par,
+			       const struct vinfo_s *vinfo);
+#endif				/* VIDEO_H */
+
+u32 get_blackout_policy(void);

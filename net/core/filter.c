@@ -67,10 +67,9 @@ static inline void *load_pointer(const struct sk_buff *skb, int k,
 }
 
 /**
- *	sk_filter_trim_cap - run a packet through a socket filter
+ *	sk_filter - run a packet through a socket filter
  *	@sk: sock associated with &sk_buff
  *	@skb: buffer to filter
- *	@cap: limit on how short the eBPF program may trim the packet
  *
  * Run the filter code and then cut skb->data to correct size returned by
  * sk_run_filter. If pkt_len is 0 we toss packet. If skb->len is smaller
@@ -79,7 +78,7 @@ static inline void *load_pointer(const struct sk_buff *skb, int k,
  * be accepted or -EPERM if the packet should be tossed.
  *
  */
-int sk_filter_trim_cap(struct sock *sk, struct sk_buff *skb, unsigned int cap)
+int sk_filter(struct sock *sk, struct sk_buff *skb)
 {
 	int err;
 	struct sk_filter *filter;
@@ -100,13 +99,14 @@ int sk_filter_trim_cap(struct sock *sk, struct sk_buff *skb, unsigned int cap)
 	filter = rcu_dereference(sk->sk_filter);
 	if (filter) {
 		unsigned int pkt_len = SK_RUN_FILTER(filter, skb);
-		err = pkt_len ? pskb_trim(skb, max(cap, pkt_len)) : -EPERM;
+
+		err = pkt_len ? pskb_trim(skb, pkt_len) : -EPERM;
 	}
 	rcu_read_unlock();
 
 	return err;
 }
-EXPORT_SYMBOL(sk_filter_trim_cap);
+EXPORT_SYMBOL(sk_filter);
 
 /**
  *	sk_run_filter - run a filter on a socket
@@ -642,7 +642,6 @@ void sk_filter_release_rcu(struct rcu_head *rcu)
 	struct sk_filter *fp = container_of(rcu, struct sk_filter, rcu);
 
 	bpf_jit_free(fp);
-	kfree(fp);
 }
 EXPORT_SYMBOL(sk_filter_release_rcu);
 
@@ -681,7 +680,7 @@ int sk_unattached_filter_create(struct sk_filter **pfp,
 	if (fprog->filter == NULL)
 		return -EINVAL;
 
-	fp = kmalloc(fsize + sizeof(*fp), GFP_KERNEL);
+	fp = kmalloc(sk_filter_size(fprog->len), GFP_KERNEL);
 	if (!fp)
 		return -ENOMEM;
 	memcpy(fp->insns, fprog->filter, fsize);
@@ -721,6 +720,7 @@ int sk_attach_filter(struct sock_fprog *fprog, struct sock *sk)
 {
 	struct sk_filter *fp, *old_fp;
 	unsigned int fsize = sizeof(struct sock_filter) * fprog->len;
+	unsigned int sk_fsize = sk_filter_size(fprog->len);
 	int err;
 
 	if (sock_flag(sk, SOCK_FILTER_LOCKED))
@@ -730,11 +730,11 @@ int sk_attach_filter(struct sock_fprog *fprog, struct sock *sk)
 	if (fprog->filter == NULL)
 		return -EINVAL;
 
-	fp = sock_kmalloc(sk, fsize+sizeof(*fp), GFP_KERNEL);
+	fp = sock_kmalloc(sk, sk_fsize, GFP_KERNEL);
 	if (!fp)
 		return -ENOMEM;
 	if (copy_from_user(fp->insns, fprog->filter, fsize)) {
-		sock_kfree_s(sk, fp, fsize+sizeof(*fp));
+		sock_kfree_s(sk, fp, sk_fsize);
 		return -EFAULT;
 	}
 

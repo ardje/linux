@@ -181,10 +181,8 @@ static struct ntc_thermistor_platform_data *
 ntc_thermistor_parse_dt(struct platform_device *pdev)
 {
 	struct iio_channel *chan;
-	enum iio_chan_type type;
 	struct device_node *np = pdev->dev.of_node;
 	struct ntc_thermistor_platform_data *pdata;
-	int ret;
 
 	if (!np)
 		return NULL;
@@ -196,13 +194,6 @@ ntc_thermistor_parse_dt(struct platform_device *pdev)
 	chan = iio_channel_get(&pdev->dev, NULL);
 	if (IS_ERR(chan))
 		return ERR_CAST(chan);
-
-	ret = iio_get_channel_type(chan, &type);
-	if (ret < 0)
-		return ERR_PTR(ret);
-
-	if (type != IIO_VOLTAGE)
-		return ERR_PTR(-EINVAL);
 
 	if (of_property_read_u32(np, "pullup-uv", &pdata->pullup_uv))
 		return ERR_PTR(-ENODEV);
@@ -436,7 +427,7 @@ static int ntc_thermistor_probe(struct platform_device *pdev)
 	if (IS_ERR(pdata))
 		return PTR_ERR(pdata);
 	else if (pdata == NULL)
-		pdata = pdev->dev.platform_data;
+		pdata = dev_get_platdata(&pdev->dev);
 
 	if (!pdata) {
 		dev_err(&pdev->dev, "No platform init data supplied.\n");
@@ -526,7 +517,6 @@ static int ntc_thermistor_remove(struct platform_device *pdev)
 	hwmon_device_unregister(data->hwmon_dev);
 	sysfs_remove_group(&data->dev->kobj, &ntc_attr_group);
 	ntc_iio_channel_release(pdata);
-	platform_set_drvdata(pdev, NULL);
 
 	return 0;
 }

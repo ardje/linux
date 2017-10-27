@@ -79,7 +79,6 @@ static bool enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_PNP;/* Enable this card *
 /* Vendor/product IDs for this card */
 static int vid[SNDRV_CARDS] = { [0 ... (SNDRV_CARDS-1)] = -1 };
 static int pid[SNDRV_CARDS] = { [0 ... (SNDRV_CARDS-1)] = -1 };
-static int nrpacks = 8;		/* max. number of packets per urb */
 static int device_setup[SNDRV_CARDS]; /* device parameter for this card */
 static bool ignore_ctl_error;
 static bool autoclock = true;
@@ -94,8 +93,6 @@ module_param_array(vid, int, NULL, 0444);
 MODULE_PARM_DESC(vid, "Vendor ID for the USB audio device.");
 module_param_array(pid, int, NULL, 0444);
 MODULE_PARM_DESC(pid, "Product ID for the USB audio device.");
-module_param(nrpacks, int, 0644);
-MODULE_PARM_DESC(nrpacks, "Max. number of packets per URB.");
 module_param_array(device_setup, int, NULL, 0444);
 MODULE_PARM_DESC(device_setup, "Specific device setup (if needed).");
 module_param(ignore_ctl_error, bool, 0444);
@@ -205,6 +202,7 @@ static int snd_usb_create_stream(struct snd_usb_audio *chip, int ctrlif, int int
 	if (! snd_usb_parse_audio_interface(chip, interface)) {
 		usb_set_interface(dev, interface, 0); /* reset the current interface */
 		usb_driver_claim_interface(&usb_audio_driver, iface, (void *)-1L);
+		return -EINVAL;
 	}
 
 	return 0;
@@ -306,6 +304,11 @@ static int snd_usb_create_streams(struct snd_usb_audio *chip, int ctrlif)
 
 static int snd_usb_audio_free(struct snd_usb_audio *chip)
 {
+	struct list_head *p, *n;
+
+	list_for_each_safe(p, n, &chip->ep_list)
+		snd_usb_endpoint_free(p);
+
 	mutex_destroy(&chip->mutex);
 	kfree(chip);
 	return 0;
@@ -325,193 +328,6 @@ static void remove_trailing_spaces(char *str)
 		return;
 	for (p = str + strlen(str) - 1; p >= str && isspace(*p); p--)
 		*p = 0;
-}
-/*proc info of usb sound card*/
-struct usb_audio_source_config{
-    int card;
-    int device;
-    u32 usbid;
-    struct mutex usb_audio_mutex;    
-};
-
-static struct snd_info_entry *snd_usb_audio_sourece_info_entry;
-static int usb_audio_info_exit = 0;
-static struct usb_audio_source_config * pstr,usbaudioinfo[9]; //usb_card_NUm=1 ~ 8
-//static struct usb_audio_source_config  snd_usb_config;
-// insert usb audio info to usb_audio_source_config which from user 
-static int usb_audio_source_info_Insert(u32 usbid, int num)
-{
-    int i = 0, j=0;
-    struct mutex usb_audio_mutex2;
-    struct usb_audio_source_config *u1 = NULL;
-    
-    mutex_init(&usb_audio_mutex2);
-    mutex_lock(&usb_audio_mutex2);
-    for(i = 1; i <= num; i++)
-    {
-        if(usbaudioinfo[i].usbid == usbid)
-        {
-            u1->usbid = usbid;
-            u1->card = usbaudioinfo[i].card;
-            u1->device = usbaudioinfo[i].device;
-            for(j = i; j < num; j++)
-            {
-                usbaudioinfo[j].card = usbaudioinfo[j+1].card;
-                usbaudioinfo[j].device = usbaudioinfo[j+1].device;
-                usbaudioinfo[j].usbid = usbaudioinfo[j+1].usbid;       
-            }
-        }
-    }
-    usbaudioinfo[num].usbid = u1->usbid;
-    usbaudioinfo[num].card = u1->card;
-    usbaudioinfo[num].device = u1->device;
-    
-    pstr->card = u1->card;
-    pstr->device = u1->device;
-    pstr->usbid = u1->usbid;
-    mutex_unlock(&usb_audio_mutex2);
-    return 0;
-}
-
-// make the lastest usb audio as default usb audio
-static int usb_audio_source_info_order(u32 usbid, int num)
-{
-    int i = 0, j=0;
-    struct mutex usb_audio_mutex1;
-    mutex_init(&usb_audio_mutex1);
-    mutex_lock(&usb_audio_mutex1);
-    for(i = 1; i <= num; i++)
-    {
-        if(usbaudioinfo[i].usbid == usbid)
-        {
-            for(j=i; j < num; j++)
-            {
-                usbaudioinfo[j].card = usbaudioinfo[j+1].card;
-                usbaudioinfo[j].device = usbaudioinfo[j+1].device;
-                usbaudioinfo[j].usbid = usbaudioinfo[j+1].usbid;       
-            }
-        }
-    }
-    pstr->card = usbaudioinfo[num-1].card;
-    pstr->device = usbaudioinfo[num-1].device;
-    pstr->usbid = usbaudioinfo[num-1].usbid;
-    mutex_unlock(&usb_audio_mutex1);
-    return 0;
-}
-static void usb_audio_source_info_read(struct snd_info_entry *entry, struct snd_info_buffer *buffer)
-{
-    printk("USB sound usbid = 0x%08x, card = %d, device = %d**\n", pstr->usbid, pstr->card, pstr->device);
-    snd_iprintf(buffer, "%08x %d %d\n", pstr->usbid, pstr->card, pstr->device);
-}
-
-static void usb_audio_source_info_write(struct snd_info_entry *entry, struct snd_info_buffer *buffer)
-{
-    char line[128], str[32];
-    const char *cptr;
-    int pos=0,i=0,idx;
-   
-   // printk("***buffer->curr=%d,buffer->size=%d,buffer->len=%d,buffer->stop=%d,buffer->error=%d\n",
-   //     buffer->curr,buffer->size,buffer->len,buffer->stop,buffer->error);
-
-    while (!snd_info_get_line(buffer,line,sizeof(line))){
-        mutex_lock(&pstr->usb_audio_mutex);
-        cptr = snd_info_get_str(str, line, sizeof(str));
-        
-    //    printk("***snd_info_get_str**str=%s, cptr=%s**\n",str,cptr);
-    
-        //judge usb audio usbid whether true
-        
-        idx = simple_strtoul(str, NULL, 16);
-        for(i=1; i<=usb_audio_info_exit; i++)
-        {
-            if(idx == usbaudioinfo[i].usbid)
-            {
-                pos = i;
-                break;
-            }               
-        }
-     //   printk("****i=%d**idx=%d***pos=%d**\n",i,idx,pos);
-        if(i > usb_audio_info_exit)
-        {
-            printk("****have no this usb card !****\n");
-            mutex_unlock(&pstr->usb_audio_mutex);
-            return;
-        }
-        //judge usb audio card whether true
-        cptr = snd_info_get_str(str, cptr, sizeof(str));
-        idx = simple_strtoul(str,NULL,10);
-        if(idx != usbaudioinfo[pos].card)
-        {
-            printk("****card number wrong !*****\n");
-            mutex_unlock(&pstr->usb_audio_mutex);
-            return;
-        }
-        //judge usb audio device whether true  
-        idx = simple_strtoul(cptr,NULL,10);
-        if(cptr)
-        {
-            if(idx != usbaudioinfo[pos].device)
-            {
-                printk("****device number wrong !*****\n");
-                mutex_unlock(&pstr->usb_audio_mutex);
-                return;
-            }              
-        }
-
-        usb_audio_source_info_Insert(usbaudioinfo[pos].usbid, usb_audio_info_exit);
-        mutex_unlock(&pstr->usb_audio_mutex);
-
-    }
-    
-    
-}
-
-
-static int usb_audio_source_info_init(struct usb_audio_source_config * pstr)
-{
-    
-    struct snd_info_entry *entry;
-    usb_audio_info_exit += 1;
-    if(usb_audio_info_exit >=8)
-    {
-        printk("***add too many usb audio card***\n");
-        return -ENOMEM;
-    }
-
-    usbaudioinfo[usb_audio_info_exit].card = pstr->card;
-    usbaudioinfo[usb_audio_info_exit].device = pstr->device;
-    usbaudioinfo[usb_audio_info_exit].usbid = pstr->usbid;
-    if(usb_audio_info_exit ==1)
-    {
-        entry = snd_info_create_module_entry(THIS_MODULE, "usb_audio_info", NULL);
-        
-        if (entry == NULL)
-            return -ENOMEM;
-        entry->content = SNDRV_INFO_CONTENT_TEXT;
-        entry->mode = S_IFREG | S_IRUGO | S_IWUSR;
-        entry->c.text.read = usb_audio_source_info_read;
-        entry->c.text.write = usb_audio_source_info_write;
-        //entry->private_data = pstr; 
-        if (snd_info_register(entry) < 0) {
-            snd_info_free_entry(entry);
-            return -ENOMEM;
-        }
-        snd_usb_audio_sourece_info_entry = entry;
-    }
-    
-    return 0;
-}
-
-static int usb_audio_source_info_done(u32 usbid)
-{
-    usb_audio_info_exit -= 1;
-    
-    if(!usb_audio_info_exit)
-        snd_info_free_entry(snd_usb_audio_sourece_info_entry);
-    else 
-        usb_audio_source_info_order(usbid, usb_audio_info_exit + 1);
-    
-    return 0;
 }
 
 /*
@@ -535,6 +351,7 @@ static int snd_usb_audio_create(struct usb_device *dev, int idx,
 	case USB_SPEED_LOW:
 	case USB_SPEED_FULL:
 	case USB_SPEED_HIGH:
+	case USB_SPEED_WIRELESS:
 	case USB_SPEED_SUPER:
 		break;
 	default:
@@ -560,7 +377,6 @@ static int snd_usb_audio_create(struct usb_device *dev, int idx,
 	chip->dev = dev;
 	chip->card = card;
 	chip->setup = device_setup[idx];
-	chip->nrpacks = nrpacks;
 	chip->autoclock = autoclock;
 	chip->probing = 1;
 
@@ -570,18 +386,7 @@ static int snd_usb_audio_create(struct usb_device *dev, int idx,
 	INIT_LIST_HEAD(&chip->ep_list);
 	INIT_LIST_HEAD(&chip->midi_list);
 	INIT_LIST_HEAD(&chip->mixer_list);
-    pstr = kzalloc(sizeof(*pstr), GFP_KERNEL);
-    if (! pstr) {
-        kzfree(pstr);
-        return -ENOMEM;
-    }
-    mutex_init(&pstr->usb_audio_mutex);
-    pstr->card = card->number;
-    pstr->device = 0; 
-    pstr->usbid = chip->usb_id;  
-    
-   // add "usb_audio_info" node in path: /proc/asound/
-    usb_audio_source_info_init(pstr);
+
 	if ((err = snd_device_new(card, SNDRV_DEV_LOWLEVEL, chip, &ops)) < 0) {
 		snd_usb_audio_free(chip);
 		snd_card_free(card);
@@ -780,27 +585,30 @@ static void snd_usb_audio_disconnect(struct usb_device *dev,
 				     struct snd_usb_audio *chip)
 {
 	struct snd_card *card;
-	struct list_head *p, *n;
+	struct list_head *p;
+	bool was_shutdown;
 
 	if (chip == (void *)-1L)
 		return;
 
 	card = chip->card;
 	down_write(&chip->shutdown_rwsem);
+	was_shutdown = chip->shutdown;
 	chip->shutdown = 1;
 	up_write(&chip->shutdown_rwsem);
 
 	mutex_lock(&register_mutex);
-	chip->num_interfaces--;
-	if (chip->num_interfaces <= 0) {
+	if (!was_shutdown) {
+		struct snd_usb_endpoint *ep;
+
 		snd_card_disconnect(card);
 		/* release the pcm resources */
 		list_for_each(p, &chip->pcm_list) {
 			snd_usb_stream_disconnect(p);
 		}
 		/* release the endpoint resources */
-		list_for_each_safe(p, n, &chip->ep_list) {
-			snd_usb_endpoint_free(p);
+		list_for_each_entry(ep, &chip->ep_list, list) {
+			snd_usb_endpoint_release(ep);
 		}
 		/* release the midi resources */
 		list_for_each(p, &chip->midi_list) {
@@ -810,13 +618,16 @@ static void snd_usb_audio_disconnect(struct usb_device *dev,
 		list_for_each(p, &chip->mixer_list) {
 			snd_usb_mixer_disconnect(p);
 		}
+	}
+
+	chip->num_interfaces--;
+	if (chip->num_interfaces <= 0) {
 		usb_chip[chip->index] = NULL;
 		mutex_unlock(&register_mutex);
 		snd_card_free_when_closed(card);
 	} else {
 		mutex_unlock(&register_mutex);
 	}
-	usb_audio_source_info_done(chip->usb_id);
 }
 
 /*
@@ -924,10 +735,6 @@ static int usb_audio_resume(struct usb_interface *intf)
 err_out:
 	return err;
 }
-static int usb_audio_reset_resume(struct usb_interface *intf)
-{ 
-   return usb_audio_resume(intf);
-}
 #else
 #define usb_audio_suspend	NULL
 #define usb_audio_resume	NULL
@@ -952,24 +759,8 @@ static struct usb_driver usb_audio_driver = {
 	.disconnect =	usb_audio_disconnect,
 	.suspend =	usb_audio_suspend,
 	.resume =	usb_audio_resume,
-	.reset_resume = usb_audio_reset_resume,
 	.id_table =	usb_audio_ids,
 	.supports_autosuspend = 1,
 };
 
-static int __init snd_usb_audio_init(void)
-{
-	if (nrpacks < 1 || nrpacks > MAX_PACKS) {
-		printk(KERN_WARNING "invalid nrpacks value.\n");
-		return -EINVAL;
-	}
-	return usb_register(&usb_audio_driver);
-}
-
-static void __exit snd_usb_audio_cleanup(void)
-{
-	usb_deregister(&usb_audio_driver);
-}
-
-module_init(snd_usb_audio_init);
-module_exit(snd_usb_audio_cleanup);
+module_usb_driver(usb_audio_driver);

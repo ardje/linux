@@ -109,6 +109,30 @@ probably didn't even receive earlier versions of the patch.
 If the patch fixes a logged bug entry, refer to that bug entry by
 number and URL.
 
+If you want to refer to a specific commit, don't just refer to the
+SHA-1 ID of the commit. Please also include the oneline summary of
+the commit, to make it easier for reviewers to know what it is about.
+Example:
+
+	Commit e21d2170f36602ae2708 ("video: remove unnecessary
+	platform_set_drvdata()") removed the unnecessary
+	platform_set_drvdata(), but left the variable "dev" unused,
+	delete it.
+
+If your patch fixes a bug in a specific commit, e.g. you found an issue using
+git-bisect, please use the 'Fixes:' tag with the first 12 characters of the
+SHA-1 ID, and the one line summary.
+Example:
+
+	Fixes: e21d2170f366 ("video: remove unnecessary platform_set_drvdata()")
+
+The following git-config settings can be used to add a pretty format for
+outputting the above style in the git log or git show commands
+
+	[core]
+		abbrev = 12
+	[pretty]
+		fixes = Fixes: %h (\"%s\")
 
 3) Separate your changes.
 
@@ -131,20 +155,6 @@ If you cannot condense your patch set into a smaller set of patches,
 then only post say 15 or so at a time and wait for review and integration.
 
 
-If your patch fixes a bug in a specific commit, e.g. you found an issue using
-git-bisect, please use the 'Fixes:' tag with the first 12 characters of the
-SHA-1 ID, and the one line summary.
-Example:
-
-	Fixes: e21d2170f366 ("video: remove unnecessary platform_set_drvdata()")
-
-The following git-config settings can be used to add a pretty format for
-outputting the above style in the git log or git show commands
-
-	[core]
-		abbrev = 12
-	[pretty]
-		fixes = Fixes: %h (\"%s\")
 
 4) Style check your changes.
 

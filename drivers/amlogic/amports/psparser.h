@@ -1,23 +1,19 @@
 /*
- * AMLOGIC Audio/Video streaming port driver.
+ * drivers/amlogic/amports/psparser.h
+ *
+ * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the named License,
- * or any later version.
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA
- *
- * Author:  Tim Yao <timyao@amlogic.com>
- *
- */
+*/
 
 #ifndef PSPARSER_H
 #define PSPARSER_H
@@ -27,9 +23,9 @@ extern s32 psparser_init(u32 vid, u32 aid, u32 sid);
 extern void psparser_release(void);
 
 extern ssize_t psparser_write(struct file *file,
-                              struct stream_buf_s *vbuf,
-                              struct stream_buf_s *abuf,
-                              const char __user *buf, size_t count);
+		struct stream_buf_s *vbuf,
+		struct stream_buf_s *abuf,
+		const char __user *buf, size_t count);
 
 extern void psparser_change_avid(unsigned int vid, unsigned int aid);
 
@@ -43,9 +39,11 @@ extern u8 psparser_get_sub_found_num(void);
 
 extern u8 psparser_get_sub_info(struct subtitle_info *sub_infos[]);
 
+#ifdef CONFIG_AM_DVB
+extern int tsdemux_set_reset_flag(void);
+#endif
 
-#if MESON_CPU_TYPE >= MESON_CPU_TYPE_MESON6
-// TODO: move to register headers
+/* TODO: move to register headers */
 #define ES_PACK_SIZE_BIT                8
 #define ES_PACK_SIZE_WID                24
 
@@ -107,7 +105,7 @@ extern u8 psparser_get_sub_info(struct subtitle_info *sub_infos[]);
 #define PS_CFG_SRC_SEL_BIT              24
 #define PS_CFG_SRC_SEL_MASK             (3<<PS_CFG_SRC_SEL_BIT)
 #define PS_CFG_SRC_SEL_FETCH            (0<<PS_CFG_SRC_SEL_BIT)
-#define PS_CFG_SRC_SEL_AUX1             (1<<PS_CFG_SRC_SEL_BIT) // from NDMA
+#define PS_CFG_SRC_SEL_AUX1             (1<<PS_CFG_SRC_SEL_BIT)	/* from NDMA */
 #define PS_CFG_SRC_SEL_AUX2             (2<<PS_CFG_SRC_SEL_BIT)
 #define PS_CFG_SRC_SEL_AUX3             (3<<PS_CFG_SRC_SEL_BIT)
 #define PS_CFG_PFIFO_EMPTY_CNT_BIT      16
@@ -138,7 +136,5 @@ extern u8 psparser_get_sub_info(struct subtitle_info *sub_infos[]);
 #define RESET_PARSER        (1<<8)
 #define TS_HIU_ENABLE              5
 #define USE_HI_BSF_INTERFACE       7
-#endif
 
-#endif /* PSPARSER_H */
-
+#endif				/* PSPARSER_H */

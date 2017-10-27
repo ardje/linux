@@ -1,7 +1,8 @@
 /*******************************************************************
  *  Copyright C 2010 by Amlogic, Inc. All Rights Reserved.
  *  File name: TVAFE_CVD.h
- *  Description: IO function, structure, enum, used in TVIN AFE sub-module processing
+ *  Description: IO function, structure,
+ enum, used in TVIN AFE sub-module processing
  *******************************************************************/
 #ifndef _TVAFE_CVD_H
 #define _TVAFE_CVD_H
@@ -17,35 +18,41 @@
 #define DECODER_VBI_START_ADDR              0x0
 
 /* cvd2 function enable/disable defines*/
-//#define TVAFE_CVD2_NOT_TRUST_NOSIG  // Do not trust Reg no signal flag
-//#define SYNC_HEIGHT_AUTO_TUNING
-//#define TVAFE_CVD2_ADC_REG_CHECK
+/* #define TVAFE_CVD2_NOT_TRUST_NOSIG  //
+Do not trust Reg no signal flag */
+/* #define SYNC_HEIGHT_AUTO_TUNING */
+/* #define TVAFE_CVD2_ADC_REG_CHECK */
 
 /* cvd2 function enable/disable defines*/
-//#define TVAFE_CVD2_TUNER_DET_ACCELERATED  // accelerate tuner mode detection
+/* #define TVAFE_CVD2_TUNER_DET_ACCELERATED
+// accelerate tuner mode detection */
 
 /* cvd2 VBI function enable/disable defines*/
-//#define TVAFE_CVD2_CC_ENABLE  // enable cvd2 close caption
+/* #define TVAFE_CVD2_CC_ENABLE  // enable cvd2 close caption */
 
 /* cvd2 auto adjust de enable/disable defines*/
-#define TVAFE_CVD2_AUTO_DE_ENABLE                  // enable cvd2 de auto ajust
-#define TVAFE_CVD2_AUTO_DE_CHECK_CNT        100    // check lines counter 100*10ms
-#define TVAFE_CVD2_AUTO_DE_TH               0xd0   // audo de threshold
-#define TVAFE_CVD2_PAL_DE_START             0x17   // default de start value for pal
+#define TVAFE_CVD2_AUTO_DE_ENABLE
+/* enable cvd2 de auto ajust */
+#define TVAFE_CVD2_AUTO_DE_CHECK_CNT        100
+/* check lines counter 100*10ms */
+#define TVAFE_CVD2_AUTO_DE_TH               0xd0
+/* audo de threshold */
+#define TVAFE_CVD2_PAL_DE_START             0x17
+/* default de start value for pal */
 
 
-// ***************************************************************************
-// *** enum definitions *********************************************
-// ***************************************************************************
-typedef enum tvafe_cvd2_state_e {
+/**************************************** */
+/* *** enum definitions *****************/
+/* **************************************/
+enum tvafe_cvd2_state_e {
 	TVAFE_CVD2_STATE_INIT = 0,
 	TVAFE_CVD2_STATE_FIND,
-} tvafe_cvd2_state_t;
+};
 
-// ***************************************************************************
-// *** structure definitions *********************************************
-// ***************************************************************************
-typedef struct tvafe_cvd2_hw_data_s {
+/* ****************************************** */
+/* *** structure definitions *********** */
+/***************************************************** */
+struct tvafe_cvd2_hw_data_s {
 	bool no_sig;
 	bool h_lock;
 	bool v_lock;
@@ -74,24 +81,26 @@ typedef struct tvafe_cvd2_hw_data_s {
 	bool fsc_425;
 	bool fsc_443;
 
-} tvafe_cvd2_hw_data_t;
+};
 
 /* cvd2 memory */
-typedef struct tvafe_cvd2_mem_s {
-	unsigned int                start;  //memory start addr for cvd2 module
-	unsigned int                size;   //memory size for cvd2 module
-} tvafe_cvd2_mem_t;
+struct tvafe_cvd2_mem_s {
+	unsigned int                start;
+	/* memory start addr for cvd2 module */
+	unsigned int                size;
+	/* memory size for cvd2 module */
+};
 
 #ifdef TVAFE_CVD2_AUTO_DE_ENABLE
-typedef struct tvafe_cvd2_lines_s {
+struct tvafe_cvd2_lines_s {
 	unsigned int                val[4];
 	unsigned int                check_cnt;
 	unsigned int                de_offset;
-} tvafe_cvd2_lines_t;
+};
 #endif
 
 /* cvd2 signal information */
-typedef struct tvafe_cvd2_info_s {
+struct tvafe_cvd2_info_s {
 	enum tvafe_cvd2_state_e     state;
 	unsigned int                state_cnt;
 #ifdef TVAFE_SET_CVBS_CDTO_EN
@@ -118,10 +127,10 @@ typedef struct tvafe_cvd2_info_s {
 	struct tvafe_cvd2_lines_s   vlines;
 #endif
 	unsigned int                ntsc_switch_cnt;
-} tvafe_cvd2_info_t;
+};
 
-//CVD2 status list
-typedef struct tvafe_cvd2_s {
+/* CVD2 status list */
+struct tvafe_cvd2_s {
 	struct tvafe_cvd2_hw_data_s hw_data[3];
 	struct tvafe_cvd2_hw_data_s hw;
 	unsigned char               hw_data_cur;
@@ -131,33 +140,41 @@ typedef struct tvafe_cvd2_s {
 	enum tvin_sig_fmt_e         manual_fmt;
 	unsigned int                fmt_loop_cnt;
 	struct tvafe_cvd2_info_s    info;
-} tvafe_cvd2_t;
+};
 
-// *****************************************************************************
-// ******** GLOBAL FUNCTION CLAIM ********
-// *****************************************************************************
+/* ***************************************** */
+/* ******** GLOBAL FUNCTION CLAIM ******** */
+/* ********************************************* */
 extern int cvd_get_rf_strength(void);
 
-extern void tvafe_cvd2_try_format(struct tvafe_cvd2_s *cvd2, struct tvafe_cvd2_mem_s *mem, enum tvin_sig_fmt_e fmt);
-extern bool tvafe_cvd2_no_sig(struct tvafe_cvd2_s *cvd2, struct tvafe_cvd2_mem_s *mem);
+extern void tvafe_cvd2_try_format(struct tvafe_cvd2_s *cvd2,
+			struct tvafe_cvd2_mem_s *mem, enum tvin_sig_fmt_e fmt);
+extern bool tvafe_cvd2_no_sig(struct tvafe_cvd2_s *cvd2,
+			struct tvafe_cvd2_mem_s *mem);
 extern bool tvafe_cvd2_fmt_chg(struct tvafe_cvd2_s *cvd2);
-extern enum tvin_sig_fmt_e tvafe_cvd2_get_format(struct tvafe_cvd2_s *cvd2);
+extern enum tvin_sig_fmt_e tvafe_cvd2_get_format(
+			struct tvafe_cvd2_s *cvd2);
 #ifdef TVAFE_SET_CVBS_PGA_EN
 extern void tvafe_cvd2_adj_pga(struct tvafe_cvd2_s *cvd2);
 #endif
 #ifdef TVAFE_SET_CVBS_CDTO_EN
-extern void tvafe_cvd2_adj_cdto(struct tvafe_cvd2_s *cvd2, unsigned int hcnt64);
+extern void tvafe_cvd2_adj_cdto(struct tvafe_cvd2_s *cvd2,
+			unsigned int hcnt64);
 #endif
 extern void tvafe_cvd2_set_default_cdto(struct tvafe_cvd2_s *cvd2);
 extern void tvafe_cvd2_set_default_de(struct tvafe_cvd2_s *cvd2);
 extern void tvafe_cvd2_check_3d_comb(struct tvafe_cvd2_s *cvd2);
 extern void tvafe_cvd2_reset_pga(void);
-extern enum tvafe_cvbs_video_e tvafe_cvd2_get_lock_status(struct tvafe_cvd2_s *cvd2);
+extern enum tvafe_cvbs_video_e tvafe_cvd2_get_lock_status(
+			struct tvafe_cvd2_s *cvd2);
 extern int tvafe_cvd2_get_atv_format(void);
 extern int tvafe_cvd2_get_hv_lock(void);
 extern void tvafe_cvd2_hold_rst(struct tvafe_cvd2_s *cvd2);
 extern void tvafe_cvd2_set_reg8a(unsigned int v);
-extern void get_cvd_version(char **ver,char **last_ver);
+extern void get_cvd_version(const char **ver, const char **last_ver);
+extern void tvafe_snow_config(unsigned int onoff);
+extern void tvafe_snow_config_clamp(unsigned int onoff);
+extern void tvafe_snow_config_acd(void);
 
-#endif // _TVAFE_CVD_H
+#endif /* _TVAFE_CVD_H */
 

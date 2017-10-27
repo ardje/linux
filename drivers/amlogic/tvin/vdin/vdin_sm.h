@@ -1,42 +1,54 @@
 /*
- * TVIN Signal State Machine
+ * drivers/amlogic/tvin/vdin/vdin_sm.h
  *
- * Author: Lin Xu <lin.xu@amlogic.com>
- *
- * Copyright (C) 2010 Amlogic Inc.
+ * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- */
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+*/
+
 
 #ifndef __TVIN_STATE_MACHINE_H
 #define __TVIN_STATE_MACHINE_H
 
 #include "vdin_drv.h"
 
-typedef enum tvin_sm_status_e {
-    TVIN_SM_STATUS_NULL = 0, // processing status from init to the finding of the 1st confirmed status
-    TVIN_SM_STATUS_NOSIG,    // no signal - physically no signal
-    TVIN_SM_STATUS_UNSTABLE, // unstable - physically bad signal
-    TVIN_SM_STATUS_NOTSUP,   // not supported - physically good signal & not supported
-    TVIN_SM_STATUS_PRESTABLE,
-    TVIN_SM_STATUS_STABLE,   // stable - physically good signal & supported
-} tvin_sm_status_t;
-typedef struct tvin_sm_s {
-    enum tvin_sm_status_e state;
-    unsigned int state_counter; // STATE_NOSIG, STATE_UNSTABLE
-    unsigned int exit_nosig_counter; // STATE_NOSIG
-    unsigned int back_nosig_counter; // STATE_UNSTABLE
-    unsigned int back_stable_counter; // STATE_UNSTABLE
-    unsigned int exit_prestable_counter; // STATE_PRESTABLE
-    //thresholds of state switchted  
-    int back_nosig_max_cnt ;
-    int atv_unstable_in_cnt ;
-    int atv_unstable_out_cnt;
-    int atv_stable_out_cnt;
-    int hdmi_unstable_out_cnt;
-}tvin_sm_t;
+enum tvin_sm_status_e {
+/* processing status from init to the finding of the 1st confirmed status */
+	TVIN_SM_STATUS_NULL = 0,
+	/* no signal - physically no signal */
+	TVIN_SM_STATUS_NOSIG,
+	/* unstable - physically bad signal */
+	TVIN_SM_STATUS_UNSTABLE,
+	 /* not supported - physically good signal & not supported */
+	TVIN_SM_STATUS_NOTSUP,
+
+	TVIN_SM_STATUS_PRESTABLE,
+	 /* stable - physically good signal & supported */
+	TVIN_SM_STATUS_STABLE,
+};
+struct tvin_sm_s {
+	enum tvin_sm_status_e state;
+	unsigned int state_cnt; /* STATE_NOSIG, STATE_UNSTABLE */
+	unsigned int exit_nosig_cnt; /* STATE_NOSIG */
+	unsigned int back_nosig_cnt; /* STATE_UNSTABLE */
+	unsigned int back_stable_cnt; /* STATE_UNSTABLE */
+	unsigned int exit_prestable_cnt; /* STATE_PRESTABLE */
+	/* thresholds of state switchted */
+	int back_nosig_max_cnt;
+	int atv_unstable_in_cnt;
+	int atv_unstable_out_cnt;
+	int atv_stable_out_cnt;
+	int hdmi_unstable_out_cnt;
+};
 void tvin_smr(struct vdin_dev_s *pdev);
 void tvin_smr_init(int index);
 

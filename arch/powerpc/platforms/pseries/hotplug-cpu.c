@@ -30,7 +30,8 @@
 #include <asm/machdep.h>
 #include <asm/vdso_datapage.h>
 #include <asm/xics.h>
-#include "plpar_wrappers.h"
+#include <asm/plpar_wrappers.h>
+
 #include "offline_states.h"
 
 /* This version can't take the spinlock, because it never returns */
@@ -87,12 +88,13 @@ void set_default_offline_state(int cpu)
 
 static void rtas_stop_self(void)
 {
-	struct rtas_args args = {
-		.token = cpu_to_be32(rtas_stop_self_token),
+	static struct rtas_args args = {
 		.nargs = 0,
 		.nret = 1,
 		.rets = &args.args[0],
 	};
+
+	args.token = cpu_to_be32(rtas_stop_self_token);
 
 	local_irq_disable();
 
@@ -123,7 +125,7 @@ static void pseries_mach_cpu_die(void)
 		cede_latency_hint = 2;
 
 		get_lppaca()->idle = 1;
-		if (!get_lppaca()->shared_proc)
+		if (!lppaca_shared_proc(get_lppaca()))
 			get_lppaca()->donate_dedicated_cpu = 1;
 
 		while (get_preferred_offline_state(cpu) == CPU_STATE_INACTIVE) {
@@ -137,7 +139,7 @@ static void pseries_mach_cpu_die(void)
 
 		local_irq_disable();
 
-		if (!get_lppaca()->shared_proc)
+		if (!lppaca_shared_proc(get_lppaca()))
 			get_lppaca()->donate_dedicated_cpu = 0;
 		get_lppaca()->idle = 0;
 

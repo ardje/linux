@@ -2,12 +2,13 @@
  * This software program is licensed subject to the GNU General Public License
  * (GPL).Version 2,June 1991, available at http://www.fsf.org/copyleft/gpl.html
 
- * (C) Copyright 2011 Thundersoft.LTD 
+ * (C) Copyright 2011 Thundersoft.LTD
  * All Rights Reserved
  */
 
 /* file CM36283.c
-   brief: This file contains all function implementations for the CM36283 in linux
+   brief: This file contains all function implementations for the CM36283
+   in linux
 */
 
 #include <linux/module.h>
@@ -19,10 +20,10 @@
 #include <linux/slab.h>
 #include <linux/mutex.h>
 
-#include <linux/sensor/sensor_common.h>
+#include <linux/amlogic/sensor/sensor_common.h>
 
 #define VENDOR_NAME     "Capella"
-#define SENSOR_NAME 	"CM36283"
+#define SENSOR_NAME	"CM36283"
 #define DRIVER_VERSION  "1.0"
 #define CM36283_MAX_DELAY 200
 
@@ -46,7 +47,7 @@
 #define ALS_DISABLE 0x0001
 
 #define PS_CONF12_VAL 0x00A2
-#define PS_DISABLE 0x0001//0x0001
+#define PS_DISABLE 0x0001/* 0x0001 */
 
 #define PS_CONF3_VAL 0x0000
 
@@ -68,9 +69,9 @@ static int CM36283_smbus_read_word(struct i2c_client *client,
 {
 	s32 dummy;
 	dummy = i2c_smbus_read_word_data(client, reg_addr);
-	if (dummy < 0)
-	{
-		pr_err("%s read addr=%x read data=%x\n",__func__, reg_addr, dummy);
+	if (dummy < 0) {
+		pr_err("%s read addr=%x read data=%x\n", __func__, reg_addr,
+			dummy);
 		return -1;
 	}
 	return dummy & 0x0000ffff;
@@ -80,10 +81,10 @@ static int CM36283_smbus_write_word(struct i2c_client *client,
 		unsigned char reg_addr, unsigned short data)
 {
 	s32 dummy;
-	dummy = i2c_smbus_write_word_data(client,reg_addr,data);
-	if (dummy < 0)
-	{
-		pr_err("%s write addr=%x write data=%x\n",__func__, reg_addr, data);
+	dummy = i2c_smbus_write_word_data(client, reg_addr, data);
+	if (dummy < 0) {
+		pr_err("%s write addr=%x write data=%x\n", __func__, reg_addr,
+			data);
 		return -1;
 	}
 	return 0;
@@ -108,23 +109,20 @@ static int CM36283_get_als(struct i2c_client *client)
 {
 	int ret;
 	static int als_buf[3];
-	static int idx = 0;
+	static int idx;
 	ret = CM36283_read_als(client);
-	if(ret > -1)
+	if (ret > -1)
 		ret = lux_calc(ret);
-	if(ret > ALS_MAX)
+	if (ret > ALS_MAX)
 		ret = ALS_MAX;
-	if(ret > -1)
-	{
+	if (ret > -1) {
 		als_buf[idx] = ret;
 		idx++;
 	}
-	if(idx == 3)
-	{
+	if (idx == 3) {
 		ret = (als_buf[0] + als_buf[1] + als_buf[2])/3;
 		idx = 0;
-	}
-	else
+	} else
 		ret = -5;
 	return ret;
 }
@@ -133,7 +131,7 @@ static int CM36283_get_ps(struct i2c_client *client)
 {
 	int ret;
 	ret = CM36283_read_ps(client);
-	if(ret > -1)
+	if (ret > -1)
 		ret &= 0x00ff;
 	return ret;
 }
@@ -145,82 +143,83 @@ static void CM36283_work_func(struct work_struct *work)
 	struct CM36283_data *CM36283 = container_of((struct delayed_work *)work,
 			struct CM36283_data, work);
 	unsigned long delay = msecs_to_jiffies(atomic_read(&CM36283->delay));
-	//printk("CM36283_work_func \n");
+	/* pr_info("CM36283_work_func\n"); */
 	ps  = CM36283_get_ps(CM36283->CM36283_client);
-				//printk("ps=%d  ", ps);
-	if(CM36283->ps_enable)
-	{
+				/* pr_info("ps=%d  ", ps); */
+	if (CM36283->ps_enable) {
 		if (ps > -1) {
 			input_report_abs(CM36283->input, ABS_DISTANCE, ps);
 			input_sync(CM36283->input);
 		}
 	}
 	als = CM36283_get_als(CM36283->CM36283_client);
-	if(CM36283->als_enable)
-	{
+	if (CM36283->als_enable) {
 		if (als > -1) {
 			input_report_abs(CM36283->input, ABS_MISC, als);
 			input_sync(CM36283->input);
 		}
 	}
-	if(CM36283->ps_enable || CM36283->als_enable)
+	if (CM36283->ps_enable || CM36283->als_enable)
 		schedule_delayed_work(&CM36283->work, delay);
 }
 
 static int CM36283_als_state(struct CM36283_data *CM36283, int als_on)
 {
-	int rc; 
+	int rc;
 	u16 reg;
 
-	if(als_on)
+	if (als_on)
 		reg = ALS_CONF_VAL;
 	else
 		reg = ALS_DISABLE;
 
-	rc = CM36283_smbus_write_word(CM36283->CM36283_client,ALS_THDL, 0x01F4);
-	if(rc < 0)
+	rc = CM36283_smbus_write_word(CM36283->CM36283_client, ALS_THDL,
+					0x01F4);
+	if (rc < 0)
 		pr_err("%s CM36283_smbus_write_word rc=%d\n", __func__, rc);
 
-	rc = CM36283_smbus_write_word(CM36283->CM36283_client,ALS_THDH, 0x07D0);
-	if(rc < 0)
+	rc = CM36283_smbus_write_word(CM36283->CM36283_client, ALS_THDH,
+					0x07D0);
+	if (rc < 0)
 		pr_err("%s CM36283_smbus_write_word rc=%d\n", __func__, rc);
 
-	rc = CM36283_smbus_write_word(CM36283->CM36283_client,ALS_CONF, reg);
-	if(rc < 0)
+	rc = CM36283_smbus_write_word(CM36283->CM36283_client, ALS_CONF, reg);
+	if (rc < 0)
 		pr_err("%s CM36283_smbus_write_word rc=%d\n", __func__, rc);
 
-	return rc; 
+	return rc;
 }
 
 static int CM36283_ps_state(struct CM36283_data *CM36283, int ps_on)
 {
-	int rc; 
+	int rc;
 	u16 reg;
 
-	if(ps_on)
+	if (ps_on)
 		reg = PS_CONF12_VAL;
 	else
 		reg = PS_DISABLE;
 
-	rc = CM36283_smbus_write_word(CM36283->CM36283_client,PS_CONF1_CONF2, reg);
-	if(rc < 0)
+	rc = CM36283_smbus_write_word(CM36283->CM36283_client, PS_CONF1_CONF2,
+					reg);
+	if (rc < 0)
 		pr_err("%s CM36283_smbus_write_word rc=%d\n", __func__, rc);
 
-	rc = CM36283_smbus_write_word(CM36283->CM36283_client,PS_THD, 0x0705);
-	if(rc < 0)
+	rc = CM36283_smbus_write_word(CM36283->CM36283_client, PS_THD, 0x0705);
+	if (rc < 0)
 		pr_err("%s CM36283_smbus_write_word rc=%d\n", __func__, rc);
 
-	return rc; 
+	return rc;
 }
 
-static int CM36283_state(struct CM36283_data *CM36283,int als_on, int ps_on)
+static int CM36283_state(struct CM36283_data *CM36283, int als_on, int ps_on)
 {
 	int rc;
 	rc = CM36283_als_state(CM36283, als_on);
-	if(rc < 0)
+	if (rc < 0)
 		pr_err("%s CM36283 change state error=%d\n", __func__, rc);
 	rc = CM36283_ps_state(CM36283, ps_on);
-	if(rc < 0)
+	if (rc < 0)
 		pr_err("%s CM36283 change state error=%d\n", __func__, rc);
 	return rc;
 }
@@ -246,36 +245,29 @@ static ssize_t CM36283_als_enable_store(struct device *dev,
 	struct i2c_client *client = to_i2c_client(dev);
 	struct CM36283_data *CM36283 = i2c_get_clientdata(client);
 	unsigned long delay = msecs_to_jiffies(atomic_read(&CM36283->delay));
-	error = strict_strtoul(buf, 10, &data);
-	if(error)
+	error = kstrtoul(buf, 10, &data);
+	if (error)
 		return error;
-	printk("%s set als = %ld\n", __func__, data);
-	if(data)
-	{
-		if(!CM36283->als_enable)
-		{
+	pr_info("%s set als = %ld\n", __func__, data);
+	if (data) {
+		if (!CM36283->als_enable) {
 			mutex_lock(&CM36283->value_mutex);
 			CM36283->als_enable = 1;
 			mutex_unlock(&CM36283->value_mutex);
 			error = CM36283_als_state(CM36283, CM36283->als_enable);
-			if(error < 0)
-			{
-				pr_err("%s CM36283 change state error = %d\n",__func__, error);
-			}else
-			{
+			if (error < 0)
+				pr_err("%s CM36283 change state error = %d\n",
+					__func__, error);
+			else
 				schedule_delayed_work(&CM36283->work, delay);
-			}
 		}
-	}
-	else
-	{
-		if(CM36283->als_enable)
+	} else {
+		if (CM36283->als_enable)
 			CM36283->als_enable = 0;
 		error = CM36283_als_state(CM36283, CM36283->als_enable);
-		if(error < 0)
-		{
-			pr_err("%s CM36283 change state error = %d\n", __func__,error);
-		}
+		if (error < 0)
+			pr_err("%s CM36283 change state error = %d\n",
+				__func__, error);
 	}
 	return count;
 }
@@ -311,38 +303,31 @@ static ssize_t CM36283_ps_enable_store(struct device *dev,
 	struct i2c_client *client = to_i2c_client(dev);
 	struct CM36283_data *CM36283 = i2c_get_clientdata(client);
 	unsigned long delay = msecs_to_jiffies(atomic_read(&CM36283->delay));
-	error = strict_strtoul(buf, 10, &data);
-	if(error)
+	error = kstrtoul(buf, 10, &data);
+	if (error)
 		return error;
-	printk("%s set ps = %ld\n", __func__, data);
-	if(data)
-	{
-		if(!CM36283->ps_enable)
-		{
+	pr_info("%s set ps = %ld\n", __func__, data);
+	if (data) {
+		if (!CM36283->ps_enable) {
 			mutex_lock(&CM36283->value_mutex);
 			CM36283->ps_enable = 1;
 			mutex_unlock(&CM36283->value_mutex);
 			error = CM36283_ps_state(CM36283, CM36283->ps_enable);
-			if(error < 0)
-			{
-				pr_err("%s CM36283 change state error = %d\n",__func__, error);
-			}else
-			{
+			if (error < 0)
+				pr_err("%s CM36283 change state error = %d\n",
+					__func__, error);
+			else
 				schedule_delayed_work(&CM36283->work, delay);
-			}
 		}
-	}
-	else
-	{
+	} else {
 		mutex_lock(&CM36283->value_mutex);
-		if(CM36283->ps_enable)
+		if (CM36283->ps_enable)
 			CM36283->ps_enable = 0;
 		mutex_unlock(&CM36283->value_mutex);
 		error = CM36283_ps_state(CM36283, CM36283->ps_enable);
-		if(error < 0)
-		{
-			pr_err("%s CM36283 change state error = %d\n",__func__, error);
-		}
+		if (error < 0)
+			pr_err("%s CM36283 change state error = %d\n",
+				__func__, error);
 	}
 	return count;
 }
@@ -374,8 +359,8 @@ static ssize_t CM36283_als_threshold_store(struct device *dev,
 	int error;
 	struct i2c_client *client = to_i2c_client(dev);
 	struct CM36283_data *CM36283 = i2c_get_clientdata(client);
-	error = strict_strtoul(buf, 10, &data);
-	if(error)
+	error = kstrtoul(buf, 10, &data);
+	if (error)
 			return error;
 	mutex_lock(&CM36283->value_mutex);
 	CM36283->als_threshold = data;
@@ -401,8 +386,8 @@ static ssize_t CM36283_ps_threshold_store(struct device *dev,
 	int error;
 	struct i2c_client *client = to_i2c_client(dev);
 	struct CM36283_data *CM36283 = i2c_get_clientdata(client);
-	error = strict_strtoul(buf, 10, &data);
-	if(error)
+	error = kstrtoul(buf, 10, &data);
+	if (error)
 			return error;
 	mutex_lock(&CM36283->value_mutex);
 	CM36283->ps_threshold = data;
@@ -414,8 +399,8 @@ static ssize_t CM36283_ps_threshold_store(struct device *dev,
 static ssize_t CM36283_info_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-    return sprintf(buf, "Chip: %s %s\nVersion: %s\n",
-				   VENDOR_NAME, SENSOR_NAME, DRIVER_VERSION); 
+	return sprintf(buf, "Chip: %s %s\nVersion: %s\n",
+		VENDOR_NAME, SENSOR_NAME, DRIVER_VERSION);
 }
 
 static ssize_t CM36283_delay_show(struct device *dev,
@@ -437,7 +422,7 @@ static ssize_t CM36283_delay_store(struct device *dev,
 	struct i2c_client *client = to_i2c_client(dev);
 	struct CM36283_data *CM36283 = i2c_get_clientdata(client);
 
-	error = strict_strtoul(buf, 10, &data);
+	error = kstrtoul(buf, 10, &data);
 	if (error)
 		return error;
 	atomic_set(&CM36283->delay, (unsigned int) data);
@@ -463,7 +448,7 @@ static ssize_t CM36283_reg_store(struct device *dev,
 	unsigned long data;
 	int error;
 
-	error = strict_strtoul(buf, 10, &data);
+	error = kstrtoul(buf, 10, &data);
 	if (error)
 		return error;
 	data &= 0x0f;
@@ -516,8 +501,7 @@ static int CM36283_input_init(struct CM36283_data *CM36283)
 	int err;
 
 	dev = input_allocate_device();
-	if (!dev)
-	{
+	if (!dev) {
 		pr_err("%s error input_allocate_device\n", __func__);
 		return -ENOMEM;
 	}
@@ -548,35 +532,39 @@ static void CM36283_input_delete(struct CM36283_data *CM36283)
 
 static int CM36283_config(struct CM36283_data *CM36283)
 {
-	int rc; 
+	int rc;
 
-	rc = CM36283_smbus_read_word(CM36283->CM36283_client,DEV_ID);
-	if(rc < 0)
+	rc = CM36283_smbus_read_word(CM36283->CM36283_client, DEV_ID);
+	if (rc < 0)
 		pr_err("%s CM36283_smbus_read_word rc=%d\n", __func__, rc);
 	else
-		pr_info("%s DEV_ID=0x%x\n",__func__, rc);
+		pr_info("%s DEV_ID=0x%x\n", __func__, rc);
 
-	rc = CM36283_smbus_write_word(CM36283->CM36283_client,ALS_CONF, ALS_CONF_VAL);
-	if(rc < 0)
+	rc = CM36283_smbus_write_word(CM36283->CM36283_client, ALS_CONF,
+		ALS_CONF_VAL);
+	if (rc < 0)
 		pr_err("%s CM36283_smbus_write_word rc=%d\n", __func__, rc);
 
-	rc = CM36283_smbus_write_word(CM36283->CM36283_client,ALS_THDL, 0x01F4);
-	if(rc < 0)
+	rc = CM36283_smbus_write_word(CM36283->CM36283_client, ALS_THDL,
+		0x01F4);
+	if (rc < 0)
 		pr_err("%s CM36283_smbus_write_word rc=%d\n", __func__, rc);
 
-	rc = CM36283_smbus_write_word(CM36283->CM36283_client,ALS_THDH, 0x07D0);
-	if(rc < 0)
+	rc = CM36283_smbus_write_word(CM36283->CM36283_client, ALS_THDH,
+		0x07D0);
+	if (rc < 0)
 		pr_err("%s CM36283_smbus_write_word rc=%d\n", __func__, rc);
 
-	rc = CM36283_smbus_write_word(CM36283->CM36283_client,PS_CONF1_CONF2, PS_CONF12_VAL); //0x04
-	if(rc < 0)
+	rc = CM36283_smbus_write_word(CM36283->CM36283_client, PS_CONF1_CONF2,
+		PS_CONF12_VAL);
+	if (rc < 0)
 		pr_err("%s CM36283_smbus_write_word rc=%d\n", __func__, rc);
 
-	rc = CM36283_smbus_write_word(CM36283->CM36283_client,PS_THD, 0x0705);
-	if(rc < 0)
+	rc = CM36283_smbus_write_word(CM36283->CM36283_client, PS_THD, 0x0705);
+	if (rc < 0)
 		pr_err("%s CM36283_smbus_write_word rc=%d\n", __func__, rc);
 
-	return rc; 
+	return rc;
 }
 
 static int CM36283_probe(struct i2c_client *client,
@@ -587,7 +575,7 @@ static int CM36283_probe(struct i2c_client *client,
 
 	pr_info("%s\n", __func__);
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
-		printk(KERN_INFO "i2c_check_functionality error\n");
+		pr_info("i2c_check_functionality error\n");
 		goto exit;
 	}
 	data = kzalloc(sizeof(struct CM36283_data), GFP_KERNEL);
@@ -612,12 +600,11 @@ static int CM36283_probe(struct i2c_client *client,
 	data->ps_threshold = 0;
 	data->als_threshold = 0;
 	err = CM36283_config(data);
-	if(err < 0)
-	{
+	if (err < 0) {
 		pr_err("CM36283_config error err=%d\n", err);
 		goto error_sysfs;
 	}
-	if(data->ps_enable || data->als_enable)
+	if (data->ps_enable || data->als_enable)
 		schedule_delayed_work(&data->work, CM36283_MAX_DELAY);
 	return 0;
 error_sysfs:
@@ -650,14 +637,12 @@ static int CM36283_suspend(struct device *dev)
 	struct i2c_client *client = to_i2c_client(dev);
 	struct CM36283_data *CM36283 = i2c_get_clientdata(client);
 	int err = 0;
-	printk("%s\n", __func__);
+	pr_info("%s\n", __func__);
 	err = CM36283_state(CM36283, 0, 0);
-	if(err < 0)
+	if (err < 0)
 			return err;
-	if(CM36283->als_enable || CM36283->ps_enable)
-	{
+	if (CM36283->als_enable || CM36283->ps_enable)
 		cancel_delayed_work_sync(&CM36283->work);
-	}
 	return 0;
 }
 
@@ -667,16 +652,16 @@ static int CM36283_resume(struct device *dev)
 	struct CM36283_data *CM36283 = i2c_get_clientdata(client);
 	unsigned long delay = msecs_to_jiffies(atomic_read(&CM36283->delay));
 	int err = 0;
-	printk("%s\n", __func__);
+	pr_info("%s\n", __func__);
 	err = CM36283_state(CM36283, CM36283->als_enable, CM36283->ps_enable);
-	if(err < 0)
+	if (err < 0)
 			return err;
-	if(CM36283->ps_enable || CM36283->als_enable)
+	if (CM36283->ps_enable || CM36283->als_enable)
 		schedule_delayed_work(&CM36283->work, delay);
 	return 0;
 }
 
-static const struct dev_pm_ops CM36283_pm_ops = { 
+static const struct dev_pm_ops CM36283_pm_ops = {
 		.suspend = CM36283_suspend,
 		.resume = CM36283_resume,
 };

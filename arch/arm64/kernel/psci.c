@@ -17,12 +17,33 @@
 
 #include <linux/init.h>
 #include <linux/of.h>
+#include <linux/smp.h>
 
 #include <asm/compiler.h>
+#include <asm/cpu_ops.h>
 #include <asm/errno.h>
 #include <asm/psci.h>
+#include <asm/smp_plat.h>
+#include <asm/suspend.h>
 
-struct psci_operations psci_ops;
+#define PSCI_POWER_STATE_TYPE_STANDBY		0
+#define PSCI_POWER_STATE_TYPE_POWER_DOWN	1
+
+struct psci_power_state {
+	u16	id;
+	u8	type;
+	u8	affinity_level;
+};
+
+struct psci_operations {
+	int (*cpu_suspend)(struct psci_power_state state,
+			   unsigned long entry_point);
+	int (*cpu_off)(struct psci_power_state state);
+	int (*cpu_on)(unsigned long cpuid, unsigned long entry_point);
+	int (*migrate)(unsigned long cpuid);
+};
+
+static struct psci_operations psci_ops;
 
 static int (*invoke_psci_fn)(u64, u64, u64, u64);
 
@@ -72,40 +93,6 @@ static u32 psci_power_state_pack(struct psci_power_state state)
 			<< PSCI_POWER_STATE_TYPE_SHIFT)	|
 		((state.affinity_level & PSCI_POWER_STATE_AFFL_MASK)
 			<< PSCI_POWER_STATE_AFFL_SHIFT);
-}
-
-/*
- * The following two functions are invoked via the invoke_psci_fn pointer
- * and will not be inlined, allowing us to piggyback on the AAPCS.
- */
-static noinline int __invoke_psci_fn_hvc(u64 function_id, u64 arg0, u64 arg1,
-					 u64 arg2)
-{
-	asm volatile(
-			__asmeq("%0", "x0")
-			__asmeq("%1", "x1")
-			__asmeq("%2", "x2")
-			__asmeq("%3", "x3")
-			"hvc	#0\n"
-		: "+r" (function_id)
-		: "r" (arg0), "r" (arg1), "r" (arg2));
-
-	return function_id;
-}
-
-static noinline int __invoke_psci_fn_smc(u64 function_id, u64 arg0, u64 arg1,
-					 u64 arg2)
-{
-	asm volatile(
-			__asmeq("%0", "x0")
-			__asmeq("%1", "x1")
-			__asmeq("%2", "x2")
-			__asmeq("%3", "x3")
-			"smc	#0\n"
-		: "+r" (function_id)
-		: "r" (arg0), "r" (arg1), "r" (arg2));
-
-	return function_id;
 }
 
 static int psci_cpu_suspend(struct psci_power_state state,
@@ -170,7 +157,7 @@ int __init psci_init(void)
 	pr_info("probing function IDs from device-tree\n");
 
 	if (of_property_read_string(np, "method", &method)) {
-		pr_warning("missing \"method\" property\n");
+		pr_warn("missing \"method\" property\n");
 		err = -ENXIO;
 		goto out_put_node;
 	}
@@ -180,7 +167,7 @@ int __init psci_init(void)
 	} else if (!strcmp("smc", method)) {
 		invoke_psci_fn = __invoke_psci_fn_smc;
 	} else {
-		pr_warning("invalid \"method\" property: %s\n", method);
+		pr_warn("invalid \"method\" property: %s\n", method);
 		err = -EINVAL;
 		goto out_put_node;
 	}
@@ -209,3 +196,102 @@ out_put_node:
 	of_node_put(np);
 	return err;
 }
+
+#ifdef CONFIG_SMP
+
+static int __init cpu_psci_cpu_init(struct device_node *dn, unsigned int cpu)
+{
+	return 0;
+}
+
+static int __init cpu_psci_cpu_prepare(unsigned int cpu)
+{
+	if (!psci_ops.cpu_on) {
+		pr_err("no cpu_on method, not booting CPU%d\n", cpu);
+		return -ENODEV;
+	}
+
+	return 0;
+}
+
+static int cpu_psci_cpu_boot(unsigned int cpu)
+{
+	int err = psci_ops.cpu_on(cpu_logical_map(cpu), __pa(secondary_entry));
+	if (err)
+		pr_err("psci: failed to boot CPU%d (%d)\n", cpu, err);
+
+	return err;
+}
+
+#ifdef CONFIG_HOTPLUG_CPU
+static int cpu_psci_cpu_disable(unsigned int cpu)
+{
+	/* Fail early if we don't have CPU_OFF support */
+	if (!psci_ops.cpu_off)
+		return -EOPNOTSUPP;
+	return 0;
+}
+
+static void cpu_psci_cpu_die(unsigned int cpu)
+{
+	int ret;
+	/*
+	 * There are no known implementations of PSCI actually using the
+	 * power state field, pass a sensible default for now.
+	 */
+	struct psci_power_state state = {
+		.type = PSCI_POWER_STATE_TYPE_POWER_DOWN,
+	};
+
+	ret = psci_ops.cpu_off(state);
+
+	pr_crit("psci: unable to power off CPU%u (%d)\n", cpu, ret);
+}
+#endif
+static int psci_suspend_finisher(unsigned long index)
+{
+	/* struct psci_power_state *state =
+	 * __this_cpu_read(psci_power_state); */
+	struct psci_power_state  state = {
+		.id = 0,
+		.type = 1,
+		.affinity_level = 0,
+	};
+
+	return psci_ops.cpu_suspend(state,
+				    virt_to_phys(cpu_resume));
+}
+
+static int __maybe_unused cpu_psci_cpu_suspend(unsigned long index)
+{
+	int ret;
+	/* struct psci_power_state *state =
+	 * __this_cpu_read(psci_power_state); */
+	/*
+	 * idle state index 0 corresponds to wfi, should never be called
+	 * from the cpu_suspend operations
+	 */
+	if (WARN_ON_ONCE(!index))
+		return -EINVAL;
+
+	/* if (state[index - 1].type == PSCI_POWER_STATE_TYPE_STANDBY) */
+		/* ret = psci_ops.cpu_suspend(state[index - 1], 0); */
+	/* else */
+		ret = __cpu_suspend(index, psci_suspend_finisher);
+
+	return ret;
+}
+
+const struct cpu_operations cpu_psci_ops = {
+	.name		= "psci",
+	.cpu_init	= cpu_psci_cpu_init,
+	.cpu_prepare	= cpu_psci_cpu_prepare,
+	.cpu_boot	= cpu_psci_cpu_boot,
+	.cpu_suspend	= cpu_psci_cpu_suspend,
+#ifdef CONFIG_HOTPLUG_CPU
+	.cpu_disable	= cpu_psci_cpu_disable,
+	.cpu_die	= cpu_psci_cpu_die,
+#endif
+};
+
+#endif

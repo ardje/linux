@@ -6,6 +6,8 @@
 
 extern seqlock_t jiffies_lock;
 
+#define CS_NAME_LEN	32
+
 #ifdef CONFIG_GENERIC_CLOCKEVENTS_BUILD
 
 #define TICK_DO_TIMER_NONE	-1
@@ -18,10 +20,18 @@ extern int tick_do_timer_cpu __read_mostly;
 
 extern void tick_setup_periodic(struct clock_event_device *dev, int broadcast);
 extern void tick_handle_periodic(struct clock_event_device *dev);
-extern void tick_notify(unsigned long reason, void *dev);
 extern void tick_check_new_device(struct clock_event_device *dev);
+extern void tick_handover_do_timer(int *cpup);
+extern void tick_shutdown(unsigned int *cpup);
+extern void tick_suspend(void);
+extern void tick_resume(void);
+extern bool tick_check_replacement(struct clock_event_device *curdev,
+				   struct clock_event_device *newdev);
+extern void tick_install_replacement(struct clock_event_device *dev);
 
 extern void clockevents_shutdown(struct clock_event_device *dev);
+
+extern ssize_t sysfs_get_uname(const char *buf, char *dst, size_t cnt);
 
 /*
  * NO_HZ / high resolution timer shared code
@@ -41,7 +51,7 @@ extern void tick_broadcast_switch_to_oneshot(void);
 extern void tick_shutdown_broadcast_oneshot(unsigned int *cpup);
 extern int tick_resume_broadcast_oneshot(struct clock_event_device *bc);
 extern int tick_broadcast_oneshot_active(void);
-extern void tick_check_oneshot_broadcast(int cpu);
+extern void tick_check_oneshot_broadcast_this_cpu(void);
 bool tick_broadcast_oneshot_available(void);
 # else /* BROADCAST */
 static inline void tick_broadcast_setup_oneshot(struct clock_event_device *bc)
@@ -52,7 +62,7 @@ static inline void tick_broadcast_oneshot_control(unsigned long reason) { }
 static inline void tick_broadcast_switch_to_oneshot(void) { }
 static inline void tick_shutdown_broadcast_oneshot(unsigned int *cpup) { }
 static inline int tick_broadcast_oneshot_active(void) { return 0; }
-static inline void tick_check_oneshot_broadcast(int cpu) { }
+static inline void tick_check_oneshot_broadcast_this_cpu(void) { }
 static inline bool tick_broadcast_oneshot_available(void) { return true; }
 # endif /* !BROADCAST */
 
@@ -145,3 +155,4 @@ static inline int tick_device_is_functional(struct clock_event_device *dev)
 #endif
 
 extern void do_timer(unsigned long ticks);
+extern void update_wall_time(void);

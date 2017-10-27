@@ -368,7 +368,10 @@ static void receive_chars(struct uart_sio_port *up, int *status)
 	ignore_char:
 		*status = serial_in(up, UART_LSR);
 	} while ((*status & UART_LSR_DR) && (max_count-- > 0));
+
+	spin_unlock(&up->port.lock);
 	tty_flip_buffer_push(port);
+	spin_lock(&up->port.lock);
 }
 
 static void transmit_chars(struct uart_sio_port *up)
@@ -734,7 +737,7 @@ static void m32r_sio_set_termios(struct uart_port *port,
 	up->port.read_status_mask = UART_LSR_OE | UART_LSR_THRE | UART_LSR_DR;
 	if (termios->c_iflag & INPCK)
 		up->port.read_status_mask |= UART_LSR_FE | UART_LSR_PE;
-	if (termios->c_iflag & (BRKINT | PARMRK))
+	if (termios->c_iflag & (IGNBRK | BRKINT | PARMRK))
 		up->port.read_status_mask |= UART_LSR_BI;
 
 	/*

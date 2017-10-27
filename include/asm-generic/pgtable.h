@@ -173,11 +173,12 @@ extern void pmdp_splitting_flush(struct vm_area_struct *vma,
 #endif
 
 #ifndef __HAVE_ARCH_PGTABLE_DEPOSIT
-extern void pgtable_trans_huge_deposit(struct mm_struct *mm, pgtable_t pgtable);
+extern void pgtable_trans_huge_deposit(struct mm_struct *mm, pmd_t *pmdp,
+				       pgtable_t pgtable);
 #endif
 
 #ifndef __HAVE_ARCH_PGTABLE_WITHDRAW
-extern pgtable_t pgtable_trans_huge_withdraw(struct mm_struct *mm);
+extern pgtable_t pgtable_trans_huge_withdraw(struct mm_struct *mm, pmd_t *pmdp);
 #endif
 
 #ifndef __HAVE_ARCH_PMDP_INVALIDATE
@@ -205,10 +206,6 @@ static inline int pmd_same(pmd_t pmd_a, pmd_t pmd_b)
 	return 0;
 }
 #endif /* CONFIG_TRANSPARENT_HUGEPAGE */
-#endif
-
-#ifndef __HAVE_ARCH_PAGE_TEST_AND_CLEAR_YOUNG
-#define page_test_and_clear_young(pfn) (0)
 #endif
 
 #ifndef __HAVE_ARCH_PGD_OFFSET_GATE
@@ -396,6 +393,58 @@ static inline void ptep_modify_prot_commit(struct mm_struct *mm,
 #define arch_start_context_switch(prev)	do {} while (0)
 #endif
 
+#ifndef CONFIG_HAVE_ARCH_SOFT_DIRTY
+static inline int pte_soft_dirty(pte_t pte)
+{
+	return 0;
+}
+
+static inline int pmd_soft_dirty(pmd_t pmd)
+{
+	return 0;
+}
+
+static inline pte_t pte_mksoft_dirty(pte_t pte)
+{
+	return pte;
+}
+
+static inline pmd_t pmd_mksoft_dirty(pmd_t pmd)
+{
+	return pmd;
+}
+
+static inline pte_t pte_swp_mksoft_dirty(pte_t pte)
+{
+	return pte;
+}
+
+static inline int pte_swp_soft_dirty(pte_t pte)
+{
+	return 0;
+}
+
+static inline pte_t pte_swp_clear_soft_dirty(pte_t pte)
+{
+	return pte;
+}
+
+static inline pte_t pte_file_clear_soft_dirty(pte_t pte)
+{
+       return pte;
+}
+
+static inline pte_t pte_file_mksoft_dirty(pte_t pte)
+{
+       return pte;
+}
+
+static inline int pte_file_soft_dirty(pte_t pte)
+{
+       return 0;
+}
+#endif
+
 #ifndef __HAVE_PFNMAP_TRACKING
 /*
  * Interfaces that can be used by architecture code to keep track of
@@ -506,6 +555,18 @@ static inline pmd_t pmd_read_atomic(pmd_t *pmdp)
 	 * an unsigned long.
 	 */
 	return *pmdp;
+}
+#endif
+
+#ifndef pmd_move_must_withdraw
+static inline int pmd_move_must_withdraw(spinlock_t *new_pmd_ptl,
+					 spinlock_t *old_pmd_ptl)
+{
+	/*
+	 * With split pmd lock we also need to move preallocated
+	 * PTE page table if new_pmd is on different PMD page table.
+	 */
+	return new_pmd_ptl != old_pmd_ptl;
 }
 #endif
 
@@ -651,6 +712,18 @@ static inline pte_t pte_mknuma(pte_t pte)
 }
 #endif
 
+#ifndef ptep_set_numa
+static inline void ptep_set_numa(struct mm_struct *mm, unsigned long addr,
+				 pte_t *ptep)
+{
+	pte_t ptent = *ptep;
+
+	ptent = pte_mknuma(ptent);
+	set_pte_at(mm, addr, ptep, ptent);
+	return;
+}
+#endif
+
 #ifndef pmd_mknuma
 static inline pmd_t pmd_mknuma(pmd_t pmd)
 {
@@ -662,6 +735,18 @@ static inline pmd_t pmd_mknuma(pmd_t pmd)
 	return __pmd(val);
 }
 #endif
+
+#ifndef pmdp_set_numa
+static inline void pmdp_set_numa(struct mm_struct *mm, unsigned long addr,
+				 pmd_t *pmdp)
+{
+	pmd_t pmd = *pmdp;
+
+	pmd = pmd_mknuma(pmd);
+	set_pmd_at(mm, addr, pmdp, pmd);
+	return;
+}
+#endif
 #else
 extern int pte_numa(pte_t pte);
 extern int pmd_numa(pmd_t pmd);
@@ -669,6 +754,8 @@ extern pte_t pte_mknonnuma(pte_t pte);
 extern pmd_t pmd_mknonnuma(pmd_t pmd);
 extern pte_t pte_mknuma(pte_t pte);
 extern pmd_t pmd_mknuma(pmd_t pmd);
+extern void ptep_set_numa(struct mm_struct *mm, unsigned long addr, pte_t *ptep);
+extern void pmdp_set_numa(struct mm_struct *mm, unsigned long addr, pmd_t *pmdp);
 #endif /* CONFIG_ARCH_USES_NUMA_PROT_NONE */
 #else
 static inline int pmd_numa(pmd_t pmd)
@@ -696,14 +783,31 @@ static inline pte_t pte_mknuma(pte_t pte)
 	return pte;
 }
 
+static inline void ptep_set_numa(struct mm_struct *mm, unsigned long addr,
+				 pte_t *ptep)
+{
+	return;
+}
+
+
 static inline pmd_t pmd_mknuma(pmd_t pmd)
 {
 	return pmd;
+}
+
+static inline void pmdp_set_numa(struct mm_struct *mm, unsigned long addr,
+				 pmd_t *pmdp)
+{
+	return ;
 }
 #endif /* CONFIG_NUMA_BALANCING */
 
 #endif /* CONFIG_MMU */
 
 #endif /* !__ASSEMBLY__ */
+
+#ifndef io_remap_pfn_range
+#define io_remap_pfn_range remap_pfn_range
+#endif
 
 #endif /* _ASM_GENERIC_PGTABLE_H */

@@ -3,7 +3,7 @@
  * for access to MPT (Message Passing Technology) firmware.
  *
  * This code is based on drivers/scsi/mpt3sas/mpt3sas_base.h
- * Copyright (C) 2012  LSI Corporation
+ * Copyright (C) 2012-2013  LSI Corporation
  *  (mailto:DL-MPTFusionLinux@lsi.com)
  *
  * This program is free software; you can redistribute it and/or
@@ -70,10 +70,10 @@
 #define MPT3SAS_DRIVER_NAME		"mpt3sas"
 #define MPT3SAS_AUTHOR	"LSI Corporation <DL-MPTFusionLinux@lsi.com>"
 #define MPT3SAS_DESCRIPTION	"LSI MPT Fusion SAS 3.0 Device Driver"
-#define MPT3SAS_DRIVER_VERSION		"01.100.01.00"
-#define MPT3SAS_MAJOR_VERSION		1
+#define MPT3SAS_DRIVER_VERSION		"02.100.00.00"
+#define MPT3SAS_MAJOR_VERSION		2
 #define MPT3SAS_MINOR_VERSION		100
-#define MPT3SAS_BUILD_VERSION		1
+#define MPT3SAS_BUILD_VERSION		0
 #define MPT3SAS_RELEASE_VERSION	00
 
 /*
@@ -219,7 +219,6 @@ struct MPT3SAS_TARGET {
  * @eedp_enable: eedp support enable bit
  * @eedp_type: 0(type_1), 1(type_2), 2(type_3)
  * @eedp_block_length: block size
- * @ata_command_pending: SATL passthrough outstanding for device
  */
 struct MPT3SAS_DEVICE {
 	struct MPT3SAS_TARGET *sas_target;
@@ -228,17 +227,6 @@ struct MPT3SAS_DEVICE {
 	u8	configured_lun;
 	u8	block;
 	u8	tlr_snoop_check;
-	/*
-	 * Bug workaround for SATL handling: the mpt2/3sas firmware
-	 * doesn't return BUSY or TASK_SET_FULL for subsequent
-	 * commands while a SATL pass through is in operation as the
-	 * spec requires, it simply does nothing with them until the
-	 * pass through completes, causing them possibly to timeout if
-	 * the passthrough is a long executing command (like format or
-	 * secure erase).  This variable allows us to do the right
-	 * thing while a SATL command is pending.
-	 */
-	unsigned long ata_command_pending;
 };
 
 #define MPT3_CMD_NOT_USED	0x8000	/* free */

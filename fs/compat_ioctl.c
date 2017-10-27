@@ -66,7 +66,6 @@
 #include <linux/gigaset_dev.h>
 
 #ifdef CONFIG_BLOCK
-#include <linux/loop.h>
 #include <linux/cdrom.h>
 #include <linux/fd.h>
 #include <scsi/scsi.h>
@@ -111,6 +110,7 @@
 #include <linux/dvb/video.h>
 
 #include <linux/sort.h>
+#include <linux/usb/f_mtp.h>
 
 #ifdef CONFIG_SPARC
 #include <asm/fbio.h>
@@ -681,7 +681,8 @@ static int do_i2c_rdwr_ioctl(unsigned int fd, unsigned int cmd,
 	struct i2c_msg			__user *tmsgs;
 	struct i2c_msg32		__user *umsgs;
 	compat_caddr_t			datap;
-	int				nmsgs, i;
+	u32				nmsgs;
+	int				i;
 
 	if (get_user(nmsgs, &udata->nmsgs))
 		return -EFAULT;
@@ -954,8 +955,6 @@ COMPATIBLE_IOCTL(MTIOCTOP)
 /* Socket level stuff */
 COMPATIBLE_IOCTL(FIOQSIZE)
 #ifdef CONFIG_BLOCK
-/* loop */
-IGNORE_IOCTL(LOOP_CLR_FD)
 /* md calls this on random blockdevs */
 IGNORE_IOCTL(RAID_VERSION)
 /* qemu/qemu-img might call these two on plain files for probing */
@@ -1283,6 +1282,11 @@ COMPATIBLE_IOCTL(PCIIOC_CONTROLLER)
 COMPATIBLE_IOCTL(PCIIOC_MMAP_IS_IO)
 COMPATIBLE_IOCTL(PCIIOC_MMAP_IS_MEM)
 COMPATIBLE_IOCTL(PCIIOC_WRITE_COMBINE)
+COMPATIBLE_IOCTL(MTP_SEND_FILE)
+COMPATIBLE_IOCTL(MTP_RECEIVE_FILE)
+COMPATIBLE_IOCTL(MTP_SEND_EVENT)
+COMPATIBLE_IOCTL(MTP_SEND_FILE_WITH_HEADER)
+
 /* NBD */
 COMPATIBLE_IOCTL(NBD_DO_IT)
 COMPATIBLE_IOCTL(NBD_CLEAR_SOCK)
@@ -1586,13 +1590,13 @@ asmlinkage long compat_sys_ioctl(unsigned int fd, unsigned int cmd,
 		/*FALL THROUGH*/
 
 	default:
-		if (f.file->f_op && f.file->f_op->compat_ioctl) {
+		if (f.file->f_op->compat_ioctl) {
 			error = f.file->f_op->compat_ioctl(f.file, cmd, arg);
 			if (error != -ENOIOCTLCMD)
 				goto out_fput;
 		}
 
-		if (!f.file->f_op || !f.file->f_op->unlocked_ioctl)
+		if (!f.file->f_op->unlocked_ioctl)
 			goto do_ioctl;
 		break;
 	}

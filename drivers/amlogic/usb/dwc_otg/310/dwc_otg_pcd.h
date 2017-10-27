@@ -38,6 +38,9 @@
 #include "usb.h"
 #include "dwc_otg_cil.h"
 #include "dwc_otg_pcd_if.h"
+#include "dwc_otg_driver.h"
+
+extern dwc_otg_device_t *g_dwc_otg_device[2];
 struct cfiobject;
 
 /**
@@ -64,7 +67,7 @@ struct cfiobject;
 /**
  * Get the pointer to the core_if from the pcd pointer.
  */
-#define GET_CORE_IF( _pcd ) (_pcd->core_if)
+#define GET_CORE_IF(_pcd) (_pcd->core_if)
 
 /**
  * States of EP0.
@@ -143,7 +146,6 @@ typedef struct dwc_otg_pcd_request {
 	 DWC_CIRCLEQ_ENTRY(dwc_otg_pcd_request) queue_entry;
 #ifdef DWC_UTE_PER_IO
 	struct dwc_iso_xreq_port ext_req;
-	//void *priv_ereq_nport; /*  */
 #endif
 } dwc_otg_pcd_request_t;
 
@@ -167,7 +169,7 @@ typedef struct dwc_otg_pcd_ep {
 #ifdef DWC_EN_ISOC
 	/** ISOC req handle passed */
 	void *iso_req_handle;
-#endif				//_EN_ISOC_
+#endif
 
 	/** DWC_otg ep data. */
 	dwc_ep_t dwc_ep;
@@ -231,7 +233,6 @@ struct dwc_otg_pcd {
 	/** Array of OUT EPs. */
 	dwc_otg_pcd_ep_t out_ep[MAX_EPS_CHANNELS - 1];
 	/** number of valid EPs in the above array. */
-//        unsigned      num_eps : 4;
 	dwc_spinlock_t *lock;
 
 	/** Tasklet to defer starting of TEST mode transmissions until
@@ -254,20 +255,22 @@ struct dwc_otg_pcd {
 };
 
 /** Pullup enable */
-static inline void dwc_otg_device_soft_connect(dwc_otg_core_if_t *_core_if) {
-	DWC_MODIFY_REG32( &_core_if->dev_if->dev_global_regs->dctl,2,0); //clr
+static inline void dwc_otg_device_soft_connect(dwc_otg_core_if_t *_core_if)
+{
+	DWC_MODIFY_REG32(&_core_if->dev_if->dev_global_regs->dctl, 2, 0);
 }
 /** Pullup disable */
-static inline void dwc_otg_device_soft_disconnect(dwc_otg_core_if_t *_core_if) {
-	DWC_MODIFY_REG32( &_core_if->dev_if->dev_global_regs->dctl,0,2);  //set
+static inline void dwc_otg_device_soft_disconnect(dwc_otg_core_if_t *_core_if)
+{
+	DWC_MODIFY_REG32(&_core_if->dev_if->dev_global_regs->dctl, 0, 2);
 }
-int dwc_otg_charger_detect(dwc_otg_core_if_t * _core_if);
-//FIXME this functions should be static, and this prototypes should be removed
-extern void dwc_otg_request_nuke(dwc_otg_pcd_ep_t * ep);
-extern void dwc_otg_request_done(dwc_otg_pcd_ep_t * ep,
-				 dwc_otg_pcd_request_t * req, int32_t status);
+int dwc_otg_charger_detect(dwc_otg_core_if_t *_core_if);
+void dwc_otg_non_normal_usb_charger_detect(dwc_otg_core_if_t *_core_if);
+extern void dwc_otg_request_nuke(dwc_otg_pcd_ep_t *ep);
+extern void dwc_otg_request_done(dwc_otg_pcd_ep_t *ep,
+				 dwc_otg_pcd_request_t *req, int32_t status);
 
-void dwc_otg_iso_buffer_done(dwc_otg_pcd_t * pcd, dwc_otg_pcd_ep_t * ep,
+void dwc_otg_iso_buffer_done(dwc_otg_pcd_t *pcd, dwc_otg_pcd_ep_t *ep,
 			     void *req_handle);
 
 extern void do_test_mode(void *data);

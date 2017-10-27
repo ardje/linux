@@ -153,17 +153,12 @@ int cap_ptrace_access_check(struct task_struct *child, unsigned int mode)
 {
 	int ret = 0;
 	const struct cred *cred, *child_cred;
-	const kernel_cap_t *caller_caps;
 
 	rcu_read_lock();
 	cred = current_cred();
 	child_cred = __task_cred(child);
-	if (mode & PTRACE_MODE_FSCREDS)
-		caller_caps = &cred->cap_effective;
-	else
-		caller_caps = &cred->cap_permitted;
 	if (cred->user_ns == child_cred->user_ns &&
-	    cap_issubset(child_cred->cap_permitted, *caller_caps))
+	    cap_issubset(child_cred->cap_permitted, cred->cap_permitted))
 		goto out;
 	if (ns_capable(child_cred->user_ns, CAP_SYS_PTRACE))
 		goto out;
@@ -787,16 +782,16 @@ int cap_task_fix_setuid(struct cred *new, const struct cred *old, int flags)
  */
 static int cap_safe_nice(struct task_struct *p)
 {
-	int is_subset;
+	int is_subset, ret = 0;
 
 	rcu_read_lock();
 	is_subset = cap_issubset(__task_cred(p)->cap_permitted,
 				 current_cred()->cap_permitted);
+	if (!is_subset && !ns_capable(__task_cred(p)->user_ns, CAP_SYS_NICE))
+		ret = -EPERM;
 	rcu_read_unlock();
 
-	if (!is_subset && !capable(CAP_SYS_NICE))
-		return -EPERM;
-	return 0;
+	return ret;
 }
 
 /**

@@ -823,8 +823,8 @@ static int fuse_try_move_page(struct fuse_copy_state *cs, struct page **pagep)
 
 	newpage = buf->page;
 
-	if (!PageUptodate(newpage))
-		SetPageUptodate(newpage);
+	if (WARN_ON(!PageUptodate(newpage)))
+		return -EIO;
 
 	ClearPageMappedToDisk(newpage);
 
@@ -1591,7 +1591,8 @@ static int fuse_notify_store(struct fuse_conn *fc, unsigned int size,
 
 		this_num = min_t(unsigned, num, PAGE_CACHE_SIZE - offset);
 		err = fuse_copy_page(cs, &page, offset, this_num, 0);
-		if (!err && offset == 0 && (num != 0 || file_size == end))
+		if (!err && offset == 0 &&
+		    (this_num == PAGE_CACHE_SIZE || file_size == end))
 			SetPageUptodate(page);
 		unlock_page(page);
 		page_cache_release(page);
@@ -1729,9 +1730,6 @@ copy_finish:
 static int fuse_notify(struct fuse_conn *fc, enum fuse_notify_code code,
 		       unsigned int size, struct fuse_copy_state *cs)
 {
-	/* Don't try to move pages (yet) */
-	cs->move_pages = 0;
-
 	switch (code) {
 	case FUSE_NOTIFY_POLL:
 		return fuse_notify_poll(fc, size, cs);
@@ -1760,11 +1758,9 @@ static int fuse_notify(struct fuse_conn *fc, enum fuse_notify_code code,
 /* Look up request on processing list by unique ID */
 static struct fuse_req *request_find(struct fuse_conn *fc, u64 unique)
 {
-	struct list_head *entry;
+	struct fuse_req *req;
 
-	list_for_each(entry, &fc->processing) {
-		struct fuse_req *req;
-		req = list_entry(entry, struct fuse_req, list);
+	list_for_each_entry(req, &fc->processing, list) {
 		if (req->in.h.unique == unique || req->intr_unique == unique)
 			return req;
 	}

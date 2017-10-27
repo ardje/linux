@@ -21,6 +21,8 @@
 #include <linux/clkdev.h>
 #include <linux/of.h>
 
+#include "clk.h"
+
 static LIST_HEAD(clocks);
 static DEFINE_MUTEX(clocks_mutex);
 
@@ -39,7 +41,13 @@ struct clk *of_clk_get(struct device_node *np, int index)
 	if (rc)
 		return ERR_PTR(rc);
 
-	clk = of_clk_get_from_provider(&clkspec);
+	of_clk_lock();
+	clk = __of_clk_get_from_provider(&clkspec);
+
+	if (!IS_ERR(clk) && !__clk_get(clk))
+		clk = ERR_PTR(-ENOENT);
+
+	of_clk_unlock();
 	of_node_put(clkspec.np);
 	return clk;
 }
@@ -114,13 +122,13 @@ static struct clk_lookup *clk_find(const char *dev_id, const char *con_id)
 
 	list_for_each_entry(p, &clocks, node) {
 		match = 0;
-		if (dev_id) {
-			if (!p->dev_id || strcmp(p->dev_id, dev_id))
+		if (p->dev_id) {
+			if (!dev_id || strcmp(p->dev_id, dev_id))
 				continue;
 			match += 2;
 		}
-		if (con_id) {
-			if (!p->con_id || strcmp(p->con_id, con_id))
+		if (p->con_id) {
+			if (!con_id || strcmp(p->con_id, con_id))
 				continue;
 			match += 1;
 		}
@@ -157,7 +165,7 @@ struct clk *clk_get(struct device *dev, const char *con_id)
 
 	if (dev) {
 		clk = of_clk_get_by_name(dev->of_node, con_id);
-		if (!IS_ERR(clk) && __clk_get(clk))
+		if (!IS_ERR(clk))
 			return clk;
 	}
 

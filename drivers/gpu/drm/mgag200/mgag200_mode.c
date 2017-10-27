@@ -29,6 +29,7 @@ static void mga_crtc_load_lut(struct drm_crtc *crtc)
 	struct mga_crtc *mga_crtc = to_mga_crtc(crtc);
 	struct drm_device *dev = crtc->dev;
 	struct mga_device *mdev = dev->dev_private;
+	struct drm_framebuffer *fb = crtc->fb;
 	int i;
 
 	if (!crtc->enabled)
@@ -36,6 +37,28 @@ static void mga_crtc_load_lut(struct drm_crtc *crtc)
 
 	WREG8(DAC_INDEX + MGA1064_INDEX, 0);
 
+	if (fb && fb->bits_per_pixel == 16) {
+		int inc = (fb->depth == 15) ? 8 : 4;
+		u8 r, b;
+		for (i = 0; i < MGAG200_LUT_SIZE; i += inc) {
+			if (fb->depth == 16) {
+				if (i > (MGAG200_LUT_SIZE >> 1)) {
+					r = b = 0;
+				} else {
+					r = mga_crtc->lut_r[i << 1];
+					b = mga_crtc->lut_b[i << 1];
+				}
+			} else {
+				r = mga_crtc->lut_r[i];
+				b = mga_crtc->lut_b[i];
+			}
+			/* VGA registers */
+			WREG8(DAC_INDEX + MGA1064_COL_PAL, r);
+			WREG8(DAC_INDEX + MGA1064_COL_PAL, mga_crtc->lut_g[i]);
+			WREG8(DAC_INDEX + MGA1064_COL_PAL, b);
+		}
+		return;
+	}
 	for (i = 0; i < MGAG200_LUT_SIZE; i++) {
 		/* VGA registers */
 		WREG8(DAC_INDEX + MGA1064_COL_PAL, mga_crtc->lut_r[i]);
@@ -668,7 +691,7 @@ static void mga_g200wb_commit(struct drm_crtc *crtc)
    CRTCEXT0 has to be programmed last to trigger an update and make the
    new addr variable take effect.
  */
-void mga_set_start_address(struct drm_crtc *crtc, unsigned offset)
+static void mga_set_start_address(struct drm_crtc *crtc, unsigned offset)
 {
 	struct mga_device *mdev = crtc->dev->dev_private;
 	u32 addr;
@@ -741,8 +764,6 @@ static int mga_crtc_do_set_base(struct drm_crtc *crtc,
 
 	}
 	mgag200_bo_unreserve(bo);
-
-	DRM_INFO("mga base %llx\n", gpu_addr);
 
 	mga_set_start_address(crtc, (u32)gpu_addr);
 
@@ -877,7 +898,7 @@ static int mga_crtc_mode_set(struct drm_crtc *crtc,
 
 	pitch = crtc->fb->pitches[0] / (crtc->fb->bits_per_pixel / 8);
 	if (crtc->fb->bits_per_pixel == 24)
-		pitch = pitch >> (4 - bppshift);
+		pitch = (pitch * 3) >> (4 - bppshift);
 	else
 		pitch = pitch >> (4 - bppshift);
 
@@ -1251,14 +1272,35 @@ static void mga_crtc_destroy(struct drm_crtc *crtc)
 	kfree(mga_crtc);
 }
 
+static void mga_crtc_disable(struct drm_crtc *crtc)
+{
+	int ret;
+	DRM_DEBUG_KMS("\n");
+	mga_crtc_dpms(crtc, DRM_MODE_DPMS_OFF);
+	if (crtc->fb) {
+		struct mga_framebuffer *mga_fb = to_mga_framebuffer(crtc->fb);
+		struct drm_gem_object *obj = mga_fb->obj;
+		struct mgag200_bo *bo = gem_to_mga_bo(obj);
+		ret = mgag200_bo_reserve(bo, false);
+		if (ret)
+			return;
+		mgag200_bo_push_sysram(bo);
+		mgag200_bo_unreserve(bo);
+	}
+	crtc->fb = NULL;
+}
+
 /* These provide the minimum set of functions required to handle a CRTC */
 static const struct drm_crtc_funcs mga_crtc_funcs = {
+	.cursor_set = mga_crtc_cursor_set,
+	.cursor_move = mga_crtc_cursor_move,
 	.gamma_set = mga_crtc_gamma_set,
 	.set_config = drm_crtc_helper_set_config,
 	.destroy = mga_crtc_destroy,
 };
 
 static const struct drm_crtc_helper_funcs mga_helper_funcs = {
+	.disable = mga_crtc_disable,
 	.dpms = mga_crtc_dpms,
 	.mode_fixup = mga_crtc_mode_fixup,
 	.mode_set = mga_crtc_mode_set,
@@ -1356,7 +1398,7 @@ static void mga_encoder_commit(struct drm_encoder *encoder)
 {
 }
 
-void mga_encoder_destroy(struct drm_encoder *encoder)
+static void mga_encoder_destroy(struct drm_encoder *encoder)
 {
 	struct mga_encoder *mga_encoder = to_mga_encoder(encoder);
 	drm_encoder_cleanup(encoder);
@@ -1487,11 +1529,6 @@ static int mga_vga_mode_valid(struct drm_connector *connector,
 		return MODE_BANDWIDTH;
 	}
 
-	if ((mode->hdisplay % 8) != 0 || (mode->hsync_start % 8) != 0 ||
-	    (mode->hsync_end % 8) != 0 || (mode->htotal % 8) != 0) {
-		return MODE_H_ILLEGAL;
-	}
-
 	if (mode->crtc_hdisplay > 2048 || mode->crtc_hsync_start > 4096 ||
 	    mode->crtc_hsync_end > 4096 || mode->crtc_htotal > 4096 ||
 	    mode->crtc_vdisplay > 2048 || mode->crtc_vsync_start > 4096 ||
@@ -1521,7 +1558,7 @@ static int mga_vga_mode_valid(struct drm_connector *connector,
 	return MODE_OK;
 }
 
-struct drm_encoder *mga_connector_best_encoder(struct drm_connector
+static struct drm_encoder *mga_connector_best_encoder(struct drm_connector
 						  *connector)
 {
 	int enc_id = connector->encoder_ids[0];
@@ -1583,6 +1620,8 @@ static struct drm_connector *mga_vga_init(struct drm_device *dev)
 			   &mga_vga_connector_funcs, DRM_MODE_CONNECTOR_VGA);
 
 	drm_connector_helper_add(connector, &mga_vga_connector_helper_funcs);
+
+	drm_sysfs_connector_add(connector);
 
 	mga_connector->i2c = mgag200_i2c_create(dev);
 	if (!mga_connector->i2c)

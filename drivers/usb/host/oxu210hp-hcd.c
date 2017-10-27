@@ -59,6 +59,10 @@
 #define oxu_info(oxu, fmt, args...) \
 		dev_info(oxu_to_hcd(oxu)->self.controller , fmt , ## args)
 
+#ifdef CONFIG_DYNAMIC_DEBUG
+#define DEBUG
+#endif
+
 static inline struct usb_hcd *oxu_to_hcd(struct oxu_hcd *oxu)
 {
 	return container_of((void *) oxu, struct usb_hcd, hcd_priv);
@@ -2496,12 +2500,11 @@ static irqreturn_t oxu210_hcd_irq(struct usb_hcd *hcd)
 					|| oxu->reset_done[i] != 0)
 				continue;
 
-			/* start USB_RESUME_TIMEOUT resume signaling from this
-			 * port, and make hub_wq collect PORT_STAT_C_SUSPEND to
+			/* start 20 msec resume signaling from this port,
+			 * and make khubd collect PORT_STAT_C_SUSPEND to
 			 * stop that signaling.
 			 */
-			oxu->reset_done[i] = jiffies +
-				msecs_to_jiffies(USB_RESUME_TIMEOUT);
+			oxu->reset_done[i] = jiffies + msecs_to_jiffies(20);
 			oxu_dbg(oxu, "port %d remote wakeup\n", i + 1);
 			mod_timer(&hcd->rh_timer, oxu->reset_done[i]);
 		}
@@ -3747,6 +3750,7 @@ static struct usb_hcd *oxu_create(struct platform_device *pdev,
 	if (ret < 0)
 		return ERR_PTR(ret);
 
+	device_wakeup_enable(hcd->self.controller);
 	return hcd;
 }
 
@@ -3874,7 +3878,6 @@ static int oxu_drv_probe(struct platform_device *pdev)
 
 error_init:
 	kfree(info);
-	platform_set_drvdata(pdev, NULL);
 
 error_alloc:
 	iounmap(base);
@@ -3907,7 +3910,6 @@ static int oxu_drv_remove(struct platform_device *pdev)
 	release_mem_region(memstart, memlen);
 
 	kfree(info);
-	platform_set_drvdata(pdev, NULL);
 
 	return 0;
 }

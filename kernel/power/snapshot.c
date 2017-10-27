@@ -34,6 +34,8 @@
 #include <asm/tlbflush.h>
 #include <asm/io.h>
 
+#include <linux/amlogic/instaboot/instaboot.h>
+
 #include "power.h"
 
 static int swsusp_page_is_free(struct page *);
@@ -92,7 +94,7 @@ static void *buffer;
 
 static unsigned int allocated_unsafe_pages;
 
-static void *get_image_page(gfp_t gfp_mask, int safe_needed)
+void *get_image_page(gfp_t gfp_mask, int safe_needed)
 {
 	void *res;
 
@@ -110,12 +112,24 @@ static void *get_image_page(gfp_t gfp_mask, int safe_needed)
 	}
 	return res;
 }
+EXPORT_SYMBOL(get_image_page);
 
 unsigned long get_safe_page(gfp_t gfp_mask)
 {
 	return (unsigned long)get_image_page(gfp_mask, PG_SAFE);
 }
-
+#ifdef CONFIG_INSTABOOT_MEM_MG
+static inline struct page *alloc_image_page(gfp_t gfp_mask)
+{
+	struct page *page;
+	page = istbt_alloc_image_page(gfp_mask);
+	if (page) {
+		swsusp_set_page_forbidden(page);
+		swsusp_set_page_free(page);
+	}
+	return page;
+}
+#else
 static struct page *alloc_image_page(gfp_t gfp_mask)
 {
 	struct page *page;
@@ -127,12 +141,28 @@ static struct page *alloc_image_page(gfp_t gfp_mask)
 	}
 	return page;
 }
+#endif
 
 /**
  *	free_image_page - free page represented by @addr, allocated with
  *	get_image_page (page flags set by it must be cleared)
  */
+#ifdef CONFIG_INSTABOOT_MEM_MG
+static inline void free_image_page(void *addr, int clear_nosave_free)
+{
+	struct page *page;
 
+	BUG_ON(!virt_addr_valid(addr));
+
+	page = virt_to_page(addr);
+
+	istbt_free_image_page(addr, clear_nosave_free);
+
+	swsusp_unset_page_forbidden(page);
+	if (clear_nosave_free)
+		swsusp_unset_page_free(page);
+}
+#else
 static inline void free_image_page(void *addr, int clear_nosave_free)
 {
 	struct page *page;
@@ -147,6 +177,7 @@ static inline void free_image_page(void *addr, int clear_nosave_free)
 
 	__free_page(page);
 }
+#endif
 
 /* struct linked_page is used to build chains of pages */
 
@@ -352,7 +383,7 @@ static int create_mem_extents(struct list_head *list, gfp_t gfp_mask)
 		struct mem_extent *ext, *cur, *aux;
 
 		zone_start = zone->zone_start_pfn;
-		zone_end = zone->zone_start_pfn + zone->spanned_pages;
+		zone_end = zone_end_pfn(zone);
 
 		list_for_each_entry(ext, list, hook)
 			if (zone_start <= ext->end)
@@ -637,13 +668,14 @@ __register_nosave_region(unsigned long start_pfn, unsigned long end_pfn,
 		BUG_ON(!region);
 	} else
 		/* This allocation cannot fail */
-		region = alloc_bootmem(sizeof(struct nosave_region));
+		region = memblock_virt_alloc(sizeof(struct nosave_region), 0);
 	region->start_pfn = start_pfn;
 	region->end_pfn = end_pfn;
 	list_add_tail(&region->list, &nosave_regions);
  Report:
-	printk(KERN_INFO "PM: Registered nosave memory: %016lx - %016lx\n",
-		start_pfn << PAGE_SHIFT, end_pfn << PAGE_SHIFT);
+	printk(KERN_INFO "PM: Registered nosave memory: [mem %#010llx-%#010llx]\n",
+		(unsigned long long) start_pfn << PAGE_SHIFT,
+		((unsigned long long) end_pfn << PAGE_SHIFT) - 1);
 }
 
 /*
@@ -742,8 +774,14 @@ int create_basic_memory_bitmaps(void)
 	struct memory_bitmap *bm1, *bm2;
 	int error = 0;
 
-	BUG_ON(forbidden_pages_map || free_pages_map);
+	if (forbidden_pages_map && free_pages_map)
+		return 0;
+	else
+		BUG_ON(forbidden_pages_map || free_pages_map);
 
+#ifdef CONFIG_INSTABOOT_MEM_MG
+	istbt_init_mem();
+#endif
 	bm1 = kzalloc(sizeof(struct memory_bitmap), GFP_KERNEL);
 	if (!bm1)
 		return -ENOMEM;
@@ -788,7 +826,8 @@ void free_basic_memory_bitmaps(void)
 {
 	struct memory_bitmap *bm1, *bm2;
 
-	BUG_ON(!(forbidden_pages_map && free_pages_map));
+	if (WARN_ON(!(forbidden_pages_map && free_pages_map)))
+		return;
 
 	bm1 = forbidden_pages_map;
 	bm2 = free_pages_map;
@@ -883,7 +922,7 @@ static unsigned int count_highmem_pages(void)
 			continue;
 
 		mark_free_pages(zone);
-		max_zone_pfn = zone->zone_start_pfn + zone->spanned_pages;
+		max_zone_pfn = zone_end_pfn(zone);
 		for (pfn = zone->zone_start_pfn; pfn < max_zone_pfn; pfn++)
 			if (saveable_highmem_page(zone, pfn))
 				n++;
@@ -947,7 +986,7 @@ static unsigned int count_data_pages(void)
 			continue;
 
 		mark_free_pages(zone);
-		max_zone_pfn = zone->zone_start_pfn + zone->spanned_pages;
+		max_zone_pfn = zone_end_pfn(zone);
 		for (pfn = zone->zone_start_pfn; pfn < max_zone_pfn; pfn++)
 			if (saveable_page(zone, pfn))
 				n++;
@@ -958,6 +997,12 @@ static unsigned int count_data_pages(void)
 /* This is needed, because copy_page and memcpy are not usable for copying
  * task structs.
  */
+#ifdef CONFIG_INSTABOOT_MEM_MG
+static inline void do_copy_page(long *dst, long *src)
+{
+	istbt_copy_page(dst, src);
+}
+#else
 static inline void do_copy_page(long *dst, long *src)
 {
 	int n;
@@ -965,7 +1010,7 @@ static inline void do_copy_page(long *dst, long *src)
 	for (n = PAGE_SIZE / sizeof(long); n; n--)
 		*dst++ = *src++;
 }
-
+#endif
 
 /**
  *	safe_copy_page - check if the page we are going to copy is marked as
@@ -1040,7 +1085,7 @@ copy_data_pages(struct memory_bitmap *copy_bm, struct memory_bitmap *orig_bm)
 		unsigned long max_zone_pfn;
 
 		mark_free_pages(zone);
-		max_zone_pfn = zone->zone_start_pfn + zone->spanned_pages;
+		max_zone_pfn = zone_end_pfn(zone);
 		for (pfn = zone->zone_start_pfn; pfn < max_zone_pfn; pfn++)
 			if (page_is_saveable(zone, pfn))
 				memory_bm_set_bit(orig_bm, pfn);
@@ -1092,16 +1137,33 @@ void swsusp_free(void)
 	unsigned long pfn, max_zone_pfn;
 
 	for_each_populated_zone(zone) {
-		max_zone_pfn = zone->zone_start_pfn + zone->spanned_pages;
+		max_zone_pfn = zone_end_pfn(zone);
 		for (pfn = zone->zone_start_pfn; pfn < max_zone_pfn; pfn++)
 			if (pfn_valid(pfn)) {
 				struct page *page = pfn_to_page(pfn);
+#ifdef CONFIG_INSTABOOT_MEM_MG
+				if (!istbt_pfn_touchable(pfn)) {
+					if (forbidden_pages_map)
+						memory_bm_clear_bit
+						(forbidden_pages_map, pfn);
 
-				if (swsusp_page_is_forbidden(page) &&
-				    swsusp_page_is_free(page)) {
-					swsusp_unset_page_forbidden(page);
-					swsusp_unset_page_free(page);
-					__free_page(page);
+					if (free_pages_map)
+						memory_bm_clear_bit
+						(free_pages_map, pfn);
+
+					istbt_pfn_destory(pfn);
+
+				} else
+#endif
+				{
+
+					if (swsusp_page_is_forbidden(page) &&
+						swsusp_page_is_free(page)) {
+						swsusp_unset_page_forbidden
+							(page);
+						swsusp_unset_page_free(page);
+						__free_page(page);
+					}
 				}
 			}
 	}
@@ -1230,7 +1292,12 @@ static void free_unnecessary_pages(void)
 
 	while (to_free_normal > 0 || to_free_highmem > 0) {
 		unsigned long pfn = memory_bm_next_pfn(&copy_bm);
-		struct page *page = pfn_to_page(pfn);
+		struct page *page;
+#ifdef CONFIG_INSTABOOT_MEM_MG
+		while (!istbt_pfn_touchable(pfn))
+			pfn = memory_bm_next_pfn(&copy_bm);
+#endif
+		page = pfn_to_page(pfn);
 
 		if (PageHighMem(page)) {
 			if (!to_free_highmem)
@@ -1363,6 +1430,8 @@ int hibernate_preallocate_memory(void)
 	 * the image and we're done.
 	 */
 	if (size >= saveable) {
+		pages = minimum_image_size(saveable);
+		shrink_all_memory((saveable - pages) >> 1);
 		pages = preallocate_image_highmem(save_highmem);
 		pages += preallocate_image_memory(saveable - pages, avail_normal);
 		goto out;
@@ -1655,7 +1724,7 @@ unsigned long snapshot_get_image_size(void)
 static int init_header(struct swsusp_info *info)
 {
 	memset(info, 0, sizeof(struct swsusp_info));
-	info->num_physpages = num_physpages;
+	info->num_physpages = get_num_physpages();
 	info->image_pages = nr_copy_pages;
 	info->pages = snapshot_get_image_size();
 	info->size = info->pages;
@@ -1758,7 +1827,7 @@ static int mark_unsafe_pages(struct memory_bitmap *bm)
 
 	/* Clear page flags */
 	for_each_populated_zone(zone) {
-		max_zone_pfn = zone->zone_start_pfn + zone->spanned_pages;
+		max_zone_pfn = zone_end_pfn(zone);
 		for (pfn = zone->zone_start_pfn; pfn < max_zone_pfn; pfn++)
 			if (pfn_valid(pfn))
 				swsusp_unset_page_free(pfn_to_page(pfn));
@@ -1799,7 +1868,7 @@ static int check_header(struct swsusp_info *info)
 	char *reason;
 
 	reason = check_image_kernel(info);
-	if (!reason && info->num_physpages != num_physpages)
+	if (!reason && info->num_physpages != get_num_physpages())
 		reason = "memory size";
 	if (reason) {
 		printk(KERN_ERR "PM: Image mismatch: %s\n", reason);
@@ -2129,7 +2198,8 @@ prepare_image(struct memory_bitmap *new_bm, struct memory_bitmap *bm)
 	safe_pages_list = NULL;
 	nr_pages = nr_copy_pages - nr_highmem - allocated_unsafe_pages;
 	while (nr_pages > 0) {
-		lp = (struct linked_page *)get_zeroed_page(GFP_ATOMIC);
+		lp = (struct linked_page *)
+			get_zeroed_page(GFP_ATOMIC | __GFP_MOVABLE);
 		if (!lp) {
 			error = -ENOMEM;
 			goto Free;

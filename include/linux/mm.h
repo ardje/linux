@@ -5,6 +5,7 @@
 
 #ifdef __KERNEL__
 
+#include <linux/mmdebug.h>
 #include <linux/gfp.h>
 #include <linux/bug.h>
 #include <linux/list.h>
@@ -13,6 +14,7 @@
 #include <linux/atomic.h>
 #include <linux/debug_locks.h>
 #include <linux/mm_types.h>
+#include <linux/migrate_mode.h>
 #include <linux/range.h>
 #include <linux/pfn.h>
 #include <linux/bit_spinlock.h>
@@ -25,11 +27,17 @@ struct file_ra_state;
 struct user_struct;
 struct writeback_control;
 
-#ifndef CONFIG_DISCONTIGMEM          /* Don't use mapnrs, do it properly */
+#ifndef CONFIG_NEED_MULTIPLE_NODES	/* Don't use mapnrs, do it properly */
 extern unsigned long max_mapnr;
+
+static inline void set_max_mapnr(unsigned long limit)
+{
+	max_mapnr = limit;
+}
+#else
+static inline void set_max_mapnr(unsigned long limit) { }
 #endif
 
-extern unsigned long num_physpages;
 extern unsigned long totalram_pages;
 extern void * high_memory;
 extern int page_cluster;
@@ -40,17 +48,49 @@ extern int sysctl_legacy_va_layout;
 #define sysctl_legacy_va_layout 0
 #endif
 
+#ifdef CONFIG_CMA
+#define MIGRATE_CMA_HOLD  1
+#define MIGRATE_CMA_ALLOC 2
+#define MIGRATE_CMA_REL   3
+extern bool has_cma_page(struct page *page);
+extern void wakeup_wq(bool has_cma);
+extern int iso_status;
+extern int iso_recount;
+extern wait_queue_head_t iso_wq;
+extern struct mutex iso_wait;
+extern struct mutex migrate_wait;
+extern int migrate_status;
+extern int mutex_status;
+extern int migrate_refcount;
+extern wait_queue_head_t migrate_wq;
+#endif
 #include <asm/page.h>
 #include <asm/pgtable.h>
 #include <asm/processor.h>
 
+#ifndef __pa_symbol
+#define __pa_symbol(x)  __pa(RELOC_HIDE((unsigned long)(x), 0))
+#endif
+
 extern unsigned long sysctl_user_reserve_kbytes;
 extern unsigned long sysctl_admin_reserve_kbytes;
+
+extern int sysctl_overcommit_memory;
+extern int sysctl_overcommit_ratio;
+extern unsigned long sysctl_overcommit_kbytes;
+
+extern int overcommit_ratio_handler(struct ctl_table *, int, void __user *,
+				    size_t *, loff_t *);
+extern int overcommit_kbytes_handler(struct ctl_table *, int, void __user *,
+				    size_t *, loff_t *);
 
 #define nth_page(page,n) pfn_to_page(page_to_pfn((page)) + (n))
 
 /* to align the pointer to the (next) page boundary */
 #define PAGE_ALIGN(addr) ALIGN(addr, PAGE_SIZE)
+
+/* test whether an address (unsigned long or pointer) is aligned to PAGE_SIZE */
+#define PAGE_ALIGNED(addr)	IS_ALIGNED((unsigned long)addr, PAGE_SIZE)
 
 /*
  * Linux kernel virtual memory manager primitives.
@@ -106,7 +146,11 @@ extern unsigned int kobjsize(const void *objp);
 #define VM_ARCH_1	0x01000000	/* Architecture-specific flag */
 #define VM_DONTDUMP	0x04000000	/* Do not include in the core dump */
 
-#define VM_RESERVED		(VM_DONTEXPAND | VM_DONTDUMP)		/*add this define for some code use it*/
+#ifdef CONFIG_MEM_SOFT_DIRTY
+# define VM_SOFTDIRTY	0x08000000	/* Not soft dirty clean area */
+#else
+# define VM_SOFTDIRTY	0
+#endif
 
 #define VM_MIXEDMAP	0x10000000	/* Can contain "struct page" and pure PFN pages */
 #define VM_HUGEPAGE	0x20000000	/* MADV_HUGEPAGE marked this vma */
@@ -144,17 +188,11 @@ extern unsigned int kobjsize(const void *objp);
 #define VM_STACK_FLAGS	(VM_GROWSDOWN | VM_STACK_DEFAULT_FLAGS | VM_ACCOUNT)
 #endif
 
-#define VM_READHINTMASK			(VM_SEQ_READ | VM_RAND_READ)
-#define VM_ClearReadHint(v)		(v)->vm_flags &= ~VM_READHINTMASK
-#define VM_NormalReadHint(v)		(!((v)->vm_flags & VM_READHINTMASK))
-#define VM_SequentialReadHint(v)	((v)->vm_flags & VM_SEQ_READ)
-#define VM_RandomReadHint(v)		((v)->vm_flags & VM_RAND_READ)
-
 /*
  * Special vmas that are non-mergable, non-mlock()able.
  * Note: mm/huge_memory.c VM_NO_THP depends on this definition.
  */
-#define VM_SPECIAL (VM_IO | VM_DONTEXPAND | VM_PFNMAP)
+#define VM_SPECIAL (VM_IO | VM_DONTEXPAND | VM_PFNMAP | VM_MIXEDMAP)
 
 /*
  * mapping from the currently active vm_flags protection bits (the
@@ -194,7 +232,7 @@ struct vm_fault {
 /*
  * These are the virtual MM functions - opening of an area, closing and
  * unmapping it (needed to keep files on disk up-to-date etc), pointer
- * to the functions called when a no-page or a wp-page exception occurs. 
+ * to the functions called when a no-page or a wp-page exception occurs.
  */
 struct vm_operations_struct {
 	void (*open)(struct vm_area_struct * area);
@@ -283,17 +321,31 @@ static inline int get_freepage_migratetype(struct page *page)
  */
 static inline int put_page_testzero(struct page *page)
 {
-	VM_BUG_ON(atomic_read(&page->_count) == 0);
+	VM_BUG_ON_PAGE(atomic_read(&page->_count) == 0, page);
 	return atomic_dec_and_test(&page->_count);
 }
 
 /*
  * Try to grab a ref unless the page has a refcount of zero, return false if
  * that is the case.
+ * This can be called when MMU is off so it must not access
+ * any of the virtual mappings.
  */
 static inline int get_page_unless_zero(struct page *page)
 {
 	return atomic_inc_not_zero(&page->_count);
+}
+
+/*
+ * Try to drop a ref unless the page has a refcount of one, return false if
+ * that is the case.
+ * This is to make sure that the refcount won't become zero after this drop.
+ * This can be called when MMU is off so it must not access
+ * any of the virtual mappings.
+ */
+static inline int put_page_unless_one(struct page *page)
+{
+	return atomic_add_unless(&page->_count, -1, 1);
 }
 
 extern int page_is_ram(unsigned long pfn);
@@ -327,10 +379,12 @@ static inline int is_vmalloc_or_module_addr(const void *x)
 }
 #endif
 
+extern void kvfree(const void *addr);
+
 static inline void compound_lock(struct page *page)
 {
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
-	VM_BUG_ON(PageSlab(page));
+	VM_BUG_ON_PAGE(PageSlab(page), page);
 	bit_spin_lock(PG_compound_lock, &page->flags);
 #endif
 }
@@ -338,7 +392,7 @@ static inline void compound_lock(struct page *page)
 static inline void compound_unlock(struct page *page)
 {
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
-	VM_BUG_ON(PageSlab(page));
+	VM_BUG_ON_PAGE(PageSlab(page), page);
 	bit_spin_unlock(PG_compound_lock, &page->flags);
 #endif
 }
@@ -399,15 +453,44 @@ static inline int page_count(struct page *page)
 	return atomic_read(&compound_head(page)->_count);
 }
 
+#ifdef CONFIG_HUGETLB_PAGE
+extern int PageHeadHuge(struct page *page_head);
+#else /* CONFIG_HUGETLB_PAGE */
+static inline int PageHeadHuge(struct page *page_head)
+{
+	return 0;
+}
+#endif /* CONFIG_HUGETLB_PAGE */
+
+static inline bool __compound_tail_refcounted(struct page *page)
+{
+	return !PageSlab(page) && !PageHeadHuge(page);
+}
+
+/*
+ * This takes a head page as parameter and tells if the
+ * tail page reference counting can be skipped.
+ *
+ * For this to be safe, PageSlab and PageHeadHuge must remain true on
+ * any given page where they return true here, until all tail pins
+ * have been released.
+ */
+static inline bool compound_tail_refcounted(struct page *page)
+{
+	VM_BUG_ON_PAGE(!PageHead(page), page);
+	return __compound_tail_refcounted(page);
+}
+
 static inline void get_huge_page_tail(struct page *page)
 {
 	/*
-	 * __split_huge_page_refcount() cannot run
-	 * from under us.
+	 * __split_huge_page_refcount() cannot run from under us.
 	 */
-	VM_BUG_ON(page_mapcount(page) < 0);
-	VM_BUG_ON(atomic_read(&page->_count) != 0);
-	atomic_inc(&page->_mapcount);
+	VM_BUG_ON_PAGE(!PageTail(page), page);
+	VM_BUG_ON_PAGE(page_mapcount(page) < 0, page);
+	VM_BUG_ON_PAGE(atomic_read(&page->_count) != 0, page);
+	if (compound_tail_refcounted(page->first_page))
+		atomic_inc(&page->_mapcount);
 }
 
 extern bool __get_page_tail(struct page *page);
@@ -421,7 +504,7 @@ static inline void get_page(struct page *page)
 	 * Getting a normal page or the head of a compound page
 	 * requires to already have an elevated page->_count.
 	 */
-	VM_BUG_ON(atomic_read(&page->_count) <= 0);
+	VM_BUG_ON_PAGE(atomic_read(&page->_count) <= 0, page);
 	atomic_inc(&page->_count);
 }
 
@@ -458,13 +541,13 @@ static inline int PageBuddy(struct page *page)
 
 static inline void __SetPageBuddy(struct page *page)
 {
-	VM_BUG_ON(atomic_read(&page->_mapcount) != -1);
+	VM_BUG_ON_PAGE(atomic_read(&page->_mapcount) != -1, page);
 	atomic_set(&page->_mapcount, PAGE_BUDDY_MAPCOUNT_VALUE);
 }
 
 static inline void __ClearPageBuddy(struct page *page)
 {
-	VM_BUG_ON(!PageBuddy(page));
+	VM_BUG_ON_PAGE(!PageBuddy(page), page);
 	atomic_set(&page->_mapcount, -1);
 }
 
@@ -472,7 +555,7 @@ void put_page(struct page *page);
 void put_pages_list(struct list_head *pages);
 
 void split_page(struct page *page, unsigned int order);
-int split_free_page(struct page *page);
+int split_free_page(struct page *page, enum migrate_type page_type);
 
 /*
  * Compound pages have a destructor function.  Provide a
@@ -497,20 +580,6 @@ static inline int compound_order(struct page *page)
 	if (!PageHead(page))
 		return 0;
 	return (unsigned long)page[1].lru.prev;
-}
-
-static inline int compound_trans_order(struct page *page)
-{
-	int order;
-	unsigned long flags;
-
-	if (!PageHead(page))
-		return 0;
-
-	flags = compound_lock_irqsave(page);
-	order = compound_order(page);
-	compound_unlock_irqrestore(page, flags);
-	return order;
 }
 
 static inline void set_compound_order(struct page *page, unsigned long order)
@@ -598,11 +667,11 @@ static inline pte_t maybe_mkwrite(pte_t pte, struct vm_area_struct *vma)
  * sets it, so none of the operations on it need to be atomic.
  */
 
-/* Page flags: | [SECTION] | [NODE] | ZONE | [LAST_NID] | ... | FLAGS | */
+/* Page flags: | [SECTION] | [NODE] | ZONE | [LAST_CPUPID] | ... | FLAGS | */
 #define SECTIONS_PGOFF		((sizeof(unsigned long)*8) - SECTIONS_WIDTH)
 #define NODES_PGOFF		(SECTIONS_PGOFF - NODES_WIDTH)
 #define ZONES_PGOFF		(NODES_PGOFF - ZONES_WIDTH)
-#define LAST_NID_PGOFF		(ZONES_PGOFF - LAST_NID_WIDTH)
+#define LAST_CPUPID_PGOFF	(ZONES_PGOFF - LAST_CPUPID_WIDTH)
 
 /*
  * Define the bit shifts to access each section.  For non-existent
@@ -612,7 +681,7 @@ static inline pte_t maybe_mkwrite(pte_t pte, struct vm_area_struct *vma)
 #define SECTIONS_PGSHIFT	(SECTIONS_PGOFF * (SECTIONS_WIDTH != 0))
 #define NODES_PGSHIFT		(NODES_PGOFF * (NODES_WIDTH != 0))
 #define ZONES_PGSHIFT		(ZONES_PGOFF * (ZONES_WIDTH != 0))
-#define LAST_NID_PGSHIFT	(LAST_NID_PGOFF * (LAST_NID_WIDTH != 0))
+#define LAST_CPUPID_PGSHIFT	(LAST_CPUPID_PGOFF * (LAST_CPUPID_WIDTH != 0))
 
 /* NODE:ZONE or SECTION:ZONE is used to ID a zone for the buddy allocator */
 #ifdef NODE_NOT_IN_PAGE_FLAGS
@@ -634,7 +703,7 @@ static inline pte_t maybe_mkwrite(pte_t pte, struct vm_area_struct *vma)
 #define ZONES_MASK		((1UL << ZONES_WIDTH) - 1)
 #define NODES_MASK		((1UL << NODES_WIDTH) - 1)
 #define SECTIONS_MASK		((1UL << SECTIONS_WIDTH) - 1)
-#define LAST_NID_MASK		((1UL << LAST_NID_WIDTH) - 1)
+#define LAST_CPUPID_MASK	((1UL << LAST_CPUPID_WIDTH) - 1)
 #define ZONEID_MASK		((1UL << ZONEID_SHIFT) - 1)
 
 static inline enum zone_type page_zonenum(const struct page *page)
@@ -647,12 +716,12 @@ static inline enum zone_type page_zonenum(const struct page *page)
 #endif
 
 /*
- * The identification function is only used by the buddy allocator for
- * determining if two pages could be buddies. We are not really
- * identifying a zone since we could be using a the section number
- * id if we have not node id available in page flags.
- * We guarantee only that it will return the same value for two
- * combinable pages in a zone.
+ * The identification function is mainly used by the buddy allocator for
+ * determining if two pages could be buddies. We are not really identifying
+ * the zone since we could be using the section number id if we do not have
+ * node id available in page flags.
+ * We only guarantee that it will return the same value for two combinable
+ * pages in a zone.
  */
 static inline int page_zone_id(struct page *page)
 {
@@ -678,51 +747,117 @@ static inline int page_to_nid(const struct page *page)
 #endif
 
 #ifdef CONFIG_NUMA_BALANCING
-#ifdef LAST_NID_NOT_IN_PAGE_FLAGS
-static inline int page_nid_xchg_last(struct page *page, int nid)
+static inline int cpu_pid_to_cpupid(int cpu, int pid)
 {
-	return xchg(&page->_last_nid, nid);
+	return ((cpu & LAST__CPU_MASK) << LAST__PID_SHIFT) | (pid & LAST__PID_MASK);
 }
 
-static inline int page_nid_last(struct page *page)
+static inline int cpupid_to_pid(int cpupid)
 {
-	return page->_last_nid;
+	return cpupid & LAST__PID_MASK;
 }
-static inline void page_nid_reset_last(struct page *page)
+
+static inline int cpupid_to_cpu(int cpupid)
 {
-	page->_last_nid = -1;
+	return (cpupid >> LAST__PID_SHIFT) & LAST__CPU_MASK;
+}
+
+static inline int cpupid_to_nid(int cpupid)
+{
+	return cpu_to_node(cpupid_to_cpu(cpupid));
+}
+
+static inline bool cpupid_pid_unset(int cpupid)
+{
+	return cpupid_to_pid(cpupid) == (-1 & LAST__PID_MASK);
+}
+
+static inline bool cpupid_cpu_unset(int cpupid)
+{
+	return cpupid_to_cpu(cpupid) == (-1 & LAST__CPU_MASK);
+}
+
+static inline bool __cpupid_match_pid(pid_t task_pid, int cpupid)
+{
+	return (task_pid & LAST__PID_MASK) == cpupid_to_pid(cpupid);
+}
+
+#define cpupid_match_pid(task, cpupid) __cpupid_match_pid(task->pid, cpupid)
+#ifdef LAST_CPUPID_NOT_IN_PAGE_FLAGS
+static inline int page_cpupid_xchg_last(struct page *page, int cpupid)
+{
+	return xchg(&page->_last_cpupid, cpupid & LAST_CPUPID_MASK);
+}
+
+static inline int page_cpupid_last(struct page *page)
+{
+	return page->_last_cpupid;
+}
+static inline void page_cpupid_reset_last(struct page *page)
+{
+	page->_last_cpupid = -1 & LAST_CPUPID_MASK;
 }
 #else
-static inline int page_nid_last(struct page *page)
+static inline int page_cpupid_last(struct page *page)
 {
-	return (page->flags >> LAST_NID_PGSHIFT) & LAST_NID_MASK;
+	return (page->flags >> LAST_CPUPID_PGSHIFT) & LAST_CPUPID_MASK;
 }
 
-extern int page_nid_xchg_last(struct page *page, int nid);
+extern int page_cpupid_xchg_last(struct page *page, int cpupid);
 
-static inline void page_nid_reset_last(struct page *page)
+static inline void page_cpupid_reset_last(struct page *page)
 {
-	int nid = (1 << LAST_NID_SHIFT) - 1;
+	int cpupid = (1 << LAST_CPUPID_SHIFT) - 1;
 
-	page->flags &= ~(LAST_NID_MASK << LAST_NID_PGSHIFT);
-	page->flags |= (nid & LAST_NID_MASK) << LAST_NID_PGSHIFT;
+	page->flags &= ~(LAST_CPUPID_MASK << LAST_CPUPID_PGSHIFT);
+	page->flags |= (cpupid & LAST_CPUPID_MASK) << LAST_CPUPID_PGSHIFT;
 }
-#endif /* LAST_NID_NOT_IN_PAGE_FLAGS */
-#else
-static inline int page_nid_xchg_last(struct page *page, int nid)
+#endif /* LAST_CPUPID_NOT_IN_PAGE_FLAGS */
+#else /* !CONFIG_NUMA_BALANCING */
+static inline int page_cpupid_xchg_last(struct page *page, int cpupid)
 {
-	return page_to_nid(page);
-}
-
-static inline int page_nid_last(struct page *page)
-{
-	return page_to_nid(page);
+	return page_to_nid(page); /* XXX */
 }
 
-static inline void page_nid_reset_last(struct page *page)
+static inline int page_cpupid_last(struct page *page)
+{
+	return page_to_nid(page); /* XXX */
+}
+
+static inline int cpupid_to_nid(int cpupid)
+{
+	return -1;
+}
+
+static inline int cpupid_to_pid(int cpupid)
+{
+	return -1;
+}
+
+static inline int cpupid_to_cpu(int cpupid)
+{
+	return -1;
+}
+
+static inline int cpu_pid_to_cpupid(int nid, int pid)
+{
+	return -1;
+}
+
+static inline bool cpupid_pid_unset(int cpupid)
+{
+	return 1;
+}
+
+static inline void page_cpupid_reset_last(struct page *page)
 {
 }
-#endif
+
+static inline bool cpupid_match_pid(struct task_struct *task, int cpupid)
+{
+	return false;
+}
+#endif /* CONFIG_NUMA_BALANCING */
 
 static inline struct zone *page_zone(const struct page *page)
 {
@@ -893,16 +1028,16 @@ static inline int page_mapped(struct page *page)
 #define VM_FAULT_WRITE	0x0008	/* Special case for get_user_pages */
 #define VM_FAULT_HWPOISON 0x0010	/* Hit poisoned small page */
 #define VM_FAULT_HWPOISON_LARGE 0x0020  /* Hit poisoned large page. Index encoded in upper bits */
-#define VM_FAULT_SIGSEGV 0x0040
 
 #define VM_FAULT_NOPAGE	0x0100	/* ->fault installed the pte, not return page */
 #define VM_FAULT_LOCKED	0x0200	/* ->fault locked the returned page */
 #define VM_FAULT_RETRY	0x0400	/* ->fault blocked, must retry */
+#define VM_FAULT_FALLBACK 0x0800	/* huge page fault failed, fall back to small */
 
 #define VM_FAULT_HWPOISON_LARGE_MASK 0xf000 /* encodes hpage index for large hwpoison */
 
-#define VM_FAULT_ERROR	(VM_FAULT_OOM | VM_FAULT_SIGBUS | VM_FAULT_SIGSEGV | \
-			 VM_FAULT_HWPOISON | VM_FAULT_HWPOISON_LARGE)
+#define VM_FAULT_ERROR	(VM_FAULT_OOM | VM_FAULT_SIGBUS | VM_FAULT_HWPOISON | \
+			 VM_FAULT_FALLBACK | VM_FAULT_HWPOISON_LARGE)
 
 /* Encode hstate index for a hwpoisoned large page */
 #define VM_FAULT_SET_HINDEX(x) ((x) << 12)
@@ -920,13 +1055,20 @@ extern void pagefault_out_of_memory(void);
  * various contexts.
  */
 #define SHOW_MEM_FILTER_NODES		(0x0001u)	/* disallowed nodes */
-#define SHOW_MEM_FILTER_PAGE_COUNT	(0x0002u)	/* page type count */
 
 extern void show_free_areas(unsigned int flags);
 extern bool skip_free_areas_node(unsigned int flags, int nid);
 
 void shmem_set_file(struct vm_area_struct *vma, struct file *file);
 int shmem_zero_setup(struct vm_area_struct *);
+#ifdef CONFIG_SHMEM
+bool shmem_mapping(struct address_space *mapping);
+#else
+static inline bool shmem_mapping(struct address_space *mapping)
+{
+	return false;
+}
+#endif
 
 extern int can_do_mlock(void);
 extern int user_shm_lock(size_t, struct user_struct *);
@@ -1007,7 +1149,7 @@ static inline void unmap_shared_mapping_range(struct address_space *mapping,
 	unmap_mapping_range(mapping, holebegin, holelen, 0);
 }
 
-extern void truncate_pagecache(struct inode *inode, loff_t old, loff_t new);
+extern void truncate_pagecache(struct inode *inode, loff_t new);
 extern void truncate_setsize(struct inode *inode, loff_t newsize);
 void pagecache_isize_extended(struct inode *inode, loff_t from, loff_t to);
 void truncate_pagecache_range(struct inode *inode, loff_t offset, loff_t end);
@@ -1039,28 +1181,6 @@ static inline int fixup_user_fault(struct task_struct *tsk,
 }
 #endif
 
-#ifdef CONFIG_MMU
-extern void vma_do_file_update_time(struct vm_area_struct *, const char[], int);
-extern struct file *vma_do_pr_or_file(struct vm_area_struct *, const char[],
-				      int);
-extern void vma_do_get_file(struct vm_area_struct *, const char[], int);
-extern void vma_do_fput(struct vm_area_struct *, const char[], int);
-
-#define vma_file_update_time(vma)	vma_do_file_update_time(vma, __func__, \
-								__LINE__)
-#define vma_pr_or_file(vma)		vma_do_pr_or_file(vma, __func__, \
-							  __LINE__)
-#define vma_get_file(vma)		vma_do_get_file(vma, __func__, __LINE__)
-#define vma_fput(vma)			vma_do_fput(vma, __func__, __LINE__)
-#else
-extern struct file *vmr_do_pr_or_file(struct vm_region *, const char[], int);
-extern void vmr_do_fput(struct vm_region *, const char[], int);
-
-#define vmr_pr_or_file(region)		vmr_do_pr_or_file(region, __func__, \
-							  __LINE__)
-#define vmr_fput(region)		vmr_do_fput(region, __func__, __LINE__)
-#endif /* CONFIG_MMU */
-
 extern int access_process_vm(struct task_struct *tsk, unsigned long addr, void *buf, int len, int write);
 extern int access_remote_vm(struct mm_struct *mm, unsigned long addr,
 		void *buf, int len, int write);
@@ -1082,7 +1202,8 @@ int get_kernel_page(unsigned long start, int write, struct page **pages);
 struct page *get_dump_page(unsigned long addr);
 
 extern int try_to_release_page(struct page * page, gfp_t gfp_mask);
-extern void do_invalidatepage(struct page *page, unsigned long offset);
+extern void do_invalidatepage(struct page *page, unsigned int offset,
+			      unsigned int length);
 
 int __set_page_dirty_nobuffers(struct page *page);
 int __set_page_dirty_no_writeback(struct page *page);
@@ -1093,6 +1214,34 @@ void account_page_writeback(struct page *page);
 int set_page_dirty(struct page *page);
 int set_page_dirty_lock(struct page *page);
 int clear_page_dirty_for_io(struct page *page);
+
+/* Is the vma a continuation of the stack vma above it? */
+static inline int vma_growsdown(struct vm_area_struct *vma, unsigned long addr)
+{
+	return vma && (vma->vm_end == addr) && (vma->vm_flags & VM_GROWSDOWN);
+}
+
+static inline int stack_guard_page_start(struct vm_area_struct *vma,
+					     unsigned long addr)
+{
+	return (vma->vm_flags & VM_GROWSDOWN) &&
+		(vma->vm_start == addr) &&
+		!vma_growsdown(vma->vm_prev, addr);
+}
+
+/* Is the vma a continuation of the stack vma below it? */
+static inline int vma_growsup(struct vm_area_struct *vma, unsigned long addr)
+{
+	return vma && (vma->vm_start == addr) && (vma->vm_flags & VM_GROWSUP);
+}
+
+static inline int stack_guard_page_end(struct vm_area_struct *vma,
+					   unsigned long addr)
+{
+	return (vma->vm_flags & VM_GROWSUP) &&
+		(vma->vm_end == addr) &&
+		!vma_growsup(vma->vm_next, addr);
+}
 
 extern pid_t
 vm_is_stack(struct task_struct *task, struct vm_area_struct *vma, int in_group);
@@ -1247,32 +1396,88 @@ static inline pmd_t *pmd_alloc(struct mm_struct *mm, pud_t *pud, unsigned long a
 }
 #endif /* CONFIG_MMU && !__ARCH_HAS_4LEVEL_HACK */
 
-#if USE_SPLIT_PTLOCKS
-/*
- * We tuck a spinlock to guard each pagetable page into its struct page,
- * at page->private, with BUILD_BUG_ON to make sure that this will not
- * overflow into the next struct page (as it might with DEBUG_SPINLOCK).
- * When freeing, reset page->mapping so free_pages_check won't complain.
- */
-#define __pte_lockptr(page)	&((page)->ptl)
-#define pte_lock_init(_page)	do {					\
-	spin_lock_init(__pte_lockptr(_page));				\
-} while (0)
-#define pte_lock_deinit(page)	((page)->mapping = NULL)
-#define pte_lockptr(mm, pmd)	({(void)(mm); __pte_lockptr(pmd_page(*(pmd)));})
-#else	/* !USE_SPLIT_PTLOCKS */
+#if USE_SPLIT_PTE_PTLOCKS
+#if ALLOC_SPLIT_PTLOCKS
+void __init ptlock_cache_init(void);
+extern bool ptlock_alloc(struct page *page);
+extern void ptlock_free(struct page *page);
+
+static inline spinlock_t *ptlock_ptr(struct page *page)
+{
+	return page->ptl;
+}
+#else /* ALLOC_SPLIT_PTLOCKS */
+static inline void ptlock_cache_init(void)
+{
+}
+
+static inline bool ptlock_alloc(struct page *page)
+{
+	return true;
+}
+
+static inline void ptlock_free(struct page *page)
+{
+}
+
+static inline spinlock_t *ptlock_ptr(struct page *page)
+{
+	return &page->ptl;
+}
+#endif /* ALLOC_SPLIT_PTLOCKS */
+
+static inline spinlock_t *pte_lockptr(struct mm_struct *mm, pmd_t *pmd)
+{
+	return ptlock_ptr(pmd_page(*pmd));
+}
+
+static inline bool ptlock_init(struct page *page)
+{
+	/*
+	 * prep_new_page() initialize page->private (and therefore page->ptl)
+	 * with 0. Make sure nobody took it in use in between.
+	 *
+	 * It can happen if arch try to use slab for page table allocation:
+	 * slab code uses page->slab_cache and page->first_page (for tail
+	 * pages), which share storage with page->ptl.
+	 */
+	VM_BUG_ON_PAGE(*(unsigned long *)&page->ptl, page);
+	if (!ptlock_alloc(page))
+		return false;
+	spin_lock_init(ptlock_ptr(page));
+	return true;
+}
+
+/* Reset page->mapping so free_pages_check won't complain. */
+static inline void pte_lock_deinit(struct page *page)
+{
+	page->mapping = NULL;
+	ptlock_free(page);
+}
+
+#else	/* !USE_SPLIT_PTE_PTLOCKS */
 /*
  * We use mm->page_table_lock to guard all pagetable pages of the mm.
  */
-#define pte_lock_init(page)	do {} while (0)
-#define pte_lock_deinit(page)	do {} while (0)
-#define pte_lockptr(mm, pmd)	({(void)(pmd); &(mm)->page_table_lock;})
-#endif /* USE_SPLIT_PTLOCKS */
-
-static inline void pgtable_page_ctor(struct page *page)
+static inline spinlock_t *pte_lockptr(struct mm_struct *mm, pmd_t *pmd)
 {
-	pte_lock_init(page);
+	return &mm->page_table_lock;
+}
+static inline void ptlock_cache_init(void) {}
+static inline bool ptlock_init(struct page *page) { return true; }
+static inline void pte_lock_deinit(struct page *page) {}
+#endif /* USE_SPLIT_PTE_PTLOCKS */
+
+static inline void pgtable_init(void)
+{
+	ptlock_cache_init();
+	pgtable_cache_init();
+}
+
+static inline bool pgtable_page_ctor(struct page *page)
+{
 	inc_zone_page_state(page, NR_PAGETABLE);
+	return ptlock_init(page);
 }
 
 static inline void pgtable_page_dtor(struct page *page)
@@ -1309,6 +1514,52 @@ static inline void pgtable_page_dtor(struct page *page)
 	((unlikely(pmd_none(*(pmd))) && __pte_alloc_kernel(pmd, address))? \
 		NULL: pte_offset_kernel(pmd, address))
 
+#if USE_SPLIT_PMD_PTLOCKS
+
+static inline spinlock_t *pmd_lockptr(struct mm_struct *mm, pmd_t *pmd)
+{
+	return ptlock_ptr(virt_to_page(pmd));
+}
+
+static inline bool pgtable_pmd_page_ctor(struct page *page)
+{
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+	page->pmd_huge_pte = NULL;
+#endif
+	return ptlock_init(page);
+}
+
+static inline void pgtable_pmd_page_dtor(struct page *page)
+{
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+	VM_BUG_ON_PAGE(page->pmd_huge_pte, page);
+#endif
+	ptlock_free(page);
+}
+
+#define pmd_huge_pte(mm, pmd) (virt_to_page(pmd)->pmd_huge_pte)
+
+#else
+
+static inline spinlock_t *pmd_lockptr(struct mm_struct *mm, pmd_t *pmd)
+{
+	return &mm->page_table_lock;
+}
+
+static inline bool pgtable_pmd_page_ctor(struct page *page) { return true; }
+static inline void pgtable_pmd_page_dtor(struct page *page) {}
+
+#define pmd_huge_pte(mm, pmd) ((mm)->pmd_huge_pte)
+
+#endif
+
+static inline spinlock_t *pmd_lock(struct mm_struct *mm, pmd_t *pmd)
+{
+	spinlock_t *ptl = pmd_lockptr(mm, pmd);
+	spin_lock(ptl);
+	return ptl;
+}
+
 extern void free_area_init(unsigned long * zones_size);
 extern void free_area_init_node(int nid, unsigned long * zones_size,
 		unsigned long zone_start_pfn, unsigned long *zholes_size);
@@ -1317,11 +1568,12 @@ extern void free_initmem(void);
 /*
  * Free reserved pages within range [PAGE_ALIGN(start), end & PAGE_MASK)
  * into the buddy system. The freed pages will be poisoned with pattern
- * "poison" if it's non-zero.
+ * "poison" if it's within range [0, UCHAR_MAX].
  * Return pages freed into the buddy system.
  */
-extern unsigned long free_reserved_area(unsigned long start, unsigned long end,
+extern unsigned long free_reserved_area(void *start, void *end,
 					int poison, char *s);
+
 #ifdef	CONFIG_HIGHMEM
 /*
  * Free a highmem page into the buddy system, adjusting totalhigh_pages
@@ -1330,10 +1582,8 @@ extern unsigned long free_reserved_area(unsigned long start, unsigned long end,
 extern void free_highmem_page(struct page *page);
 #endif
 
-static inline void adjust_managed_page_count(struct page *page, long count)
-{
-	totalram_pages += count;
-}
+extern void adjust_managed_page_count(struct page *page, long count);
+extern void mem_init_print_info(const char *str);
 
 /* Free the reserved page into the buddy system, so it gets managed. */
 static inline void __free_reserved_page(struct page *page)
@@ -1357,16 +1607,27 @@ static inline void mark_page_reserved(struct page *page)
 
 /*
  * Default method to free all the __init memory into the buddy system.
- * The freed pages will be poisoned with pattern "poison" if it is
- * non-zero. Return pages freed into the buddy system.
+ * The freed pages will be poisoned with pattern "poison" if it's within
+ * range [0, UCHAR_MAX].
+ * Return pages freed into the buddy system.
  */
 static inline unsigned long free_initmem_default(int poison)
 {
 	extern char __init_begin[], __init_end[];
 
-	return free_reserved_area(PAGE_ALIGN((unsigned long)&__init_begin) ,
-				  ((unsigned long)&__init_end) & PAGE_MASK,
+	return free_reserved_area(&__init_begin, &__init_end,
 				  poison, "unused kernel");
+}
+
+static inline unsigned long get_num_physpages(void)
+{
+	int nid;
+	unsigned long phys_pages = 0;
+
+	for_each_online_node(nid)
+		phys_pages += node_present_pages(nid);
+
+	return phys_pages;
 }
 
 #ifdef CONFIG_HAVE_MEMBLOCK_NODE_MAP
@@ -1498,7 +1759,7 @@ extern int vma_adjust(struct vm_area_struct *vma, unsigned long start,
 extern struct vm_area_struct *vma_merge(struct mm_struct *,
 	struct vm_area_struct *prev, unsigned long addr, unsigned long end,
 	unsigned long vm_flags, struct anon_vma *, struct file *, pgoff_t,
-	struct mempolicy *);
+	struct mempolicy *, const char __user *);
 extern struct anon_vma *find_mergeable_anon_vma(struct vm_area_struct *);
 extern int split_vma(struct mm_struct *,
 	struct vm_area_struct *, unsigned long addr, int new_below);
@@ -1615,11 +1876,7 @@ void page_cache_async_readahead(struct address_space *mapping,
 				unsigned long size);
 
 unsigned long max_sane_readahead(unsigned long nr);
-unsigned long ra_submit(struct file_ra_state *ra,
-			struct address_space *mapping,
-			struct file *filp);
 
-extern unsigned long stack_guard_gap;
 /* Generic expand stack which grows the stack according to GROWS{UP,DOWN} */
 extern int expand_stack(struct vm_area_struct *vma, unsigned long address);
 
@@ -1648,30 +1905,6 @@ static inline struct vm_area_struct * find_vma_intersection(struct mm_struct * m
 	return vma;
 }
 
-static inline unsigned long vm_start_gap(struct vm_area_struct *vma)
-{
-	unsigned long vm_start = vma->vm_start;
-
-	if (vma->vm_flags & VM_GROWSDOWN) {
-		vm_start -= stack_guard_gap;
-		if (vm_start > vma->vm_start)
-			vm_start = 0;
-	}
-	return vm_start;
-}
-
-static inline unsigned long vm_end_gap(struct vm_area_struct *vma)
-{
-	unsigned long vm_end = vma->vm_end;
-
-	if (vma->vm_flags & VM_GROWSUP) {
-		vm_end += stack_guard_gap;
-		if (vm_end < vma->vm_end)
-			vm_end = -PAGE_SIZE;
-	}
-	return vm_end;
-}
-
 static inline unsigned long vma_pages(struct vm_area_struct *vma)
 {
 	return (vma->vm_end - vma->vm_start) >> PAGE_SHIFT;
@@ -1698,7 +1931,7 @@ static inline pgprot_t vm_get_page_prot(unsigned long vm_flags)
 }
 #endif
 
-#ifdef CONFIG_ARCH_USES_NUMA_PROT_NONE
+#ifdef CONFIG_NUMA_BALANCING
 unsigned long change_prot_numa(struct vm_area_struct *vma,
 			unsigned long start, unsigned long end);
 #endif
@@ -1737,7 +1970,6 @@ static inline struct page *follow_page(struct vm_area_struct *vma,
 #define FOLL_HWPOISON	0x100	/* check page is hwpoisoned */
 #define FOLL_NUMA	0x200	/* force NUMA hinting page fault */
 #define FOLL_MIGRATION	0x400	/* wait for page to replace migration entry */
-#define FOLL_COW	0x4000	/* internal GUP flag */
 
 typedef int (*pte_fn_t)(pte_t *pte, pgtable_t token, unsigned long addr,
 			void *data);
@@ -1823,6 +2055,7 @@ enum mf_flags {
 	MF_COUNT_INCREASED = 1 << 0,
 	MF_ACTION_REQUIRED = 1 << 1,
 	MF_MUST_KILL = 1 << 2,
+	MF_SOFT_OFFLINE = 1 << 3,
 };
 extern int memory_failure(unsigned long pfn, int trapno, int flags);
 extern void memory_failure_queue(unsigned long pfn, int trapno, int flags);
@@ -1832,8 +2065,6 @@ extern int sysctl_memory_failure_recovery;
 extern void shake_page(struct page *p, int access);
 extern atomic_long_t num_poisoned_pages;
 extern int soft_offline_page(struct page *page, int flags);
-
-extern void dump_page(struct page *page);
 
 #if defined(CONFIG_TRANSPARENT_HUGEPAGE) || defined(CONFIG_HUGETLBFS)
 extern void clear_huge_page(struct page *page,

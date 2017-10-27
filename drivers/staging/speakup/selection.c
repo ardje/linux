@@ -6,6 +6,7 @@
 #include <linux/selection.h>
 #include <linux/workqueue.h>
 #include <linux/tty.h>
+#include <linux/tty_flip.h>
 #include <asm/cmpxchg.h>
 
 #include "speakup.h"
@@ -139,11 +140,9 @@ static void __speakup_paste_selection(struct work_struct *work)
 	struct tty_ldisc *ld;
 	DECLARE_WAITQUEUE(wait, current);
 
-	ld = tty_ldisc_ref(tty);
-	if (!ld)
-		goto tty_unref;
+	ld = tty_ldisc_ref_wait(tty);
+	tty_buffer_lock_exclusive(&vc->port);
 
-	/* FIXME: this is completely unsafe */
 	add_wait_queue(&vc->paste_wait, &wait);
 	while (sel_buffer && sel_buffer_lth > pasted) {
 		set_current_state(TASK_INTERRUPTIBLE);
@@ -152,15 +151,15 @@ static void __speakup_paste_selection(struct work_struct *work)
 			continue;
 		}
 		count = sel_buffer_lth - pasted;
-		count = min_t(int, count, tty->receive_room);
-		ld->ops->receive_buf(tty, sel_buffer + pasted, NULL, count);
+		count = tty_ldisc_receive_buf(ld, sel_buffer + pasted, NULL,
+					      count);
 		pasted += count;
 	}
 	remove_wait_queue(&vc->paste_wait, &wait);
 	current->state = TASK_RUNNING;
 
+	tty_buffer_unlock_exclusive(&vc->port);
 	tty_ldisc_deref(ld);
-tty_unref:
 	tty_kref_put(tty);
 }
 

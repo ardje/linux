@@ -84,7 +84,8 @@ _GLOBAL(power7_nap)
 	std	r9,_MSR(r1)
 	std	r1,PACAR1(r13)
 
-#ifdef CONFIG_KVM_BOOK3S_64_HV
+_GLOBAL(power7_enter_nap_mode)
+#ifdef CONFIG_KVM_BOOK3S_HV_POSSIBLE
 	/* Tell KVM we're napping */
 	li	r4,KVM_HWTHREAD_IN_NAP
 	stb	r4,HSTATE_HWTHREAD_STATE(r13)
@@ -94,7 +95,7 @@ _GLOBAL(power7_nap)
 	std	r0,0(r1)
 	ptesync
 	ld	r0,0(r1)
-1:	cmpd	cr0,r0,r0
+1:	cmp	cr0,r0,r0
 	bne	1b
 	PPC_NAP
 	b	.

@@ -21,6 +21,7 @@
 #include <linux/kprobes.h>
 #include <linux/kdebug.h>
 #include <linux/percpu.h>
+#include <linux/context_tracking.h>
 
 #include <asm/page.h>
 #include <asm/pgtable.h>
@@ -282,6 +283,7 @@ static void noinline __kprobes bogus_32bit_fault_tpc(struct pt_regs *regs)
 
 asmlinkage void __kprobes do_sparc64_fault(struct pt_regs *regs)
 {
+	enum ctx_state prev_state = exception_enter();
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
 	unsigned int insn = 0;
@@ -292,7 +294,7 @@ asmlinkage void __kprobes do_sparc64_fault(struct pt_regs *regs)
 	fault_code = get_thread_fault_code();
 
 	if (notify_page_fault(regs))
-		return;
+		goto exit_exception;
 
 	si_code = SEGV_MAPERR;
 	address = current_thread_info()->fault_address;
@@ -321,7 +323,7 @@ asmlinkage void __kprobes do_sparc64_fault(struct pt_regs *regs)
 			/* Valid, no problems... */
 		} else {
 			bad_kernel_pc(regs, address);
-			return;
+			goto exit_exception;
 		}
 	} else
 		flags |= FAULT_FLAG_USER;
@@ -345,6 +347,9 @@ asmlinkage void __kprobes do_sparc64_fault(struct pt_regs *regs)
 retry:
 		down_read(&mm->mmap_sem);
 	}
+
+	if (fault_code & FAULT_CODE_BAD_RA)
+		goto do_sigbus;
 
 	vma = find_vma(mm, address);
 	if (!vma)
@@ -438,13 +443,11 @@ good_area:
 	fault = handle_mm_fault(mm, vma, address, flags);
 
 	if ((fault & VM_FAULT_RETRY) && fatal_signal_pending(current))
-		return;
+		goto exit_exception;
 
 	if (unlikely(fault & VM_FAULT_ERROR)) {
 		if (fault & VM_FAULT_OOM)
 			goto out_of_memory;
-		else if (fault & VM_FAULT_SIGSEGV)
-			goto bad_area;
 		else if (fault & VM_FAULT_SIGBUS)
 			goto do_sigbus;
 		BUG();
@@ -492,6 +495,8 @@ good_area:
 
 	}
 #endif
+exit_exception:
+	exception_exit(prev_state);
 	return;
 
 	/*
@@ -504,7 +509,7 @@ bad_area:
 
 handle_kernel_fault:
 	do_kernel_fault(regs, si_code, fault_code, insn, address);
-	return;
+	goto exit_exception;
 
 /*
  * We ran out of memory, or some other thing happened to us that made
@@ -515,7 +520,7 @@ out_of_memory:
 	up_read(&mm->mmap_sem);
 	if (!(regs->tstate & TSTATE_PRIV)) {
 		pagefault_out_of_memory();
-		return;
+		goto exit_exception;
 	}
 	goto handle_kernel_fault;
 

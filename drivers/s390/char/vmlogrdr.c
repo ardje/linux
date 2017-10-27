@@ -313,7 +313,7 @@ static int vmlogrdr_open (struct inode *inode, struct file *filp)
 	int ret;
 
 	dev_num = iminor(inode);
-	if (dev_num > MAXMINOR)
+	if (dev_num >= MAXMINOR)
 		return -ENODEV;
 	logptr = &sys_ser[dev_num];
 
@@ -873,7 +873,7 @@ static int __init vmlogrdr_init(void)
 		goto cleanup;
 
 	for (i=0; i < MAXMINOR; ++i ) {
-		sys_ser[i].buffer = (char *) get_zeroed_page(GFP_KERNEL | GFP_DMA);
+		sys_ser[i].buffer = (char *) get_zeroed_page(GFP_KERNEL);
 		if (!sys_ser[i].buffer) {
 			rc = -ENOMEM;
 			break;

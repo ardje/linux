@@ -62,6 +62,7 @@
 #include <linux/capability.h>
 #include <linux/binfmts.h>
 #include <linux/sched/sysctl.h>
+#include <linux/kexec.h>
 
 #include <asm/uaccess.h>
 #include <asm/processor.h>
@@ -91,15 +92,10 @@
 #include <linux/nmi.h>
 #endif
 
-#ifdef CONFIG_MESON_SUSPEND
-#include <mach/cpu.h>
-#endif
 
 #if defined(CONFIG_SYSCTL)
 
 /* External variables not in a header file. */
-extern int sysctl_overcommit_memory;
-extern int sysctl_overcommit_ratio;
 extern int max_threads;
 extern int suid_dumpable;
 #ifdef CONFIG_COREDUMP
@@ -108,6 +104,7 @@ extern char core_pattern[];
 extern unsigned int core_pipe_limit;
 #endif
 extern int pid_max;
+extern int extra_free_kbytes;
 extern int min_free_order_shift;
 extern int pid_max_min, pid_max_max;
 extern int percpu_pagelist_fraction;
@@ -124,8 +121,9 @@ extern int blk_iopoll_enabled;
 /* Constants used for minimum and  maximum */
 #ifdef CONFIG_LOCKUP_DETECTOR
 static int sixty = 60;
-static int neg_one = -1;
 #endif
+
+static int __maybe_unused neg_one = -1;
 
 static int zero;
 static int __maybe_unused one = 1;
@@ -144,7 +142,6 @@ static unsigned long dirty_bytes_min = 2 * PAGE_SIZE;
 /* this is needed for the proc_dointvec_minmax for [fs_]overflow UID and GID */
 static int maxolduid = 65535;
 static int minolduid;
-static int min_percpu_pagelist_fract = 8;
 
 static int ngroups_max = NGROUPS_MAX;
 static const int cap_last_cap = CAP_LAST_CAP;
@@ -201,7 +198,7 @@ static int proc_dostring_coredump(struct ctl_table *table, int write,
 
 #ifdef CONFIG_MAGIC_SYSRQ
 /* Note: sysrq code uses it's own private copy */
-static int __sysrq_enabled = SYSRQ_DEFAULT_ENABLE;
+static int __sysrq_enabled = CONFIG_MAGIC_SYSRQ_DEFAULT_ENABLE;
 
 static int sysrq_sysctl_handler(ctl_table *table, int write,
 				void __user *buffer, size_t *lenp,
@@ -220,6 +217,11 @@ static int sysrq_sysctl_handler(ctl_table *table, int write,
 }
 
 #endif
+
+#ifdef CONFIG_CHECK_ISR_TIME
+static int irq_time_max = INT_MAX;
+#endif
+
 
 static struct ctl_table kern_table[];
 static struct ctl_table vm_table[];
@@ -282,11 +284,6 @@ static int min_extfrag_threshold;
 static int max_extfrag_threshold = 1000;
 #endif
 
-#if MESON_CPU_TYPE >= MESON_CPU_TYPE_MESON8
-#ifdef CONFIG_MESON_SUSPEND
-extern unsigned int arc_serial_disable;
-#endif
-#endif
 static struct ctl_table kern_table[] = {
 	{
 		.procname	= "sched_child_runs_first",
@@ -387,13 +384,6 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= proc_dointvec,
 	},
 	{
-		.procname	= "numa_balancing_scan_period_reset",
-		.data		= &sysctl_numa_balancing_scan_period_reset,
-		.maxlen		= sizeof(unsigned int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
-	},
-	{
 		.procname	= "numa_balancing_scan_period_max_ms",
 		.data		= &sysctl_numa_balancing_scan_period_max,
 		.maxlen		= sizeof(unsigned int),
@@ -406,6 +396,22 @@ static struct ctl_table kern_table[] = {
 		.maxlen		= sizeof(unsigned int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname       = "numa_balancing_migrate_deferred",
+		.data           = &sysctl_numa_balancing_migrate_deferred,
+		.maxlen         = sizeof(unsigned int),
+		.mode           = 0644,
+		.proc_handler   = proc_dointvec,
+	},
+	{
+		.procname	= "numa_balancing",
+		.data		= NULL, /* filled in by handler */
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= sysctl_numa_balancing,
+		.extra1		= &zero,
+		.extra2		= &one,
 	},
 #endif /* CONFIG_NUMA_BALANCING */
 #endif /* CONFIG_SCHED_DEBUG */
@@ -615,6 +621,25 @@ static struct ctl_table kern_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
 	},
+	{
+		.procname	= "traceoff_on_warning",
+		.data		= &__disable_trace_on_warning,
+		.maxlen		= sizeof(__disable_trace_on_warning),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+#endif
+#ifdef CONFIG_KEXEC
+	{
+		.procname	= "kexec_load_disabled",
+		.data		= &kexec_load_disabled,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		/* only handle a transition from default "0" to "1" */
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &one,
+		.extra2		= &one,
+	},
 #endif
 #ifdef CONFIG_MODULES
 	{
@@ -816,7 +841,7 @@ static struct ctl_table kern_table[] = {
 #if defined(CONFIG_LOCKUP_DETECTOR)
 	{
 		.procname       = "watchdog",
-		.data           = &watchdog_enabled,
+		.data           = &watchdog_user_enabled,
 		.maxlen         = sizeof (int),
 		.mode           = 0644,
 		.proc_handler   = proc_dowatchdog,
@@ -829,7 +854,7 @@ static struct ctl_table kern_table[] = {
 		.maxlen		= sizeof(int),
 		.mode		= 0644,
 		.proc_handler	= proc_dowatchdog,
-		.extra1		= &neg_one,
+		.extra1		= &zero,
 		.extra2		= &sixty,
 	},
 	{
@@ -843,7 +868,7 @@ static struct ctl_table kern_table[] = {
 	},
 	{
 		.procname       = "nmi_watchdog",
-		.data           = &watchdog_enabled,
+		.data           = &watchdog_user_enabled,
 		.maxlen         = sizeof (int),
 		.mode           = 0644,
 		.proc_handler   = proc_dowatchdog,
@@ -971,9 +996,10 @@ static struct ctl_table kern_table[] = {
 	{
 		.procname	= "hung_task_check_count",
 		.data		= &sysctl_hung_task_check_count,
-		.maxlen		= sizeof(unsigned long),
+		.maxlen		= sizeof(int),
 		.mode		= 0644,
-		.proc_handler	= proc_doulongvec_minmax,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
 	},
 	{
 		.procname	= "hung_task_timeout_secs",
@@ -986,9 +1012,10 @@ static struct ctl_table kern_table[] = {
 	{
 		.procname	= "hung_task_warnings",
 		.data		= &sysctl_hung_task_warnings,
-		.maxlen		= sizeof(unsigned long),
+		.maxlen		= sizeof(int),
 		.mode		= 0644,
-		.proc_handler	= proc_doulongvec_minmax,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &neg_one,
 	},
 #endif
 #ifdef CONFIG_COMPAT
@@ -1089,17 +1116,6 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= proc_dointvec,
 	},
 #endif
-#if MESON_CPU_TYPE >= MESON_CPU_TYPE_MESON8
-#ifdef CONFIG_MESON_SUSPEND
-	{
-		.procname	= "arc_firm_log",
-		.data		= &arc_serial_disable,
-		.maxlen		= sizeof(unsigned int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
-	},
-#endif
-#endif
 	{ }
 };
 
@@ -1141,10 +1157,17 @@ static struct ctl_table vm_table[] = {
 		.data		= &sysctl_overcommit_ratio,
 		.maxlen		= sizeof(sysctl_overcommit_ratio),
 		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
+		.proc_handler	= overcommit_ratio_handler,
 	},
 	{
-		.procname	= "page-cluster",
+		.procname	= "overcommit_kbytes",
+		.data		= &sysctl_overcommit_kbytes,
+		.maxlen		= sizeof(sysctl_overcommit_kbytes),
+		.mode		= 0644,
+		.proc_handler	= overcommit_kbytes_handler,
+	},
+	{
+		.procname	= "page-cluster", 
 		.data		= &page_cluster,
 		.maxlen		= sizeof(int),
 		.mode		= 0644,
@@ -1247,7 +1270,7 @@ static struct ctl_table vm_table[] = {
 		.data		= &hugepages_treat_as_movable,
 		.maxlen		= sizeof(int),
 		.mode		= 0644,
-		.proc_handler	= hugetlb_treat_movable_handler,
+		.proc_handler	= proc_dointvec,
 	},
 	{
 		.procname	= "nr_overcommit_hugepages",
@@ -1303,6 +1326,14 @@ static struct ctl_table vm_table[] = {
 		.extra1		= &zero,
 	},
 	{
+		.procname	= "extra_free_kbytes",
+		.data		= &extra_free_kbytes,
+		.maxlen		= sizeof(extra_free_kbytes),
+		.mode		= 0644,
+		.proc_handler	= min_free_kbytes_sysctl_handler,
+		.extra1		= &zero,
+	},
+	{
 		.procname	= "min_free_order_shift",
 		.data		= &min_free_order_shift,
 		.maxlen		= sizeof(min_free_order_shift),
@@ -1315,7 +1346,7 @@ static struct ctl_table vm_table[] = {
 		.maxlen		= sizeof(percpu_pagelist_fraction),
 		.mode		= 0644,
 		.proc_handler	= percpu_pagelist_fraction_sysctl_handler,
-		.extra1		= &min_percpu_pagelist_fract,
+		.extra1		= &zero,
 	},
 #ifdef CONFIG_MMU
 	{
@@ -1496,6 +1527,26 @@ static struct ctl_table vm_table[] = {
 		.extra1		= &zero,
 		.extra2		= &mem_thresh,
 	},
+#ifdef CONFIG_CHECK_ISR_TIME
+	{
+		.procname	= "irq_times_stat",
+		.data		= &irq_times_stat,
+		.maxlen		= sizeof(irq_times_stat),
+		.mode		= 0666,
+		.proc_handler	= proc_irq_times_stat_handler,
+		.extra1		= &zero,
+		.extra2		= &one_hundred,
+	},
+	{
+		.procname	= "irq_times_thresh",
+		.data		= &irq_times_thresh,
+		.maxlen		= sizeof(irq_times_thresh),
+		.mode		= 0666,
+		.proc_handler	= proc_irq_times_thresh_handler,
+		.extra1		= &zero,
+		.extra2		= &irq_time_max,
+	},
+#endif
 	{ }
 };
 
@@ -1509,14 +1560,14 @@ static struct ctl_table fs_table[] = {
 	{
 		.procname	= "inode-nr",
 		.data		= &inodes_stat,
-		.maxlen		= 2*sizeof(int),
+		.maxlen		= 2*sizeof(long),
 		.mode		= 0444,
 		.proc_handler	= proc_nr_inodes,
 	},
 	{
 		.procname	= "inode-state",
 		.data		= &inodes_stat,
-		.maxlen		= 7*sizeof(int),
+		.maxlen		= 7*sizeof(long),
 		.mode		= 0444,
 		.proc_handler	= proc_nr_inodes,
 	},
@@ -1546,7 +1597,7 @@ static struct ctl_table fs_table[] = {
 	{
 		.procname	= "dentry-state",
 		.data		= &dentry_stat,
-		.maxlen		= 6*sizeof(int),
+		.maxlen		= 6*sizeof(long),
 		.mode		= 0444,
 		.proc_handler	= proc_nr_dentry,
 	},
@@ -1618,7 +1669,7 @@ static struct ctl_table fs_table[] = {
 		.mode		= 0555,
 		.child		= inotify_table,
 	},
-#endif
+#endif	
 #ifdef CONFIG_EPOLL
 	{
 		.procname	= "epoll",
@@ -1668,20 +1719,6 @@ static struct ctl_table fs_table[] = {
 		.mode		= 0644,
 		.proc_handler	= &pipe_proc_fn,
 		.extra1		= &pipe_min_size,
-	},
-	{
-		.procname	= "pipe-user-pages-hard",
-		.data		= &pipe_user_pages_hard,
-		.maxlen		= sizeof(pipe_user_pages_hard),
-		.mode		= 0644,
-		.proc_handler	= proc_doulongvec_minmax,
-	},
-	{
-		.procname	= "pipe-user-pages-soft",
-		.data		= &pipe_user_pages_soft,
-		.maxlen		= sizeof(pipe_user_pages_soft),
-		.mode		= 0644,
-		.proc_handler	= proc_doulongvec_minmax,
 	},
 	{ }
 };
@@ -1970,12 +2007,12 @@ static int __do_proc_dointvec(void *tbl_data, struct ctl_table *table,
 	unsigned long page = 0;
 	size_t left;
 	char *kbuf;
-
+	
 	if (!tbl_data || !table->maxlen || !*lenp || (*ppos && !write)) {
 		*lenp = 0;
 		return 0;
 	}
-
+	
 	i = (int *) tbl_data;
 	vleft = table->maxlen / sizeof(*i);
 	left = *lenp;
@@ -2064,7 +2101,7 @@ static int do_proc_dointvec(struct ctl_table *table, int write,
  * @ppos: file position
  *
  * Reads/writes up to table->maxlen/sizeof(unsigned int) integer
- * values from/to the user buffer, treated as an ASCII string.
+ * values from/to the user buffer, treated as an ASCII string. 
  *
  * Returns 0 on success.
  */
@@ -2261,14 +2298,16 @@ static int __do_proc_doulongvec_minmax(void *data, struct ctl_table *table, int 
 				break;
 			if (neg)
 				continue;
-			val = convmul * val / convdiv;
 			if ((min && val < *min) || (max && val > *max))
 				continue;
 			*i = val;
 		} else {
 			val = convdiv * (*i) / convmul;
-			if (!first)
+			if (!first) {
 				err = proc_put_char(&buffer, &left, '\t');
+				if (err)
+					break;
+			}
 			err = proc_put_long(&buffer, &left, val, false);
 			if (err)
 				break;
@@ -2399,7 +2438,11 @@ static int do_proc_dointvec_ms_jiffies_conv(bool *negp, unsigned long *lvalp,
 					    int write, void *data)
 {
 	if (write) {
-		*valp = msecs_to_jiffies(*negp ? -*lvalp : *lvalp);
+		unsigned long jif = msecs_to_jiffies(*negp ? -*lvalp : *lvalp);
+
+		if (jif > INT_MAX)
+			return 1;
+		*valp = (int)jif;
 	} else {
 		int val = *valp;
 		unsigned long lval;
@@ -2424,7 +2467,7 @@ static int do_proc_dointvec_ms_jiffies_conv(bool *negp, unsigned long *lvalp,
  * @ppos: file position
  *
  * Reads/writes up to table->maxlen/sizeof(unsigned int) integer
- * values from/to the user buffer, treated as an ASCII string.
+ * values from/to the user buffer, treated as an ASCII string. 
  * The values read are assumed to be in seconds, and are converted into
  * jiffies.
  *
@@ -2446,8 +2489,8 @@ int proc_dointvec_jiffies(struct ctl_table *table, int write,
  * @ppos: pointer to the file position
  *
  * Reads/writes up to table->maxlen/sizeof(unsigned int) integer
- * values from/to the user buffer, treated as an ASCII string.
- * The values read are assumed to be in 1/USER_HZ seconds, and
+ * values from/to the user buffer, treated as an ASCII string. 
+ * The values read are assumed to be in 1/USER_HZ seconds, and 
  * are converted into jiffies.
  *
  * Returns 0 on success.
@@ -2469,8 +2512,8 @@ int proc_dointvec_userhz_jiffies(struct ctl_table *table, int write,
  * @ppos: the current position in the file
  *
  * Reads/writes up to table->maxlen/sizeof(unsigned int) integer
- * values from/to the user buffer, treated as an ASCII string.
- * The values read are assumed to be in 1/1000 seconds, and
+ * values from/to the user buffer, treated as an ASCII string. 
+ * The values read are assumed to be in 1/1000 seconds, and 
  * are converted into jiffies.
  *
  * Returns 0 on success.

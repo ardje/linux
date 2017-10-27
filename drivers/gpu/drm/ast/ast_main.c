@@ -120,12 +120,11 @@ static int ast_get_dram_info(struct drm_device *dev)
 	ast_write32(ast, 0x10000, 0xfc600309);
 
 	do {
-		if (pci_channel_offline(dev->pdev))
-			return -EIO;
+		;
 	} while (ast_read32(ast, 0x10000) != 0x01);
 	data = ast_read32(ast, 0x10004);
 
-	if (data & 0x40)
+	if (data & 0x400)
 		ast->dram_bus_width = 16;
 	else
 		ast->dram_bus_width = 32;
@@ -188,53 +187,6 @@ static int ast_get_dram_info(struct drm_device *dev)
 	}
 	ast->mclk = ref_pll * (num + 2) / (denum + 2) * (div * 1000);
 	return 0;
-}
-
-uint32_t ast_get_max_dclk(struct drm_device *dev, int bpp)
-{
-	struct ast_private *ast = dev->dev_private;
-	uint32_t dclk, jreg;
-	uint32_t dram_bus_width, mclk, dram_bandwidth, actual_dram_bandwidth, dram_efficency = 500;
-
-	dram_bus_width = ast->dram_bus_width;
-	mclk = ast->mclk;
-
-	if (ast->chip == AST2100 ||
-	    ast->chip == AST1100 ||
-	    ast->chip == AST2200 ||
-	    ast->chip == AST2150 ||
-	    ast->dram_bus_width == 16)
-		dram_efficency = 600;
-	else if (ast->chip == AST2300)
-		dram_efficency = 400;
-
-	dram_bandwidth = mclk * dram_bus_width * 2 / 8;
-	actual_dram_bandwidth = dram_bandwidth * dram_efficency / 1000;
-
-	if (ast->chip == AST1180)
-		dclk = actual_dram_bandwidth / ((bpp + 1) / 8);
-	else {
-		jreg = ast_get_index_reg_mask(ast, AST_IO_CRTC_PORT, 0xd0, 0xff);
-		if ((jreg & 0x08) && (ast->chip == AST2000))
-			dclk = actual_dram_bandwidth / ((bpp + 1 + 16) / 8);
-		else if ((jreg & 0x08) && (bpp == 8))
-			dclk = actual_dram_bandwidth / ((bpp + 1 + 24) / 8);
-		else
-			dclk = actual_dram_bandwidth / ((bpp + 1) / 8);
-	}
-
-	if (ast->chip == AST2100 ||
-	    ast->chip == AST2200 ||
-	    ast->chip == AST2300 ||
-	    ast->chip == AST1180) {
-		if (dclk > 200)
-			dclk = 200;
-	} else {
-		if (dclk > 165)
-			dclk = 165;
-	}
-
-	return dclk;
 }
 
 static void ast_user_framebuffer_destroy(struct drm_framebuffer *fb)
@@ -344,9 +296,7 @@ int ast_driver_load(struct drm_device *dev, unsigned long flags)
 	ast_detect_chip(dev);
 
 	if (ast->chip != AST1180) {
-		ret = ast_get_dram_info(dev);
-		if (ret)
-			goto out_free;
+		ast_get_dram_info(dev);
 		ast->vram_size = ast_get_vram_info(dev);
 		DRM_INFO("dram %d %d %d %08x\n", ast->mclk, ast->dram_type, ast->dram_bus_width, ast->vram_size);
 	}
@@ -362,7 +312,6 @@ int ast_driver_load(struct drm_device *dev, unsigned long flags)
 	dev->mode_config.min_height = 0;
 	dev->mode_config.preferred_depth = 24;
 	dev->mode_config.prefer_shadow = 1;
-	dev->mode_config.fb_base = pci_resource_start(ast->dev->pdev, 0);
 
 	if (ast->chip == AST2100 ||
 	    ast->chip == AST2200 ||
@@ -453,20 +402,7 @@ int ast_dumb_create(struct drm_file *file,
 	return 0;
 }
 
-int ast_dumb_destroy(struct drm_file *file,
-		     struct drm_device *dev,
-		     uint32_t handle)
-{
-	return drm_gem_handle_delete(file, handle);
-}
-
-int ast_gem_init_object(struct drm_gem_object *obj)
-{
-	BUG();
-	return 0;
-}
-
-void ast_bo_unref(struct ast_bo **bo)
+static void ast_bo_unref(struct ast_bo **bo)
 {
 	struct ttm_buffer_object *tbo;
 
@@ -491,7 +427,7 @@ void ast_gem_free_object(struct drm_gem_object *obj)
 
 static inline u64 ast_bo_mmap_offset(struct ast_bo *bo)
 {
-	return bo->bo.addr_space_offset;
+	return drm_vma_node_offset_addr(&bo->bo.vma_node);
 }
 int
 ast_dumb_mmap_offset(struct drm_file *file,

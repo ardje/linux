@@ -43,7 +43,7 @@ static void stop_drawing_early_suspend(struct early_suspend *h)
 				 fb_state == FB_STATE_STOPPED_DRAWING,
 				 HZ);
 	if (unlikely(fb_state != FB_STATE_STOPPED_DRAWING))
-		pr_warning("stop_drawing_early_suspend: timeout waiting for "
+		pr_warn("stop_drawing_early_suspend: timeout waiting for "
 			   "userspace to stop drawing\n");
 }
 
@@ -151,4 +151,3 @@ static void  __exit android_power_exit(void)
 
 module_init(android_power_init);
 module_exit(android_power_exit);
-

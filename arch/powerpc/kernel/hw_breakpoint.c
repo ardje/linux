@@ -28,7 +28,6 @@
 #include <linux/percpu.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>
-#include <linux/init.h>
 #include <linux/smp.h>
 
 #include <asm/hw_breakpoint.h>
@@ -228,10 +227,8 @@ int __kprobes hw_breakpoint_handler(struct die_args *args)
 	rcu_read_lock();
 
 	bp = __get_cpu_var(bp_per_reg);
-	if (!bp) {
-		rc = NOTIFY_DONE;
+	if (!bp)
 		goto out;
-	}
 	info = counter_arch_bp(bp);
 
 	/*

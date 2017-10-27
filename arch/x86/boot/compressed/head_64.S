@@ -27,20 +27,10 @@
 #include <linux/init.h>
 #include <linux/linkage.h>
 #include <asm/segment.h>
-#include <asm/pgtable_types.h>
-#include <asm/page_types.h>
 #include <asm/boot.h>
 #include <asm/msr.h>
 #include <asm/processor-flags.h>
 #include <asm/asm-offsets.h>
-
-/*
- * Locally defined symbols should be marked hidden:
- */
-	.hidden _bss
-	.hidden _ebss
-	.hidden _got
-	.hidden _egot
 
 	__HEAD
 	.code32
@@ -104,9 +94,11 @@ ENTRY(startup_32)
 	addl	%eax, %ebx
 	notl	%eax
 	andl	%eax, %ebx
-#else
-	movl	$LOAD_PHYSICAL_ADDR, %ebx
+	cmpl	$LOAD_PHYSICAL_ADDR, %ebx
+	jge	1f
 #endif
+	movl	$LOAD_PHYSICAL_ADDR, %ebx
+1:
 
 	/* Target address to relocate to for decompression */
 	addl	$z_extract_offset, %ebx
@@ -276,9 +268,11 @@ preferred_addr:
 	addq	%rax, %rbp
 	notq	%rax
 	andq	%rax, %rbp
-#else
-	movq	$LOAD_PHYSICAL_ADDR, %rbp
+	cmpq	$LOAD_PHYSICAL_ADDR, %rbp
+	jge	1f
 #endif
+	movq	$LOAD_PHYSICAL_ADDR, %rbp
+1:
 
 	/* Target address to relocate to for decompression */
 	leaq	z_extract_offset(%rbp), %rbx
@@ -340,18 +334,22 @@ relocated:
  * Do the decompression, and jump to the new kernel..
  */
 	pushq	%rsi			/* Save the real mode argument */
+	movq	$z_run_size, %r9	/* size of kernel with .bss and .brk */
+	pushq	%r9
 	movq	%rsi, %rdi		/* real mode address */
 	leaq	boot_heap(%rip), %rsi	/* malloc area for uncompression */
 	leaq	input_data(%rip), %rdx  /* input_data */
 	movl	$z_input_len, %ecx	/* input_len */
 	movq	%rbp, %r8		/* output target address */
-	call	decompress_kernel
+	movq	$z_output_len, %r9	/* decompressed length, end of relocs */
+	call	decompress_kernel	/* returns kernel location in %rax */
+	popq	%r9
 	popq	%rsi
 
 /*
  * Jump to the decompressed kernel.
  */
-	jmp	*%rbp
+	jmp	*%rax
 
 	.code32
 no_longmode:

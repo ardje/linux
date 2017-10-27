@@ -169,7 +169,7 @@ hugetlb_get_unmapped_area(struct file *file, unsigned long addr,
 		addr = ALIGN(addr, huge_page_size(h));
 		vma = find_vma(mm, addr);
 		if (TASK_SIZE - len >= addr &&
-		    (!vma || addr + len <= vm_start_gap(vma)))
+		    (!vma || addr + len <= vma->vm_start))
 			return addr;
 	}
 
@@ -463,6 +463,14 @@ static struct inode *hugetlbfs_get_root(struct super_block *sb,
 	return inode;
 }
 
+/*
+ * Hugetlbfs is not reclaimable; therefore its i_mmap_mutex will never
+ * be taken from reclaim -- unlike regular filesystems. This needs an
+ * annotation because huge_pmd_share() does an allocation under
+ * i_mmap_mutex.
+ */
+struct lock_class_key hugetlbfs_i_mmap_mutex_key;
+
 static struct inode *hugetlbfs_get_inode(struct super_block *sb,
 					struct inode *dir,
 					umode_t mode, dev_t dev)
@@ -474,6 +482,8 @@ static struct inode *hugetlbfs_get_inode(struct super_block *sb,
 		struct hugetlbfs_inode_info *info;
 		inode->i_ino = get_next_ino();
 		inode_init_owner(inode, dir, mode);
+		lockdep_set_class(&inode->i_mapping->i_mmap_mutex,
+				&hugetlbfs_i_mmap_mutex_key);
 		inode->i_mapping->a_ops = &hugetlbfs_aops;
 		inode->i_mapping->backing_dev_info =&hugetlbfs_backing_dev_info;
 		inode->i_atime = inode->i_mtime = inode->i_ctime = CURRENT_TIME;
@@ -1006,6 +1016,11 @@ static int __init init_hugetlbfs_fs(void)
 	struct hstate *h;
 	int error;
 	int i;
+
+	if (!hugepages_supported()) {
+		pr_info("hugetlbfs: disabling because there are no supported hugepage sizes\n");
+		return -ENOTSUPP;
+	}
 
 	error = bdi_init(&hugetlbfs_backing_dev_info);
 	if (error)

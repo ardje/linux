@@ -67,8 +67,8 @@ int amd_cache_northbridges(void)
 	while ((misc = next_northbridge(misc, amd_nb_misc_ids)) != NULL)
 		i++;
 
-	if (!i)
-		return -ENODEV;
+	if (i == 0)
+		return 0;
 
 	nb = kzalloc(i * sizeof(struct amd_northbridge), GFP_KERNEL);
 	if (!nb)
@@ -179,7 +179,7 @@ int amd_get_subcaches(int cpu)
 	return (mask >> (4 * cuid)) & 0xf;
 }
 
-int amd_set_subcaches(int cpu, int mask)
+int amd_set_subcaches(int cpu, unsigned long mask)
 {
 	static unsigned int reset, ban;
 	struct amd_northbridge *nb = node_to_amd_nb(amd_get_nb_id(cpu));

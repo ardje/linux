@@ -27,13 +27,6 @@
 
 #define KVM_COALESCED_MMIO_PAGE_OFFSET 1
 
-/* Don't support huge pages */
-#define KVM_HPAGE_GFN_SHIFT(x)	0
-
-/* We don't currently support large pages. */
-#define KVM_NR_PAGE_SIZES	1
-#define KVM_PAGES_PER_HPAGE(x)	1
-
 
 
 /* Special address that contains the comm page, used for reducing # of traps */
@@ -70,11 +63,6 @@
 
 #define CAUSEB_DC       27
 #define CAUSEF_DC       (_ULCAST_(1)   << 27)
-
-struct kvm;
-struct kvm_run;
-struct kvm_vcpu;
-struct kvm_interrupt;
 
 extern atomic_t kvm_mips_instance;
 extern pfn_t(*kvm_mips_gfn_to_pfn) (struct kvm *kvm, gfn_t gfn);
@@ -349,7 +337,6 @@ struct kvm_mips_tlb {
 #define KVM_MIPS_GUEST_TLB_SIZE     64
 struct kvm_vcpu_arch {
 	void *host_ebase, *guest_ebase;
-	int (*vcpu_run)(struct kvm_run *run, struct kvm_vcpu *vcpu);
 	unsigned long host_stack;
 	unsigned long host_gp;
 
@@ -375,10 +362,7 @@ struct kvm_vcpu_arch {
 	/* Host KSEG0 address of the EI/DI offset */
 	void *kseg0_commpage;
 
-	/* Resume PC after MMIO completion */
-	unsigned long io_pc;
-	/* GPR used as IO source/target */
-	u32 io_gpr;
+	u32 io_gpr;		/* GPR used as IO source/target */
 
 	/* Used to calibrate the virutal count register for the guest */
 	int32_t host_cp0_count;
@@ -388,6 +372,8 @@ struct kvm_vcpu_arch {
 
 	/* Bitmask of pending exceptions to be cleared */
 	unsigned long pending_exceptions_clr;
+
+	unsigned long pending_load_cause;
 
 	/* Save/Restore the entryhi register when are are preempted/scheduled back in */
 	unsigned long preempt_entryhi;
@@ -399,9 +385,6 @@ struct kvm_vcpu_arch {
 	uint32_t guest_user_asid[NR_CPUS];
 	uint32_t guest_kernel_asid[NR_CPUS];
 	struct mm_struct guest_kernel_mm, guest_user_mm;
-
-	struct kvm_mips_tlb shadow_tlb[NR_CPUS][KVM_MIPS_GUEST_TLB_SIZE];
-
 
 	struct hrtimer comparecount_timer;
 
@@ -538,7 +521,6 @@ extern enum emulation_result kvm_mips_handle_tlbmod(unsigned long cause,
 
 extern void kvm_mips_dump_host_tlbs(void);
 extern void kvm_mips_dump_guest_tlbs(struct kvm_vcpu *vcpu);
-extern void kvm_mips_dump_shadow_tlbs(struct kvm_vcpu *vcpu);
 extern void kvm_mips_flush_host_tlb(int skip_kseg0);
 extern int kvm_mips_host_tlb_inv(struct kvm_vcpu *vcpu, unsigned long entryhi);
 extern int kvm_mips_host_tlb_inv_index(struct kvm_vcpu *vcpu, int index);
@@ -550,10 +532,7 @@ extern unsigned long kvm_mips_translate_guest_kseg0_to_hpa(struct kvm_vcpu *vcpu
 						   unsigned long gva);
 extern void kvm_get_new_mmu_context(struct mm_struct *mm, unsigned long cpu,
 				    struct kvm_vcpu *vcpu);
-extern void kvm_shadow_tlb_put(struct kvm_vcpu *vcpu);
-extern void kvm_shadow_tlb_load(struct kvm_vcpu *vcpu);
 extern void kvm_local_flush_tlb_all(void);
-extern void kvm_mips_init_shadow_tlb(struct kvm_vcpu *vcpu);
 extern void kvm_mips_alloc_new_mmu_context(struct kvm_vcpu *vcpu);
 extern void kvm_mips_vcpu_load(struct kvm_vcpu *vcpu, int cpu);
 extern void kvm_mips_vcpu_put(struct kvm_vcpu *vcpu);
@@ -661,5 +640,16 @@ extern void mips32_SyncICache(unsigned long addr, unsigned long size);
 extern int kvm_mips_dump_stats(struct kvm_vcpu *vcpu);
 extern unsigned long kvm_mips_get_ramsize(struct kvm *kvm);
 
+static inline void kvm_arch_hardware_disable(void) {}
+static inline void kvm_arch_hardware_unsetup(void) {}
+static inline void kvm_arch_sync_events(struct kvm *kvm) {}
+static inline void kvm_arch_free_memslot(struct kvm *kvm,
+		struct kvm_memory_slot *free, struct kvm_memory_slot *dont) {}
+static inline void kvm_arch_memslots_updated(struct kvm *kvm) {}
+static inline void kvm_arch_flush_shadow_all(struct kvm *kvm) {}
+static inline void kvm_arch_flush_shadow_memslot(struct kvm *kvm,
+		struct kvm_memory_slot *slot) {}
+static inline void kvm_arch_vcpu_uninit(struct kvm_vcpu *vcpu) {}
+static inline void kvm_arch_sched_in(struct kvm_vcpu *vcpu, int cpu) {}
 
 #endif /* __MIPS_KVM_HOST_H__ */

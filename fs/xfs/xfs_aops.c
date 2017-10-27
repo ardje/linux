@@ -16,21 +16,24 @@
  * Inc.,  51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 #include "xfs.h"
-#include "xfs_log.h"
+#include "xfs_shared.h"
+#include "xfs_format.h"
+#include "xfs_log_format.h"
+#include "xfs_trans_resv.h"
 #include "xfs_sb.h"
 #include "xfs_ag.h"
-#include "xfs_trans.h"
 #include "xfs_mount.h"
-#include "xfs_bmap_btree.h"
-#include "xfs_dinode.h"
 #include "xfs_inode.h"
+#include "xfs_trans.h"
 #include "xfs_inode_item.h"
 #include "xfs_alloc.h"
 #include "xfs_error.h"
 #include "xfs_iomap.h"
-#include "xfs_vnodeops.h"
 #include "xfs_trace.h"
 #include "xfs_bmap.h"
+#include "xfs_bmap_util.h"
+#include "xfs_bmap_btree.h"
+#include "xfs_dinode.h"
 #include <linux/aio.h>
 #include <linux/gfp.h>
 #include <linux/mpage.h>
@@ -86,14 +89,6 @@ xfs_destroy_ioend(
 		bh->b_end_io(bh, !ioend->io_error);
 	}
 
-	if (ioend->io_iocb) {
-		inode_dio_done(ioend->io_inode);
-		if (ioend->io_isasync) {
-			aio_complete(ioend->io_iocb, ioend->io_error ?
-					ioend->io_error : ioend->io_result, 0);
-		}
-	}
-
 	mempool_free(ioend, xfs_ioend_pool);
 }
 
@@ -116,7 +111,7 @@ xfs_setfilesize_trans_alloc(
 
 	tp = xfs_trans_alloc(mp, XFS_TRANS_FSYNC_TS);
 
-	error = xfs_trans_reserve(tp, 0, XFS_FSYNC_TS_LOG_RES(mp), 0, 0, 0);
+	error = xfs_trans_reserve(tp, &M_RES(mp)->tr_fsyncts, 0, 0);
 	if (error) {
 		xfs_trans_cancel(tp, 0);
 		return error;
@@ -157,12 +152,6 @@ xfs_setfilesize(
 	current_set_flags_nested(&tp->t_pflags, PF_FSTRANS);
 	rwsem_acquire_read(&VFS_I(ip)->i_sb->s_writers.lock_map[SB_FREEZE_FS-1],
 			   0, 1, _THIS_IP_);
-
-	/* we abort the update if there was an IO error */
-	if (ioend->io_error) {
-		xfs_trans_cancel(tp, 0);
-		return ioend->io_error;
-	}
 
 	xfs_ilock(ip, XFS_ILOCK_EXCL);
 	isize = xfs_new_eof(ip, ioend->io_offset + ioend->io_size);
@@ -219,17 +208,14 @@ xfs_end_io(
 		ioend->io_error = -EIO;
 		goto done;
 	}
+	if (ioend->io_error)
+		goto done;
 
 	/*
 	 * For unwritten extents we need to issue transactions to convert a
 	 * range to normal written extens after the data I/O has finished.
-	 * Detecting and handling completion IO errors is done individually
-	 * for each case as different cleanup operations need to be performed
-	 * on error.
 	 */
 	if (ioend->io_type == XFS_IO_UNWRITTEN) {
-		if (ioend->io_error)
-			goto done;
 		error = xfs_iomap_write_unwritten(ip, ioend->io_offset,
 						  ioend->io_size);
 	} else if (ioend->io_isdirect && xfs_ioend_is_append(ioend)) {
@@ -290,7 +276,6 @@ xfs_alloc_ioend(
 	 * all the I/O from calling the completion routine too early.
 	 */
 	atomic_set(&ioend->io_remaining, 1);
-	ioend->io_isasync = 0;
 	ioend->io_isdirect = 0;
 	ioend->io_error = 0;
 	ioend->io_list = NULL;
@@ -300,8 +285,6 @@ xfs_alloc_ioend(
 	ioend->io_buffer_tail = NULL;
 	ioend->io_offset = 0;
 	ioend->io_size = 0;
-	ioend->io_iocb = NULL;
-	ioend->io_result = 0;
 	ioend->io_append_trans = NULL;
 
 	INIT_WORK(&ioend->io_work, xfs_end_io);
@@ -353,7 +336,7 @@ xfs_map_blocks(
 
 	if (type == XFS_IO_DELALLOC &&
 	    (!nimaps || isnullstartblock(imap->br_startblock))) {
-		error = xfs_iomap_write_allocate(ip, offset, count, imap);
+		error = xfs_iomap_write_allocate(ip, offset, imap);
 		if (!error)
 			trace_xfs_map_blocks_alloc(ip, offset, count, type, imap);
 		return -XFS_ERROR(error);
@@ -424,7 +407,7 @@ xfs_alloc_ioend_bio(
 	struct bio		*bio = bio_alloc(GFP_NOIO, nvecs);
 
 	ASSERT(bio->bi_private == NULL);
-	bio->bi_sector = bh->b_blocknr * (bh->b_size >> 9);
+	bio->bi_iter.bi_sector = bh->b_blocknr * (bh->b_size >> 9);
 	bio->bi_bdev = bh->b_bdev;
 	return bio;
 }
@@ -451,16 +434,28 @@ xfs_start_page_writeback(
 {
 	ASSERT(PageLocked(page));
 	ASSERT(!PageWriteback(page));
-	if (clear_dirty)
+
+	/*
+	 * if the page was not fully cleaned, we need to ensure that the higher
+	 * layers come back to it correctly. That means we need to keep the page
+	 * dirty, and for WB_SYNC_ALL writeback we need to ensure the
+	 * PAGECACHE_TAG_TOWRITE index mark is not removed so another attempt to
+	 * write this page in this writeback sweep will be made.
+	 */
+	if (clear_dirty) {
 		clear_page_dirty_for_io(page);
-	set_page_writeback(page);
+		set_page_writeback(page);
+	} else
+		set_page_writeback_keepwrite(page);
+
 	unlock_page(page);
+
 	/* If no buffers on the page are to be written, finish it here */
 	if (!buffers)
 		end_page_writeback(page);
 }
 
-static inline int bio_add_buffer(struct bio *bio, struct buffer_head *bh)
+static inline int xfs_bio_add_buffer(struct bio *bio, struct buffer_head *bh)
 {
 	return bio_add_page(bio, bh->b_page, bh->b_size, bh_offset(bh));
 }
@@ -534,7 +529,7 @@ xfs_submit_ioend(
 				goto retry;
 			}
 
-			if (bio_add_buffer(bio, bh) != bh->b_size) {
+			if (xfs_bio_add_buffer(bio, bh) != bh->b_size) {
 				xfs_submit_ioend_bio(wbc, ioend, bio);
 				goto retry;
 			}
@@ -852,10 +847,12 @@ xfs_cluster_write(
 STATIC void
 xfs_vm_invalidatepage(
 	struct page		*page,
-	unsigned long		offset)
+	unsigned int		offset,
+	unsigned int		length)
 {
-	trace_xfs_invalidatepage(page->mapping->host, page, offset);
-	block_invalidatepage(page, offset);
+	trace_xfs_invalidatepage(page->mapping->host, page, offset,
+				 length);
+	block_invalidatepage(page, offset, length);
 }
 
 /*
@@ -919,7 +916,7 @@ next_buffer:
 
 	xfs_iunlock(ip, XFS_ILOCK_EXCL);
 out_invalidate:
-	xfs_vm_invalidatepage(page, 0);
+	xfs_vm_invalidatepage(page, 0, PAGE_CACHE_SIZE);
 	return;
 }
 
@@ -949,7 +946,7 @@ xfs_vm_writepage(
 	int			count = 0;
 	int			nonblocking = 0;
 
-	trace_xfs_writepage(inode, page, 0);
+	trace_xfs_writepage(inode, page, 0, 0);
 
 	ASSERT(page_has_buffers(page));
 
@@ -1180,7 +1177,7 @@ xfs_vm_releasepage(
 {
 	int			delalloc, unwritten;
 
-	trace_xfs_releasepage(page->mapping->host, page, 0);
+	trace_xfs_releasepage(page->mapping->host, page, 0, 0);
 
 	xfs_count_page_state(page, &delalloc, &unwritten);
 
@@ -1232,7 +1229,7 @@ __xfs_get_blocks(
 		lockmode = XFS_ILOCK_EXCL;
 		xfs_ilock(ip, lockmode);
 	} else {
-		lockmode = xfs_ilock_map_shared(ip);
+		lockmode = xfs_ilock_data_map_shared(ip);
 	}
 
 	ASSERT(offset <= mp->m_super->s_maxbytes);
@@ -1299,8 +1296,10 @@ __xfs_get_blocks(
 		if (create || !ISUNWRITTEN(&imap))
 			xfs_map_buffer(inode, bh_result, &imap, offset);
 		if (create && ISUNWRITTEN(&imap)) {
-			if (direct)
+			if (direct) {
 				bh_result->b_private = inode;
+				set_buffer_defer_completion(bh_result);
+			}
 			set_buffer_unwritten(bh_result);
 		}
 	}
@@ -1397,9 +1396,7 @@ xfs_end_io_direct_write(
 	struct kiocb		*iocb,
 	loff_t			offset,
 	ssize_t			size,
-	void			*private,
-	int			ret,
-	bool			is_async)
+	void			*private)
 {
 	struct xfs_ioend	*ioend = iocb->private;
 
@@ -1421,17 +1418,10 @@ xfs_end_io_direct_write(
 
 	ioend->io_offset = offset;
 	ioend->io_size = size;
-	ioend->io_iocb = iocb;
-	ioend->io_result = ret;
 	if (private && size > 0)
 		ioend->io_type = XFS_IO_UNWRITTEN;
 
-	if (is_async) {
-		ioend->io_isasync = 1;
-		xfs_finish_ioend(ioend);
-	} else {
-		xfs_finish_ioend_sync(ioend);
-	}
+	xfs_finish_ioend_sync(ioend);
 }
 
 STATIC ssize_t
@@ -1523,12 +1513,25 @@ xfs_vm_write_failed(
 	loff_t			pos,
 	unsigned		len)
 {
-	loff_t			block_offset = pos & PAGE_MASK;
+	loff_t			block_offset;
 	loff_t			block_start;
 	loff_t			block_end;
 	loff_t			from = pos & (PAGE_CACHE_SIZE - 1);
 	loff_t			to = from + len;
 	struct buffer_head	*bh, *head;
+
+	/*
+	 * The request pos offset might be 32 or 64 bit, this is all fine
+	 * on 64-bit platform.  However, for 64-bit pos request on 32-bit
+	 * platform, the high 32-bit will be masked off if we evaluate the
+	 * block_offset via (pos & PAGE_MASK) because the PAGE_MASK is
+	 * 0xfffff000 as an unsigned long, hence the result is incorrect
+	 * which could cause the following ASSERT failed in most cases.
+	 * In order to avoid this, we can evaluate the block_offset of the
+	 * start of the page by using shifts rather than masks the mismatch
+	 * problem.
+	 */
+	block_offset = (pos >> PAGE_CACHE_SHIFT) << PAGE_CACHE_SHIFT;
 
 	ASSERT(block_offset + from == pos);
 
@@ -1581,8 +1584,7 @@ xfs_vm_write_begin(
 
 	ASSERT(len <= PAGE_CACHE_SIZE);
 
-	page = grab_cache_page_write_begin(mapping, index,
-					   flags | AOP_FLAG_NOFS);
+	page = grab_cache_page_write_begin(mapping, index, flags);
 	if (!page)
 		return -ENOMEM;
 
@@ -1594,7 +1596,7 @@ xfs_vm_write_begin(
 		unlock_page(page);
 
 		if (pos + len > i_size_read(inode))
-			truncate_pagecache(inode, pos + len, i_size_read(inode));
+			truncate_pagecache(inode, i_size_read(inode));
 
 		page_cache_release(page);
 		page = NULL;
@@ -1630,7 +1632,7 @@ xfs_vm_write_end(
 		loff_t		to = pos + len;
 
 		if (to > isize) {
-			truncate_pagecache(inode, to, isize);
+			truncate_pagecache(inode, isize);
 			xfs_vm_kill_delalloc_range(inode, isize, to);
 		}
 	}

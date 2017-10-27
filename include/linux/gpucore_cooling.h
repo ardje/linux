@@ -14,10 +14,6 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  *  General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License along
- *  with this program; if not, write to the Free Software Foundation, Inc.,
- *  59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
- *
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
 
@@ -31,8 +27,9 @@ struct gpucore_cooling_device {
 	struct thermal_cooling_device *cool_dev;
 	unsigned int gpucore_state;
 	unsigned int gpucore_val;
-	 int max_gpu_core_num;
+	int max_gpu_core_num;
 	unsigned int (*set_max_pp_num)(unsigned int);
+	struct device_node *np;
 	int stop_flag;
 };
 #define GPU_STOP 0x80000000
@@ -43,28 +40,32 @@ struct gpucore_cooling_device {
  * gpucore_cooling_register - function to create gpucore cooling device.
  * @clip_cpus: cpumask of cpus where the frequency constraints will happen
  */
-struct thermal_cooling_device * gpucore_cooling_register(struct gpucore_cooling_device *);
+int gpucore_cooling_register(struct gpucore_cooling_device *);
 
 /**
  * gpucore_cooling_unregister - function to remove gpucore cooling device.
  * @cdev: thermal cooling device pointer.
  */
 void gpucore_cooling_unregister(struct thermal_cooling_device *cdev);
-struct gpucore_cooling_device * gpucore_cooling_alloc(void);
+struct gpucore_cooling_device *gpucore_cooling_alloc(void);
+void save_gpucore_thermal_para(struct device_node *);
 
 #else /* !CONFIG_CPU_THERMAL */
-inline struct gpucore_cooling_device * gpucore_cooling_alloc(void)
+inline struct gpucore_cooling_device *gpucore_cooling_alloc(void)
 {
 	return NULL;
 }
 
-inline struct thermal_cooling_device * gpucore_cooling_register(struct gpucore_cooling_device *gcd)
+inline int gpucore_cooling_register(struct gpucore_cooling_device *gcd)
 {
 	return NULL;
 }
 inline void gpucore_cooling_unregister(struct thermal_cooling_device *cdev)
 {
 	return;
+}
+inline void save_gpucore_thermal_para(struct device_node *n)
+{
 }
 #endif	/* CONFIG_CPU_THERMAL */
 

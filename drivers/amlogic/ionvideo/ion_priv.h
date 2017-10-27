@@ -1,23 +1,25 @@
 /*
- * drivers/gpu/ion/ion_priv.h
+ * drivers/amlogic/ionvideo/ion_priv.h
  *
- * Copyright (C) 2011 Google, Inc.
+ * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
  *
- * This software is licensed under the terms of the GNU General Public
- * License version 2, as published by the Free Software Foundation, and
- * may be copied, distributed, and modified under those terms.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
  *
- */
+*/
+
 
 #ifndef _ION_PRIV_H
 #define _ION_PRIV_H
 
-#include <linux/ion.h>
+#include <ion.h>
 #include <linux/kref.h>
 #include <linux/mm_types.h>
 #include <linux/mutex.h>
@@ -92,18 +94,18 @@ struct ion_buffer {
  * @map_user		map memory to userspace
  */
 struct ion_heap_ops {
-	int (*allocate) (struct ion_heap *heap,
+	int (*allocate)(struct ion_heap *heap,
 			 struct ion_buffer *buffer, unsigned long len,
 			 unsigned long align, unsigned long flags);
-	void (*free) (struct ion_buffer *buffer);
-	int (*phys) (struct ion_heap *heap, struct ion_buffer *buffer,
+	void (*free)(struct ion_buffer *buffer);
+	int (*phys)(struct ion_heap *heap, struct ion_buffer *buffer,
 		     ion_phys_addr_t *addr, size_t *len);
-	struct sg_table *(*map_dma) (struct ion_heap *heap,
+	struct sg_table * (*map_dma)(struct ion_heap *heap,
 					struct ion_buffer *buffer);
-	void (*unmap_dma) (struct ion_heap *heap, struct ion_buffer *buffer);
-	void * (*map_kernel) (struct ion_heap *heap, struct ion_buffer *buffer);
-	void (*unmap_kernel) (struct ion_heap *heap, struct ion_buffer *buffer);
-	int (*map_user) (struct ion_heap *mapper, struct ion_buffer *buffer,
+	void (*unmap_dma)(struct ion_heap *heap, struct ion_buffer *buffer);
+	void * (*map_kernel)(struct ion_heap *heap, struct ion_buffer *buffer);
+	void (*unmap_kernel)(struct ion_heap *heap, struct ion_buffer *buffer);
+	int (*map_user)(struct ion_heap *mapper, struct ion_buffer *buffer,
 			 struct vm_area_struct *vma);
 };
 
@@ -255,7 +257,7 @@ struct ion_page_pool {
 	struct list_head high_items;
 	struct list_head low_items;
 	struct mutex mutex;
-	void *(*alloc)(struct ion_page_pool *pool);
+	void * (*alloc)(struct ion_page_pool *pool);
 	void (*free)(struct ion_page_pool *pool, struct page *page);
 	gfp_t gfp_mask;
 	unsigned int order;

@@ -37,6 +37,7 @@
 #include <asm/uaccess.h>
 #include <asm/io.h>
 #include <asm/sections.h>
+#include <asm/cacheflush.h>
 
 /* Per cpu memory for storing cpu states in case of system crash. */
 note_buf_t __percpu *crash_notes;
@@ -924,7 +925,7 @@ static int kimage_load_segment(struct kimage *image,
  *   reinitialize them.
  *
  * - A machine specific part that includes the syscall number
- *   and the copies the image to it's final destination.  And
+ *   and then copies the image to it's final destination.  And
  *   jumps into the image at entry.
  *
  * kexec does not sync, or unmount filesystems so if you need
@@ -932,6 +933,7 @@ static int kimage_load_segment(struct kimage *image,
  */
 struct kimage *kexec_image;
 struct kimage *kexec_crash_image;
+int kexec_load_disabled;
 
 static DEFINE_MUTEX(kexec_mutex);
 
@@ -942,7 +944,7 @@ SYSCALL_DEFINE4(kexec_load, unsigned long, entry, unsigned long, nr_segments,
 	int result;
 
 	/* We only trust the superuser with rebooting the system. */
-	if (!capable(CAP_SYS_BOOT))
+	if (!capable(CAP_SYS_BOOT) || kexec_load_disabled)
 		return -EPERM;
 
 	/*
@@ -1087,13 +1089,14 @@ void crash_kexec(struct pt_regs *regs)
 	 * sufficient.  But since I reuse the memory...
 	 */
 	if (mutex_trylock(&kexec_mutex)) {
-		if (kexec_crash_image) {
+		if (1 || kexec_crash_image) {
 			struct pt_regs fixed_regs;
 
 			crash_setup_regs(&fixed_regs, regs);
 			crash_save_vmcoreinfo();
 			machine_crash_shutdown(&fixed_regs);
-			machine_kexec(kexec_crash_image);
+			flush_cache_all();
+			/*machine_kexec(kexec_crash_image);*/
 		}
 		mutex_unlock(&kexec_mutex);
 	}
@@ -1477,11 +1480,8 @@ static int __init __parse_crashkernel(char *cmdline,
 	if (first_colon && (!first_space || first_colon < first_space))
 		return parse_crashkernel_mem(ck_cmdline, system_ram,
 				crash_size, crash_base);
-	else
-		return parse_crashkernel_simple(ck_cmdline, crash_size,
-				crash_base);
 
-	return 0;
+	return parse_crashkernel_simple(ck_cmdline, crash_size, crash_base);
 }
 
 /*
@@ -1539,7 +1539,7 @@ void vmcoreinfo_append_str(const char *fmt, ...)
 	size_t r;
 
 	va_start(args, fmt);
-	r = vsnprintf(buf, sizeof(buf), fmt, args);
+	r = vscnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
 
 	r = min(r, vmcoreinfo_max_size - vmcoreinfo_size);
@@ -1683,6 +1683,15 @@ int kernel_kexec(void)
 	{
 		kexec_in_progress = true;
 		kernel_restart_prepare(NULL);
+		migrate_to_reboot_cpu();
+
+		/*
+		 * migrate_to_reboot_cpu() disables CPU hotplug assuming that
+		 * no further code needs to use CPU hotplug (which is true in
+		 * the reboot case). However, the kexec path depends on using
+		 * CPU hotplug again; so re-enable it here.
+		 */
+		cpu_hotplug_enable();
 		printk(KERN_EMERG "Starting new kernel\n");
 		machine_shutdown();
 	}

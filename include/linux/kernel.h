@@ -103,6 +103,18 @@
 		(((__x) - ((__d) / 2)) / (__d));	\
 }							\
 )
+/*
+ * Same as above but for u64 dividends. divisor must be a 32-bit
+ * number.
+ */
+#define DIV_ROUND_CLOSEST_ULL(x, divisor)(		\
+{							\
+	typeof(divisor) __d = divisor;			\
+	unsigned long long _tmp = (x) + (__d) / 2;	\
+	do_div(_tmp, __d);				\
+	_tmp;						\
+}							\
+)
 
 /*
  * Multiplies an integer by a fraction, while avoiding unnecessary
@@ -206,13 +218,30 @@ extern int _cond_resched(void);
 		(__x < 0) ? -__x : __x;		\
 	})
 
-#ifdef CONFIG_PROVE_LOCKING
+/**
+ * reciprocal_scale - "scale" a value into range [0, ep_ro)
+ * @val: value
+ * @ep_ro: right open interval endpoint
+ *
+ * Perform a "reciprocal multiplication" in order to "scale" a value into
+ * range [0, ep_ro), where the upper interval endpoint is right-open.
+ * This is useful, e.g. for accessing a index of an array containing
+ * ep_ro elements, for example. Think of it as sort of modulus, only that
+ * the result isn't that of modulo. ;) Note that if initial input is a
+ * small value, then result will return 0.
+ *
+ * Return: a result based on val in interval [0, ep_ro).
+ */
+static inline u32 reciprocal_scale(u32 val, u32 ep_ro)
+{
+	return (u32)(((u64) val * ep_ro) >> 32);
+}
+
+#if defined(CONFIG_MMU) && \
+	(defined(CONFIG_PROVE_LOCKING) || defined(CONFIG_DEBUG_ATOMIC_SLEEP))
 void might_fault(void);
 #else
-static inline void might_fault(void)
-{
-	might_sleep();
-}
+static inline void might_fault(void) { }
 #endif
 
 extern struct atomic_notifier_head panic_notifier_list;
@@ -409,6 +438,15 @@ extern int panic_on_oops;
 extern int panic_on_unrecovered_nmi;
 extern int panic_on_io_nmi;
 extern int sysctl_panic_on_stackoverflow;
+/*
+ * Only to be used by arch init code. If the user over-wrote the default
+ * CONFIG_PANIC_TIMEOUT, honor it.
+ */
+static inline void set_arch_panic_timeout(int timeout, int arch_default_timeout)
+{
+	if (panic_timeout == arch_default_timeout)
+		panic_timeout = timeout;
+}
 extern const char *print_tainted(void);
 enum lockdep_ok {
 	LOCKDEP_STILL_OK,
@@ -455,6 +493,17 @@ static inline char *hex_byte_pack(char *buf, u8 byte)
 	return buf;
 }
 
+extern const char hex_asc_upper[];
+#define hex_asc_upper_lo(x)	hex_asc_upper[((x) & 0x0f)]
+#define hex_asc_upper_hi(x)	hex_asc_upper[((x) & 0xf0) >> 4]
+
+static inline char *hex_byte_pack_upper(char *buf, u8 byte)
+{
+	*buf++ = hex_asc_upper_hi(byte);
+	*buf++ = hex_asc_upper_lo(byte);
+	return buf;
+}
+
 static inline char * __deprecated pack_hex_byte(char *buf, u8 byte)
 {
 	return hex_byte_pack(buf, byte);
@@ -462,6 +511,8 @@ static inline char * __deprecated pack_hex_byte(char *buf, u8 byte)
 
 extern int hex_to_bin(char ch);
 extern int __must_check hex2bin(u8 *dst, const char *src, size_t count);
+
+int mac_pton(const char *s, u8 *mac);
 
 /*
  * General tracing related utility functions - trace_printk(),
@@ -504,7 +555,6 @@ void tracing_snapshot_alloc(void);
 
 extern void tracing_start(void);
 extern void tracing_stop(void);
-extern void ftrace_off_permanent(void);
 
 static inline __printf(1, 2)
 void ____trace_printk_check_format(const char *fmt, ...)
@@ -557,7 +607,7 @@ do {							\
 
 #define do_trace_printk(fmt, args...)					\
 do {									\
-	static const char *trace_printk_fmt __used			\
+	static const char *trace_printk_fmt				\
 		__attribute__((section("__trace_printk_fmt"))) =	\
 		__builtin_constant_p(fmt) ? fmt : NULL;			\
 									\
@@ -574,9 +624,6 @@ int __trace_bprintk(unsigned long ip, const char *fmt, ...);
 
 extern __printf(2, 3)
 int __trace_printk(unsigned long ip, const char *fmt, ...);
-
-extern int __trace_bputs(unsigned long ip, const char *str);
-extern int __trace_puts(unsigned long ip, const char *str, int size);
 
 /**
  * trace_puts - write a string into the ftrace buffer
@@ -604,7 +651,7 @@ extern int __trace_puts(unsigned long ip, const char *str, int size);
  */
 
 #define trace_puts(str) ({						\
-	static const char *trace_printk_fmt __used			\
+	static const char *trace_printk_fmt				\
 		__attribute__((section("__trace_printk_fmt"))) =	\
 		__builtin_constant_p(str) ? str : NULL;			\
 									\
@@ -613,6 +660,8 @@ extern int __trace_puts(unsigned long ip, const char *str, int size);
 	else								\
 		__trace_puts(_THIS_IP_, str, strlen(str));		\
 })
+extern int __trace_bputs(unsigned long ip, const char *str);
+extern int __trace_puts(unsigned long ip, const char *str, int size);
 
 extern void trace_dump_stack(int skip);
 
@@ -624,7 +673,7 @@ extern void trace_dump_stack(int skip);
 #define ftrace_vprintk(fmt, vargs)					\
 do {									\
 	if (__builtin_constant_p(fmt)) {				\
-		static const char *trace_printk_fmt __used		\
+		static const char *trace_printk_fmt			\
 		  __attribute__((section("__trace_printk_fmt"))) =	\
 			__builtin_constant_p(fmt) ? fmt : NULL;		\
 									\
@@ -643,8 +692,7 @@ extern void ftrace_dump(enum ftrace_dump_mode oops_dump_mode);
 #else
 static inline void tracing_start(void) { }
 static inline void tracing_stop(void) { }
-static inline void ftrace_off_permanent(void) { }
-static inline void trace_dump_stack(void) { }
+static inline void trace_dump_stack(int skip) { }
 
 static inline void tracing_on(void) { }
 static inline void tracing_off(void) { }

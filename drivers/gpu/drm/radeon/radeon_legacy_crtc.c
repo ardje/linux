@@ -331,8 +331,6 @@ static void radeon_crtc_dpms(struct drm_crtc *crtc, int mode)
 			WREG32_P(RADEON_CRTC_EXT_CNTL, crtc_ext_cntl, ~(mask | crtc_ext_cntl));
 		}
 		drm_vblank_post_modeset(dev, radeon_crtc->crtc_id);
-		/* Make sure vblank interrupt is still enabled if needed */
-		radeon_irq_set(rdev);
 		radeon_crtc_load_lut(crtc);
 		break;
 	case DRM_MODE_DPMS_STANDBY:
@@ -1086,6 +1084,26 @@ static void radeon_crtc_commit(struct drm_crtc *crtc)
 	}
 }
 
+static void radeon_crtc_disable(struct drm_crtc *crtc)
+{
+	radeon_crtc_dpms(crtc, DRM_MODE_DPMS_OFF);
+	if (crtc->fb) {
+		int r;
+		struct radeon_framebuffer *radeon_fb;
+		struct radeon_bo *rbo;
+
+		radeon_fb = to_radeon_framebuffer(crtc->fb);
+		rbo = gem_to_radeon_bo(radeon_fb->obj);
+		r = radeon_bo_reserve(rbo, false);
+		if (unlikely(r))
+			DRM_ERROR("failed to reserve rbo before unpin\n");
+		else {
+			radeon_bo_unpin(rbo);
+			radeon_bo_unreserve(rbo);
+		}
+	}
+}
+
 static const struct drm_crtc_helper_funcs legacy_helper_funcs = {
 	.dpms = radeon_crtc_dpms,
 	.mode_fixup = radeon_crtc_mode_fixup,
@@ -1095,6 +1113,7 @@ static const struct drm_crtc_helper_funcs legacy_helper_funcs = {
 	.prepare = radeon_crtc_prepare,
 	.commit = radeon_crtc_commit,
 	.load_lut = radeon_crtc_load_lut,
+	.disable = radeon_crtc_disable
 };
 
 

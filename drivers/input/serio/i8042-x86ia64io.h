@@ -120,13 +120,6 @@ static const struct dmi_system_id __initconst i8042_dmi_noloop_table[] = {
 		},
 	},
 	{
-		/* Dell Embedded Box PC 3000 */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "Dell Inc."),
-			DMI_MATCH(DMI_PRODUCT_NAME, "Embedded Box PC 3000"),
-		},
-	},
-	{
 		/* OQO Model 01 */
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "OQO"),
@@ -156,14 +149,6 @@ static const struct dmi_system_id __initconst i8042_dmi_noloop_table[] = {
 			DMI_MATCH(DMI_SYS_VENDOR, "Notebook"),
 			DMI_MATCH(DMI_PRODUCT_NAME, "MAM 2070"),
 			DMI_MATCH(DMI_PRODUCT_VERSION, "5a"),
-		},
-	},
-	{
-		/* Medion Akoya E7225 */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "Medion"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "Akoya E7225"),
-			DMI_MATCH(DMI_PRODUCT_VERSION, "1.0"),
 		},
 	},
 	{
@@ -218,12 +203,6 @@ static const struct dmi_system_id __initconst i8042_dmi_noloop_table[] = {
 			DMI_MATCH(DMI_PRODUCT_VERSION, "Rev 1"),
 		},
 	},
-	{
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "PEGATRON CORPORATION"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "C15B"),
-		},
-	},
 	{ }
 };
 
@@ -268,13 +247,6 @@ static const struct dmi_system_id __initconst i8042_dmi_nomux_table[] = {
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "FUJITSU"),
 			DMI_MATCH(DMI_PRODUCT_NAME, "LifeBook S6230"),
-		},
-	},
-	{
-		/* Fujitsu Lifebook U745 */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "FUJITSU"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "LIFEBOOK U745"),
 		},
 	},
 	{
@@ -436,13 +408,6 @@ static const struct dmi_system_id __initconst i8042_dmi_nomux_table[] = {
 		},
 	},
 	{
-		/* Acer Aspire 7738 */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "Aspire 7738"),
-		},
-	},
-	{
 		/* Gericom Bellagio */
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "Gericom"),
@@ -585,13 +550,6 @@ static const struct dmi_system_id __initconst i8042_dmi_reset_table[] = {
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
 			DMI_MATCH(DMI_PRODUCT_NAME, "20046"),
-		},
-	},
-	{
-		/* Clevo P650RS, 650RP6, Sager NP8152-S, and others */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "Notebook"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "P65xRP"),
 		},
 	},
 	{ }
@@ -763,35 +721,6 @@ static const struct dmi_system_id __initconst i8042_dmi_dritek_table[] = {
 	{ }
 };
 
-/*
- * Some laptops need keyboard reset before probing for the trackpad to get
- * it detected, initialised & finally work.
- */
-static const struct dmi_system_id __initconst i8042_dmi_kbdreset_table[] = {
-	{
-		/* Gigabyte P35 v2 - Elantech touchpad */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "GIGABYTE"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "P35V2"),
-		},
-	},
-		{
-		/* Aorus branded Gigabyte X3 Plus - Elantech touchpad */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "GIGABYTE"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "X3"),
-		},
-	},
-	{
-		/* Gigabyte P34 - Elantech touchpad */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "GIGABYTE"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "P34"),
-		},
-	},
-	{ }
-};
-
 #endif /* CONFIG_X86 */
 
 #ifdef CONFIG_PNP
@@ -810,6 +739,17 @@ static int i8042_pnp_aux_irq;
 static char i8042_pnp_kbd_name[32];
 static char i8042_pnp_aux_name[32];
 
+static void i8042_pnp_id_to_string(struct pnp_id *id, char *dst, int dst_size)
+{
+	strlcpy(dst, "PNP:", dst_size);
+
+	while (id) {
+		strlcat(dst, " ", dst_size);
+		strlcat(dst, id->id, dst_size);
+		id = id->next;
+	}
+}
+
 static int i8042_pnp_kbd_probe(struct pnp_dev *dev, const struct pnp_device_id *did)
 {
 	if (pnp_port_valid(dev, 0) && pnp_port_len(dev, 0) == 1)
@@ -826,6 +766,8 @@ static int i8042_pnp_kbd_probe(struct pnp_dev *dev, const struct pnp_device_id *
 		strlcat(i8042_pnp_kbd_name, ":", sizeof(i8042_pnp_kbd_name));
 		strlcat(i8042_pnp_kbd_name, pnp_dev_name(dev), sizeof(i8042_pnp_kbd_name));
 	}
+	i8042_pnp_id_to_string(dev->id, i8042_kbd_firmware_id,
+			       sizeof(i8042_kbd_firmware_id));
 
 	/* Keyboard ports are always supposed to be wakeup-enabled */
 	device_set_wakeup_enable(&dev->dev, true);
@@ -850,6 +792,8 @@ static int i8042_pnp_aux_probe(struct pnp_dev *dev, const struct pnp_device_id *
 		strlcat(i8042_pnp_aux_name, ":", sizeof(i8042_pnp_aux_name));
 		strlcat(i8042_pnp_aux_name, pnp_dev_name(dev), sizeof(i8042_pnp_aux_name));
 	}
+	i8042_pnp_id_to_string(dev->id, i8042_aux_firmware_id,
+			       sizeof(i8042_aux_firmware_id));
 
 	i8042_pnp_aux_devices++;
 	return 0;
@@ -1071,9 +1015,6 @@ static int __init i8042_platform_init(void)
 
 	if (dmi_check_system(i8042_dmi_dritek_table))
 		i8042_dritek = true;
-
-	if (dmi_check_system(i8042_dmi_kbdreset_table))
-		i8042_kbdreset = true;
 
 	/*
 	 * A20 was already enabled during early kernel init. But some buggy

@@ -155,7 +155,7 @@ struct elevator_queue *elevator_alloc(struct request_queue *q,
 {
 	struct elevator_queue *eq;
 
-	eq = kmalloc_node(sizeof(*eq), GFP_KERNEL | __GFP_ZERO, q->node);
+	eq = kzalloc_node(sizeof(*eq), GFP_KERNEL, q->node);
 	if (unlikely(!eq))
 		goto err;
 
@@ -440,7 +440,7 @@ int elv_merge(struct request_queue *q, struct request **req, struct bio *bio)
 	/*
 	 * See if our hash lookup can find a potential backmerge.
 	 */
-	__rq = elv_rqhash_find(q, bio->bi_sector);
+	__rq = elv_rqhash_find(q, bio->bi_iter.bi_sector);
 	if (__rq && elv_rq_merge_ok(__rq, bio)) {
 		*req = __rq;
 		return ELEVATOR_BACK_MERGE;

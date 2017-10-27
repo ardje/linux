@@ -823,7 +823,7 @@ static int receive_data(enum port_type index, struct nozomi *dc)
 	struct tty_struct *tty = tty_port_tty_get(&port->port);
 	int i, ret;
 
-	size = __le32_to_cpu(readl(addr));
+	read_mem32((u32 *) &size, addr, 4);
 	/*  DBG1( "%d bytes port: %d", size, index); */
 
 	if (tty && test_bit(TTY_THROTTLED, &tty->flags)) {
@@ -959,7 +959,7 @@ static int receive_flow_control(struct nozomi *dc)
 		dev_err(&dc->pdev->dev,
 			"ERROR: flow control received for non-existing port\n");
 		return 0;
-	};
+	}
 
 	DBG1("0x%04X->0x%04X", *((u16 *)&dc->port[port].ctrl_dl),
 	   *((u16 *)&ctrl_dl));
@@ -1025,7 +1025,7 @@ static enum ctrl_port_type port2ctrl(enum port_type port,
 		dev_err(&dc->pdev->dev,
 			"ERROR: send flow control " \
 			"received for non-existing port\n");
-	};
+	}
 	return CTRL_ERROR;
 }
 
@@ -1805,7 +1805,7 @@ static int ntty_ioctl(struct tty_struct *tty,
 	default:
 		DBG1("ERR: 0x%08X, %d", cmd, cmd);
 		break;
-	};
+	}
 
 	return rval;
 }

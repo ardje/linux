@@ -167,7 +167,6 @@ out_cancel:
 	host_ui->xattr_cnt -= 1;
 	host_ui->xattr_size -= CALC_DENT_SIZE(nm->len);
 	host_ui->xattr_size -= CALC_XATTR_BYTES(size);
-	host_ui->xattr_names -= nm->len;
 	mutex_unlock(&host_ui->ui_mutex);
 out_free:
 	make_bad_inode(inode);
@@ -304,8 +303,8 @@ int ubifs_setxattr(struct dentry *dentry, const char *name,
 	union ubifs_key key;
 	int err, type;
 
-	dbg_gen("xattr '%s', host ino %lu ('%.*s'), size %zd", name,
-		host->i_ino, dentry->d_name.len, dentry->d_name.name, size);
+	dbg_gen("xattr '%s', host ino %lu ('%pd'), size %zd", name,
+		host->i_ino, dentry, size);
 	ubifs_assert(mutex_is_locked(&host->i_mutex));
 
 	if (size > UBIFS_MAX_INO_DATA)
@@ -368,8 +367,8 @@ ssize_t ubifs_getxattr(struct dentry *dentry, const char *name, void *buf,
 	union ubifs_key key;
 	int err;
 
-	dbg_gen("xattr '%s', ino %lu ('%.*s'), buf size %zd", name,
-		host->i_ino, dentry->d_name.len, dentry->d_name.name, size);
+	dbg_gen("xattr '%s', ino %lu ('%pd'), buf size %zd", name,
+		host->i_ino, dentry, size);
 
 	err = check_namespace(&nm);
 	if (err < 0)
@@ -427,8 +426,8 @@ ssize_t ubifs_listxattr(struct dentry *dentry, char *buffer, size_t size)
 	int err, len, written = 0;
 	struct qstr nm = { .name = NULL };
 
-	dbg_gen("ino %lu ('%.*s'), buffer size %zd", host->i_ino,
-		dentry->d_name.len, dentry->d_name.name, size);
+	dbg_gen("ino %lu ('%pd'), buffer size %zd", host->i_ino,
+		dentry, size);
 
 	len = host_ui->xattr_names + host_ui->xattr_cnt;
 	if (!buffer)
@@ -515,7 +514,6 @@ out_cancel:
 	host_ui->xattr_cnt += 1;
 	host_ui->xattr_size += CALC_DENT_SIZE(nm->len);
 	host_ui->xattr_size += CALC_XATTR_BYTES(ui->data_len);
-	host_ui->xattr_names += nm->len;
 	mutex_unlock(&host_ui->ui_mutex);
 	ubifs_release_budget(c, &req);
 	make_bad_inode(inode);
@@ -531,8 +529,8 @@ int ubifs_removexattr(struct dentry *dentry, const char *name)
 	union ubifs_key key;
 	int err;
 
-	dbg_gen("xattr '%s', ino %lu ('%.*s')", name,
-		host->i_ino, dentry->d_name.len, dentry->d_name.name);
+	dbg_gen("xattr '%s', ino %lu ('%pd')", name,
+		host->i_ino, dentry);
 	ubifs_assert(mutex_is_locked(&host->i_mutex));
 
 	err = check_namespace(&nm);

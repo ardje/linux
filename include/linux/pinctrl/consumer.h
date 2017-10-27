@@ -16,7 +16,7 @@
 #include <linux/list.h>
 #include <linux/seq_file.h>
 #include <linux/pinctrl/pinctrl-state.h>
-#include <linux/pinctrl/machine.h>
+
 /* This struct is private to the core and should be regarded as a cookie */
 struct pinctrl;
 struct pinctrl_state;
@@ -39,12 +39,26 @@ extern int pinctrl_select_state(struct pinctrl *p, struct pinctrl_state *s);
 
 extern struct pinctrl * __must_check devm_pinctrl_get(struct device *dev);
 extern void devm_pinctrl_put(struct pinctrl *p);
-extern struct pinctrl_map * amlogic_register_mux_map(struct device *dev,const char *state_name,
-					const char *func,const char *group);
-extern void amlogic_unregister_mux_map(struct pinctrl_map *map);
-extern struct pinctrl_map * amlogic_register_config_map(struct device *dev,const char *state_name,const char *group,
-					unsigned long *configs,unsigned int num_configs);
-extern void amlogic_unregister_config_map(struct pinctrl_map *map);
+
+#ifdef CONFIG_PM
+extern int pinctrl_pm_select_default_state(struct device *dev);
+extern int pinctrl_pm_select_sleep_state(struct device *dev);
+extern int pinctrl_pm_select_idle_state(struct device *dev);
+#else
+static inline int pinctrl_pm_select_default_state(struct device *dev)
+{
+	return 0;
+}
+static inline int pinctrl_pm_select_sleep_state(struct device *dev)
+{
+	return 0;
+}
+static inline int pinctrl_pm_select_idle_state(struct device *dev)
+{
+	return 0;
+}
+#endif
+
 #else /* !CONFIG_PINCTRL */
 
 static inline int pinctrl_request_gpio(unsigned gpio)
@@ -95,6 +109,21 @@ static inline struct pinctrl * __must_check devm_pinctrl_get(struct device *dev)
 
 static inline void devm_pinctrl_put(struct pinctrl *p)
 {
+}
+
+static inline int pinctrl_pm_select_default_state(struct device *dev)
+{
+	return 0;
+}
+
+static inline int pinctrl_pm_select_sleep_state(struct device *dev)
+{
+	return 0;
+}
+
+static inline int pinctrl_pm_select_idle_state(struct device *dev)
+{
+	return 0;
 }
 
 #endif /* CONFIG_PINCTRL */
@@ -162,48 +191,5 @@ static inline struct pinctrl * __must_check devm_pinctrl_get_select_default(
 {
 	return devm_pinctrl_get_select(dev, PINCTRL_STATE_DEFAULT);
 }
-
-#ifdef CONFIG_PINCONF
-
-extern int pin_config_get(const char *dev_name, const char *name,
-			  unsigned long *config);
-extern int pin_config_set(const char *dev_name, const char *name,
-			  unsigned long config);
-extern int pin_config_group_get(const char *dev_name,
-				const char *pin_group,
-				unsigned long *config);
-extern int pin_config_group_set(const char *dev_name,
-				const char *pin_group,
-				unsigned long config);
-
-#else
-
-static inline int pin_config_get(const char *dev_name, const char *name,
-				 unsigned long *config)
-{
-	return 0;
-}
-
-static inline int pin_config_set(const char *dev_name, const char *name,
-				 unsigned long config)
-{
-	return 0;
-}
-
-static inline int pin_config_group_get(const char *dev_name,
-				       const char *pin_group,
-				       unsigned long *config)
-{
-	return 0;
-}
-
-static inline int pin_config_group_set(const char *dev_name,
-				       const char *pin_group,
-				       unsigned long config)
-{
-	return 0;
-}
-
-#endif
 
 #endif /* __LINUX_PINCTRL_CONSUMER_H */

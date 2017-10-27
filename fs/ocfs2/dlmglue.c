@@ -1304,7 +1304,7 @@ static int ocfs2_wait_for_mask(struct ocfs2_mask_waiter *mw)
 {
 	wait_for_completion(&mw->mw_complete);
 	/* Re-arm the completion in case we want to wait on it again */
-	INIT_COMPLETION(mw->mw_complete);
+	reinit_completion(&mw->mw_complete);
 	return mw->mw_status;
 }
 
@@ -1355,7 +1355,7 @@ static int ocfs2_wait_for_mask_interruptible(struct ocfs2_mask_waiter *mw,
 	else
 		ret = mw->mw_status;
 	/* Re-arm the completion in case we want to wait on it again */
-	INIT_COMPLETION(mw->mw_complete);
+	reinit_completion(&mw->mw_complete);
 	return ret;
 }
 
@@ -2996,6 +2996,8 @@ int ocfs2_dlm_init(struct ocfs2_super *osb)
 
 	/* for now, uuid == domain */
 	status = ocfs2_cluster_connect(osb->osb_cluster_stack,
+				       osb->osb_cluster_name,
+				       strlen(osb->osb_cluster_name),
 				       osb->uuid_str,
 				       strlen(osb->uuid_str),
 				       &lproto, ocfs2_do_node_down, osb,
@@ -3005,7 +3007,7 @@ int ocfs2_dlm_init(struct ocfs2_super *osb)
 		goto bail;
 	}
 
-	status = ocfs2_cluster_this_node(&osb->node_num);
+	status = ocfs2_cluster_this_node(conn, &osb->node_num);
 	if (status < 0) {
 		mlog_errno(status);
 		mlog(ML_ERROR,
@@ -3263,16 +3265,6 @@ static int ocfs2_downconvert_lock(struct ocfs2_super *osb,
 
 	mlog(ML_BASTS, "lockres %s, level %d => %d\n", lockres->l_name,
 	     lockres->l_level, new_level);
-
-	/*
-	 * On DLM_LKF_VALBLK, fsdlm behaves differently with o2cb. It always
-	 * expects DLM_LKF_VALBLK being set if the LKB has LVB, so that
-	 * we can recover correctly from node failure. Otherwise, we may get
-	 * invalid LVB in LKB, but without DLM_SBF_VALNOTVALID being set.
-	 */
-	if (!ocfs2_is_o2cb_active() &&
-	    lockres->l_ops->flags & LOCK_TYPE_USES_LVB)
-		lvb = 1;
 
 	if (lvb)
 		dlm_flags |= DLM_LKF_VALBLK;
@@ -3981,13 +3973,9 @@ static void ocfs2_downconvert_thread_do_work(struct ocfs2_super *osb)
 	osb->dc_work_sequence = osb->dc_wake_sequence;
 
 	processed = osb->blocked_lock_count;
-	/*
-	 * blocked lock processing in this loop might call iput which can
-	 * remove items off osb->blocked_lock_list. Downconvert up to
-	 * 'processed' number of locks, but stop short if we had some
-	 * removed in ocfs2_mark_lockres_freeing when downconverting.
-	 */
-	while (processed && !list_empty(&osb->blocked_lock_list)) {
+	while (processed) {
+		BUG_ON(list_empty(&osb->blocked_lock_list));
+
 		lockres = list_entry(osb->blocked_lock_list.next,
 				     struct ocfs2_lock_res, l_blocked_list);
 		list_del_init(&lockres->l_blocked_list);

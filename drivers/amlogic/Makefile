@@ -8,126 +8,128 @@
 ##########################################
 
 
-obj-y +=early_init/
-obj-$(CONFIG_EFUSE)+=efuse/
+obj-$(CONFIG_MESON_TIMER)	+= clocksource/
 
-###For Display, this is for quick logo show##
-obj-$(CONFIG_AM_DISPLAY_MODULE) += display/
+obj-$(CONFIG_AM_UART)		+= uart/
+
+obj-$(CONFIG_CPU_FREQ)		+= cpufreq/
+
+obj-$(CONFIG_AML_CPU_VERSION)	+= cpu_version/
+
+obj-$(CONFIG_PINCTRL_AMLOGIC)	+= pinctrl/
+
+obj-$(CONFIG_AMLOGIC_USB)	+= usb/
+
+obj-$(CONFIG_AMLOGIC_CLK)	+= clk/
+
+obj-$(CONFIG_AML_HDMI_TX)	+= hdmi/
+
+obj-$(CONFIG_AML_RTC)		+= rtc/
+
+obj-$(CONFIG_AML_VRTC)		+= vrtc/
+
+obj-$(CONFIG_AM_IRBLASTER)	+= irblaster/
+
+obj-$(CONFIG_I2C_AML)		+= i2c/
+
+obj-$(CONFIG_AML_PWM)		+= pwm/
+
+obj-$(CONFIG_AML_POWER_SUPPORT)	+= power/
+
+obj-$(CONFIG_AML_PMU4)		+= pmu4/
+
+obj-$(CONFIG_AML_DEBUG)		+= aml_debug/
+
+obj-$(CONFIG_AML_REG_ACCESS)	+= reg_access/
+
+obj-$(CONFIG_REGMAP_MMIO)	+= iomap/
+
+obj-$(CONFIG_AMLOGIC_SEC)	+= secmon/
+
+obj-$(CONFIG_AMLOGIC_SECURITY_KEY)	+= securitykey/
+
+obj-$(CONFIG_AM_PHY)		+= ethernet/
+
+obj-$(CONFIG_MMC_AML)		+= mmc/
+
+obj-$(CONFIG_AML_VPU)		+= vpu/
+
+obj-$(CONFIG_AMLOGIC_ION)	+= ion_dev/
+
+obj-$(CONFIG_AML_DISPLAY)	+= display/
+
+obj-$(CONFIG_AMLOGIC_LED)	+= led/
+
+obj-$(CONFIG_AML_CANVAS)	+= canvas/
+
+obj-$(CONFIG_AM_VIDEO)		+= amports/
+
+obj-$(CONFIG_DEINTERLACE)   += deinterlace/
+
+obj-$(CONFIG_AML_VFM)		+= vfm/
+
+obj-$(CONFIG_EFUSE)		+= efuse/
+
+obj-$(CONFIG_KEY_MANAGE)	+= key_manage/
 
 obj-$(CONFIG_POST_PROCESS_MANAGER) += ppmgr/
 
+obj-$(CONFIG_AM_WIFI)		+= wifi/
+
+obj-$(CONFIG_AML_POWER_RESET)	+= reset/
+
+obj-$(CONFIG_BT_DEVICE)		+= bluetooth/
+
+obj-$(CONFIG_AMLOGIC_IONVIDEO)	+= ionvideo/
+
+obj-$(CONFIG_AML_AUDIO_DSP)	+= audiodsp/
+
+obj-$(CONFIG_AMAUDIO)		+= amaudio/
+
+obj-$(CONFIG_AMAUDIO2)		+= amaudio2/
+
 obj-$(CONFIG_V4L_AMLOGIC_VIDEO) += video_dev/
+
 obj-$(CONFIG_V4L_AMLOGIC_VIDEO2) += video_dev/
-obj-$(CONFIG_AMLOGIC_IONVIDEO) += ionvideo/
 
-obj-$(CONFIG_DEINTERLACE) += deinterlace/
+obj-$(CONFIG_TVIN)		+= tvin/
 
-##### Basic drivers#####
+obj-$(CONFIG_AM_VECM)		+= amvecm/
 
-obj-y += watchdog/
-obj-y += secure/
-obj-y += securitykeys/
-obj-y += keymanage/
-
-obj-y += uart/
-obj-y += of/
-obj-y += usb/
-obj-y += cpufreq/
-obj-$(CONFIG_GPIO_AMLOGIC) += gpio/
-obj-y += pinctrl/
-obj-y += ethernet/
-
-obj-$(CONFIG_AM_CANVAS) += canvas/
-
-obj-y += amports/
-
-# ve&cm
-obj-y += amvecm/
-
-obj-$(CONFIG_I2C) += i2c/
-
-#obj-y += extern_io/
+obj-$(CONFIG_AML_NAND)		+= amlnf/
 
 obj-$(CONFIG_AM_INPUT)		+= input/
 
-ifneq ($(wildcard $(srctree)/../hardware/amlogic/touch),)
-obj-$(CONFIG_AML_TOUCH_ALGORITHM_SUPPORT) += ../../../hardware/amlogic/touch/
-endif
-obj-$(CONFIG_AMLOGIC_SPI_NOR) += spi_nor/
+obj-$(CONFIG_MESON_SUSPEND)	+= pm/
 
-#obj-$(CONFIG_CARDREADER) += cardreader/
-obj-$(CONFIG_MMC_AML) +=mmc/
+obj-$(CONFIG_AM_DVB)		+= dvb_tv/
 
-obj-$(CONFIG_AML_VFM) += vfm/
+obj-$(CONFIG_MESON_MHU_MBOX)	+= mailbox/
 
-obj-$(CONFIG_AML_AUDIO_DSP) += audiodsp/
+obj-$(CONFIG_AML_RDMA)		+= rdma/
 
-obj-$(CONFIG_AML_RTC)+= rtc/
+obj-$(CONFIG_AML_TEMP_SENSOR) += thermal/
 
-obj-y += power/
-
-ifneq ($(wildcard $(srctree)/../hardware/amlogic/pmu),)
-    obj-$(CONFIG_AML_PMU_ALGORITHM_SUPPORT) += ../../../hardware/amlogic/pmu/
-endif
-
-obj-y += tvin_v4l2/
-ifneq ($(wildcard $(srctree)/../hardware/tvin),)
-	obj-$(CONFIG_TVIN) += ../../../hardware/tvin/
-endif
-
-obj-$(CONFIG_AML_EXT_HDMIIN) += ext_hdmiin/
-
-obj-y += thermal/
-
-
-#####Sound system is later init in kernel default..######################
-obj-$(CONFIG_AMAUDIO) += amaudio/
-obj-$(CONFIG_AMAUDIO2) += amaudio2/
-obj-y += mhl/
-obj-y += hdmi/
-
-obj-$(CONFIG_AM_DVB) += dvb_tv/
-obj-$(CONFIG_AM_SMARTCARD) += smartcard/
-
-obj-$(CONFIG_AM_WIFI) += wifi/
-ifneq ($(wildcard $(srctree)/../hardware/wifi),)
-	obj-$(CONFIG_SDIO_DHD_CDC_WIFI_40181_MODULE) += ../../../hardware/wifi/broadcom/drivers/ap6xxx/broadcm_40181/
-	obj-$(CONFIG_BCMDHD) += ../../../hardware/wifi/broadcom/drivers/usi/bcmdhd/
-	obj-$(CONFIG_RTL8188EU) += ../../../hardware/wifi/realtek/drivers/8188eu/rtl8xxx_EU/
-	obj-$(CONFIG_RTL8188EU_MP) += ../../../hardware/wifi/realtek/drivers/8188eu/rtl8xxx_EU_MP/
-	obj-$(CONFIG_RTL8192CU) += ../../../hardware/wifi/realtek/drivers/8192cu/rtl8xxx_CU/
-	obj-$(CONFIG_RTL8192DU) += ../../../hardware/wifi/realtek/drivers/8192du/rtl8xxx_DU/
-	obj-$(CONFIG_RTL8192EU) += ../../../hardware/wifi/realtek/drivers/8192eu/rtl8192EU/
-	obj-$(CONFIG_RTL8189ES) += ../../../hardware/wifi/realtek/drivers/8189es/rtl8189ES/	
-	obj-$(CONFIG_RTL8723BS) += ../../../hardware/wifi/realtek/drivers/8723bs/rtl8723BS/	
-	obj-$(CONFIG_RTL8723AU) += ../../../hardware/wifi/realtek/drivers/8723au/rtl8723AU/
-	obj-$(CONFIG_RTL8821AU) += ../../../hardware/wifi/realtek/drivers/8811au/rtl8811AU/
-	obj-$(CONFIG_RTL8812AU) += ../../../hardware/wifi/realtek/drivers/8812au/rtl8812AU/
-endif
-obj-y += bluetooth/
-obj-$(CONFIG_MESON_NFC) += nfc/
+obj-$(CONFIG_AUDIO_DATA) += audinfo_kernel/
 
 obj-$(CONFIG_VIDEO_AMLOGIC_CAPTURE) += camera/
 
-obj-$(CONFIG_AMLOGIC_MIPI) += mipi/
+obj-$(CONFIG_AML_CODEC_MM)  	+= codec_mm/
 
-obj-$(CONFIG_D2D3_PROCESS) += d2d3/
+obj-$(CONFIG_AML_WDT)  		+= watchdog/
 
-obj-$(CONFIG_AML_REG_DEBUG) += regd/
+obj-$(CONFIG_AMLOGIC_JTAG)     += jtag/
 
-obj-$(CONFIG_AML_WATCHDOG) += watchdog/
+obj-$(CONFIG_INSTABOOT)		+= instaboot/
 
-ifneq ($(wildcard $(srctree)/../hardware/arm/gpu),)
-	obj-$(CONFIG_UMP) += ../../../hardware/arm/gpu/ump/
-	obj-$(CONFIG_MALI400) += ../../../hardware/arm/gpu/mali/
-endif
+obj-$(CONFIG_AMLOGIC_SPICC_MASTER) += spicc/
 
-obj-$(CONFIG_AMLOGIC_ION) += ion_dev/
+obj-$(CONFIG_AMLOGIC_CPU_INFO)	+=cpu_info/
 
-obj-y += crypto/
+obj-$(CONFIG_DEFEND_IMG)	+= defendkey/
 
-#obj-$(CONFIG_MESON_TRUSTZONE) += trustzone/
-obj-$(CONFIG_MESON_TRUSTZONE) += secure_monitor/
-obj-y += spi/
+obj-$(CONFIG_AML_AO_CEC) += cec/
 
-obj-$(CONFIG_MESON_PWM) += pwm/
+obj-$(CONFIG_CRYPTO_AML)	+= crypto/
+
+obj-$(CONFIG_AMLOGIC_WATCHPOINT) += watchpoint/

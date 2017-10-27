@@ -53,39 +53,38 @@
 
 #ifdef __KERNEL__
 
+#include <linux/device.h>
+
 struct cma;
 struct page;
-struct device;
 
-#ifdef CONFIG_CMA
+#ifdef CONFIG_DMA_CMA
 
-/*
- * There is always at least global CMA area and a few optional device
- * private areas configured in kernel .config.
- */
-#define MAX_CMA_AREAS	(1 + CONFIG_CMA_AREAS)
-
-extern struct cma *dma_contiguous_def_area;
+extern struct cma *dma_contiguous_default_area;
 
 static inline struct cma *dev_get_cma_area(struct device *dev)
 {
-        if (dev && dev->cma_area)
-                return dev->cma_area;
-        return dma_contiguous_def_area;
+	if (dev && dev->cma_area)
+		return dev->cma_area;
+	return dma_contiguous_default_area;
 }
 
 static inline void dev_set_cma_area(struct device *dev, struct cma *cma)
 {
-        if (dev)
-                dev->cma_area = cma;
+	if (dev)
+		dev->cma_area = cma;
+}
+
+static inline void dma_contiguous_set_default(struct cma *cma)
+{
+	dma_contiguous_default_area = cma;
 }
 
 void dma_contiguous_reserve(phys_addr_t addr_limit);
 
-int dma_contiguous_reserve_area(phys_addr_t size, phys_addr_t *res_base,
-				  phys_addr_t limit);
-
-int dma_contiguous_add_device(struct device *dev, phys_addr_t base);
+int __init dma_contiguous_reserve_area(phys_addr_t size, phys_addr_t base,
+				       phys_addr_t limit, struct cma **res_cma,
+				       bool fixed);
 
 /**
  * dma_declare_contiguous() - reserve area for contiguous memory handling
@@ -103,13 +102,16 @@ int dma_contiguous_add_device(struct device *dev, phys_addr_t base);
 static inline int dma_declare_contiguous(struct device *dev, phys_addr_t size,
 					 phys_addr_t base, phys_addr_t limit)
 {
+	struct cma *cma;
 	int ret;
-	ret = dma_contiguous_reserve_area(size, &base, limit);
+	ret = dma_contiguous_reserve_area(size, base, limit, &cma, true);
 	if (ret == 0)
-		ret = dma_contiguous_add_device(dev, base);
+		dev_set_cma_area(dev, cma);
+
 	return ret;
 }
 
+unsigned long dma_get_cma_size_int_byte(struct device *dev);
 struct page *dma_alloc_from_contiguous(struct device *dev, int count,
 				       unsigned int order);
 bool dma_release_from_contiguous(struct device *dev, struct page *pages,
@@ -117,9 +119,23 @@ bool dma_release_from_contiguous(struct device *dev, struct page *pages,
 
 #else
 
-#define MAX_CMA_AREAS	(0)
+static inline struct cma *dev_get_cma_area(struct device *dev)
+{
+	return NULL;
+}
+
+static inline void dev_set_cma_area(struct device *dev, struct cma *cma) { }
+
+static inline void dma_contiguous_set_default(struct cma *cma) { }
 
 static inline void dma_contiguous_reserve(phys_addr_t limit) { }
+
+static inline int dma_contiguous_reserve_area(phys_addr_t size, phys_addr_t base,
+				       phys_addr_t limit, struct cma **res_cma,
+				       bool fixed)
+{
+	return -ENOSYS;
+}
 
 static inline
 int dma_declare_contiguous(struct device *dev, phys_addr_t size,
@@ -128,6 +144,7 @@ int dma_declare_contiguous(struct device *dev, phys_addr_t size,
 	return -ENOSYS;
 }
 
+unsigned long dma_get_cma_size_int_byte(struct device *dev) {return 0};
 static inline
 struct page *dma_alloc_from_contiguous(struct device *dev, int count,
 				       unsigned int order)

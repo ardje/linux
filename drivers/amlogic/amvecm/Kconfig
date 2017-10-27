@@ -1,14 +1,15 @@
 #
-# AMLOGIC tvin devices configuration
+# AMLOGIC amvecm devices configuration
 #
 
-menu "Amlogic VE & CM"
+comment "Amlogic VECM Drivers"
+
+menu "Amlogic amvecm Driver"
 
 config AM_VECM
-	tristate "Amlogic VE & CM"
-	default n
-	help
-		Video Enhancement & Color Management.
+        boolean "Amlogic amvecm driver"
+        default n
+        help
+                "Amlogic amvecm module init"
 
 endmenu
-

@@ -4,61 +4,15 @@
 
 # Object file lists.
 
-ifeq ($(CONFIG_ARCH_MESON1),y)
-obj-y = m1/
-endif
-ifeq ($(CONFIG_ARCH_MESON2),y)
-obj-y = m2/
-endif
-ifeq ($(CONFIG_ARCH_MESON3),y)
-obj-y = m3/
-endif
-ifeq ($(CONFIG_ARCH_MESON6),y)
-obj-y = m6/
-endif
-ifeq ($(CONFIG_ARCH_MESON6TV),y)
-obj-y = m6tv/
-endif
-ifeq ($(CONFIG_ARCH_MESON6TVD),y)
-obj-y = m6tvd/
-endif
-ifeq ($(CONFIG_ARCH_MESON8),y)
-obj-y = m8/
-endif
-ifeq ($(CONFIG_ARCH_MESON8B),y)
-obj-y = m8b/
-endif
+
 
 obj-$(CONFIG_AM_STREAMING) += amports.o
 
-AMPORTS_OBJS = amstream.o streambuf.o vdec.o adec.o tsdemux.o psparser.o esparser.o rmparser.o amvdec.o amstream_profile.o tsync_pcr.o
+AMPORTS_OBJS = amstream.o streambuf.o vdec.o adec.o tsdemux.o psparser.o esparser.o rmparser.o amvdec.o amstream_profile.o tsync_pcr.o amports_gate.o gp_pll.o thread_rw.o
 
-ifeq ($(CONFIG_ARCH_MESON8B),y)
-amports-y    := amstream.o streambuf.o vdec.o adec.o tsdemux.o psparser.o esparser.o rmparser.o amvdec.o amstream_profile.o  tsync_pcr.o
-else
-ifeq ($(CONFIG_ARCH_MESON8),y)
 amports-objs := $(AMPORTS_OBJS)
 amports-y    := $(AMPORTS_OBJS)
-else
-ifeq ($(CONFIG_ARCH_MESON6),y)
-amports-objs := $(AMPORTS_OBJS)
-amports-y    := $(AMPORTS_OBJS)
-else
-ifeq ($(CONFIG_ARCH_MESON6TV),y)
-amports-objs := $(AMPORTS_OBJS)
-amports-y    := $(AMPORTS_OBJS)
-else
-ifeq ($(CONFIG_ARCH_MESON6TVD),y)
-amports-objs := $(AMPORTS_OBJS)
-amports-y    := $(AMPORTS_OBJS)
-else
-amports-objs := $(AMPORTS_OBJS) amve.o amcm.o
-amports-y    := $(AMPORTS_OBJS) amve.o amcm.o
-endif
-endif
-endif
-endif
-endif
+
 
 obj-$(CONFIG_AM_VDEC_MPEG12) += amvdec_mpeg12.o
 amvdec_mpeg12-objs := vmpeg12.o
@@ -88,6 +42,10 @@ obj-$(CONFIG_AM_VDEC_H265) += amvdec_h265.o
 amvdec_h265-objs := vh265.o
 amvdec_h265-y    := vh265.o
 
+obj-$(CONFIG_AM_VDEC_VP9) += amvdec_vp9.o
+amvdec_vp9-objs := vvp9.o vp9_mm.o
+amvdec_vp9-y    := vvp9.o vp9_mm.o
+
 obj-$(CONFIG_AM_VDEC_MJPEG) += amvdec_mjpeg.o
 amvdec_mjpeg-objs := vmjpeg.o
 amvdec_mjpeg-y    := vmjpeg.o
@@ -96,43 +54,28 @@ obj-$(CONFIG_AM_VDEC_REAL) += amvdec_real.o
 amvdec_real-objs := vreal.o
 amvdec_real-y    := vreal.o
 
-ifeq ($(CONFIG_ARCH_MESON6TV),y)
 obj-$(CONFIG_AM_VDEC_AVS) += amvdec_avs.o
-amvdec_avs-objs := vavs.o
-amvdec_avs-y    := vavs.o
-else
-ifeq ($(CONFIG_ARCH_MESON6TVD),y)
-obj-$(CONFIG_AM_VDEC_AVS) += amvdec_avs.o
-amvdec_avs-objs := vavs.o
-amvdec_avs-y    := vavs.o
-else
-ifeq ($(CONFIG_ARCH_MESON8B),y)
-obj-$(CONFIG_AM_VDEC_AVS) += amvdec_avs.o
-amvdec_avs-objs := vavs.o
-amvdec_avs-y    := vavs.o
-else
-ifeq ($(CONFIG_ARCH_MESON8),y)
-obj-$(CONFIG_AM_VDEC_AVS) += amvdec_avs.o
-amvdec_avs-objs := vavs.o
-amvdec_avs-y    := vavs.o
-endif
-endif
-endif
-endif
+amvdec_avs-objs := vavs.o avsp_trans.o
+amvdec_avs-y    := vavs.o avsp_trans.o
 
 obj-$(CONFIG_AM_JPEGDEC) += jpegdec.o
 
-obj-$(CONFIG_AM_ENCODER) += encoder.o
-obj-$(CONFIG_AM_JPEG_ENCODER) += jpegenc.o
+obj-$(CONFIG_AM_ENCODER) += amvenc_avc.o
+amvenc_avc-objs := encoder.o
+amvenc_avc-y    := encoder.o
+
+obj-$(CONFIG_AM_JPEG_ENCODER) += amvenc_jpeg.o
+amvenc_jpeg-objs := jpegenc.o
+amvenc_jpeg-y    := jpegenc.o
+
 obj-$(CONFIG_AM_PIC_DEC) += picdec.o
 obj-$(CONFIG_AM_VIDEO) += amvideo.o
-ifeq ($(CONFIG_ARCH_MESON8),y)
-amvideo-objs := video.o vpp.o video_prot.o
-amvideo-y    := video.o vpp.o video_prot.o
-else
+
 amvideo-objs := video.o vpp.o
 amvideo-y    := video.o vpp.o
-endif
+
+#amvideo-objs := video_prot.o
+#amvideo-y    := video_prot.o
 
 ifeq ($(CONFIG_AM_VIDEOCAPTURE),y)
 amports-objs +=  amvideocap.o
@@ -155,7 +98,10 @@ obj-$(CONFIG_AM_SUBTITLE) += subtitle.o
 
 obj-$(CONFIG_VSYNC_RDMA) += rdma.o
 
+obj-y += arch/
+obj-y += cnm/
 
 ifneq ($(CONFIG_AM_DVB),)
-EXTRA_CFLAGS = -DENABLE_DEMUX_DRIVER -DMODIFY_TIMESTAMP_INC_WITH_PLL -DCALC_CACHED_TIME #-DUSE_VMASTER_MODE
+##EXTRA_CFLAGS = -DENABLE_DEMUX_DRIVER -DMODIFY_TIMESTAMP_INC_WITH_PLL -DCALC_CACHED_TIME #-DUSE_VMASTER_MODE
+ccflags-y = -DENABLE_DEMUX_DRIVER -DMODIFY_TIMESTAMP_INC_WITH_PLL -DCALC_CACHED_TIME #-DUSE_VMASTER_MODE
 endif

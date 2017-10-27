@@ -1,23 +1,19 @@
 /*
- * AMLOGIC PTS Manager Driver.
+ * include/linux/amlogic/amports/tsync.h
+ *
+ * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the named License,
- * or any later version.
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA
- *
- * Author:  Tim Yao <timyao@amlogic.com>
- *
- */
+*/
 
 #ifndef TSYNC_H
 #define TSYNC_H
@@ -28,30 +24,43 @@
 #define AV_DISCONTINUE_THREDHOLD_MIN    (TIME_UNIT90K * 3)
 #define AV_DISCONTINUE_THREDHOLD_MAX    (TIME_UNIT90K * 60)
 
-typedef enum {
-    VIDEO_START,
-    VIDEO_PAUSE,
-    VIDEO_STOP,
-    VIDEO_TSTAMP_DISCONTINUITY,
-    AUDIO_START,
-    AUDIO_PAUSE,
-    AUDIO_RESUME,
-    AUDIO_STOP,
-    AUDIO_TSTAMP_DISCONTINUITY,
-    AUDIO_PRE_START
-} avevent_t;
+enum avevent_e {
+	VIDEO_START,
+	VIDEO_PAUSE,
+	VIDEO_STOP,
+	VIDEO_TSTAMP_DISCONTINUITY,
+	AUDIO_START,
+	AUDIO_PAUSE,
+	AUDIO_RESUME,
+	AUDIO_STOP,
+	AUDIO_TSTAMP_DISCONTINUITY,
+	AUDIO_PRE_START
+};
 
-typedef enum {
-    TSYNC_MODE_VMASTER,
-    TSYNC_MODE_AMASTER,
-    TSYNC_MODE_PCRMASTER,
-} tsync_mode_t;
+enum tsync_mode_e {
+	TSYNC_MODE_VMASTER,
+	TSYNC_MODE_AMASTER,
+	TSYNC_MODE_PCRMASTER,
+};
 
-extern void tsync_avevent_locked(avevent_t event, u32 param);
+extern bool disable_slow_sync;
+
+#ifdef MODIFY_TIMESTAMP_INC_WITH_PLL
+extern void set_timestamp_inc_factor(u32 factor);
+#endif
+
+#ifdef CALC_CACHED_TIME
+extern int pts_cached_time(u8 type);
+#endif
+
+extern int get_vsync_pts_inc_mode(void);
+
+
+extern void tsync_avevent_locked(enum avevent_e event, u32 param);
 
 extern void tsync_mode_reinit(void);
 
-extern void tsync_avevent(avevent_t event, u32 param);
+extern void tsync_avevent(enum avevent_e event, u32 param);
 
 extern void tsync_audio_break(int audio_break);
 
@@ -84,8 +93,6 @@ extern void tsync_set_sync_adiscont_diff(u32 discontinue_diff);
 extern void tsync_set_sync_vdiscont_diff(u32 discontinue_diff);
 extern int tsync_set_apts(unsigned pts);
 
-
-
 extern void tsync_set_automute_on(int automute_on);
 
 extern int tsync_get_debug_pts_checkin(void);
@@ -105,7 +112,7 @@ extern int tsync_set_av_threshold_max(int max);
 
 static inline u32 tsync_vpts_discontinuity_margin(void)
 {
-    return tsync_get_av_threshold_min();
+	return tsync_get_av_threshold_min();
 }
 
-#endif /* TSYNC_H */
+#endif				/* TSYNC_H */

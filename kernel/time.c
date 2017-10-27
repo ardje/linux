@@ -11,7 +11,7 @@
  * Modification history kernel/time.c
  *
  * 1993-09-02    Philip Gladstone
- *      Created file with time related functions from sched.c and adjtimex()
+ *      Created file with time related functions from sched/core.c and adjtimex()
  * 1993-10-08    Torsten Duwe
  *      adjtime interface update and CMOS clock write code
  * 1995-08-13    Torsten Duwe
@@ -195,10 +195,6 @@ SYSCALL_DEFINE2(settimeofday, struct timeval __user *, tv,
 	if (tv) {
 		if (copy_from_user(&user_tv, tv, sizeof(*tv)))
 			return -EFAULT;
-
-		if (!timeval_valid(&user_tv))
-			return -EINVAL;
-
 		new_ts.tv_sec = user_tv.tv_sec;
 		new_ts.tv_nsec = user_tv.tv_usec * NSEC_PER_USEC;
 	}

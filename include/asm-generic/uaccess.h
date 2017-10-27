@@ -3,7 +3,7 @@
 
 /*
  * User space memory access functions, these should work
- * on a ny machine that has kernel and user data in the same
+ * on any machine that has kernel and user data in the same
  * address space, e.g. all NOMMU machines.
  */
 #include <linux/sched.h>
@@ -163,7 +163,7 @@ static inline __must_check long __copy_to_user(void __user *to,
 
 #define put_user(x, ptr)					\
 ({								\
-	might_sleep();						\
+	might_fault();						\
 	access_ok(VERIFY_WRITE, ptr, sizeof(*ptr)) ?		\
 		__put_user(x, ptr) :				\
 		-EFAULT;					\
@@ -225,21 +225,17 @@ extern int __put_user_bad(void) __attribute__((noreturn));
 
 #define get_user(x, ptr)					\
 ({								\
-	might_sleep();						\
+	might_fault();						\
 	access_ok(VERIFY_READ, ptr, sizeof(*ptr)) ?		\
 		__get_user(x, ptr) :				\
-		((x) = (__typeof__(*(ptr)))0,-EFAULT);		\
+		-EFAULT;					\
 })
 
 #ifndef __get_user_fn
 static inline int __get_user_fn(size_t size, const void __user *ptr, void *x)
 {
-	size_t n = __copy_from_user(x, ptr, size);
-	if (unlikely(n)) {
-		memset(x + (size - n), 0, n);
-		return -EFAULT;
-	}
-	return 0;
+	size = __copy_from_user(x, ptr, size);
+	return size ? -EFAULT : size;
 }
 
 #define __get_user_fn(sz, u, k)	__get_user_fn(sz, u, k)
@@ -259,19 +255,17 @@ extern int __get_user_bad(void) __attribute__((noreturn));
 static inline long copy_from_user(void *to,
 		const void __user * from, unsigned long n)
 {
-	unsigned long res = n;
-	might_sleep();
-	if (likely(access_ok(VERIFY_READ, from, n)))
-		res = __copy_from_user(to, from, n);
-	if (unlikely(res))
-		memset(to + (n - res), 0, res);
-	return res;
+	might_fault();
+	if (access_ok(VERIFY_READ, from, n))
+		return __copy_from_user(to, from, n);
+	else
+		return n;
 }
 
 static inline long copy_to_user(void __user *to,
 		const void *from, unsigned long n)
 {
-	might_sleep();
+	might_fault();
 	if (access_ok(VERIFY_WRITE, to, n))
 		return __copy_to_user(to, from, n);
 	else
@@ -342,7 +336,7 @@ __clear_user(void __user *to, unsigned long n)
 static inline __must_check unsigned long
 clear_user(void __user *to, unsigned long n)
 {
-	might_sleep();
+	might_fault();
 	if (!access_ok(VERIFY_WRITE, to, n))
 		return n;
 

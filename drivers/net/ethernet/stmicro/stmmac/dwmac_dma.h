@@ -35,6 +35,10 @@
 #define DMA_CONTROL		0x00001018	/* Ctrl (Operational Mode) */
 #define DMA_INTR_ENA		0x0000101c	/* Interrupt Enable */
 #define DMA_MISSED_FRAME_CTR	0x00001020	/* Missed Frame Counter */
+
+#define ETH_MMC_ipc_intr_mask_rx        (0x0200)
+#define ETH_MMC_ipc_intr_rx         (0x0208)
+#define ETH_MMC_intr_rx             (0x0104)
 /* Rx watchdog register */
 #define DMA_RX_WATCHDOG		0x00001024
 /* AXI Bus Mode */
@@ -53,10 +57,13 @@
 #define DMA_INTR_ENA_TUE 0x00000004	/* Transmit Buffer Unavailable */
 #define DMA_INTR_ENA_RIE 0x00000040	/* Receive Interrupt */
 #define DMA_INTR_ENA_ERE 0x00004000	/* Early Receive */
-
-#define DMA_INTR_NORMAL	(DMA_INTR_ENA_NIE | DMA_INTR_ENA_RIE | \
+#if 0
+#define DMA_INTR_NORMAL (DMA_INTR_ENA_NIE | DMA_INTR_ENA_RIE | \
+			DMA_INTR_ENA_TIE|DMA_INTR_ENA_TUE)
+#else
+#define DMA_INTR_NORMAL (DMA_INTR_ENA_NIE | DMA_INTR_ENA_RIE | \
 			DMA_INTR_ENA_TIE)
-
+#endif
 /* DMA Abnormal interrupt */
 #define DMA_INTR_ENA_AIE 0x00008000	/* Abnormal Summary */
 #define DMA_INTR_ENA_FBE 0x00002000	/* Fatal Bus Error */
@@ -69,9 +76,13 @@
 #define DMA_INTR_ENA_TJE 0x00000008	/* Transmit Jabber */
 #define DMA_INTR_ENA_TSE 0x00000002	/* Transmit Stopped */
 
-#define DMA_INTR_ABNORMAL	(DMA_INTR_ENA_AIE | DMA_INTR_ENA_FBE | \
+#if 0
+#define DMA_INTR_ABNORMAL (DMA_INTR_ENA_AIE | DMA_INTR_ENA_FBE | \
+	DMA_INTR_ENA_UNE|DMA_INTR_ENA_OVE|DMA_INTR_ENA_TJE|DMA_INTR_ENA_RSE)
+#else
+#define DMA_INTR_ABNORMAL (DMA_INTR_ENA_AIE | DMA_INTR_ENA_FBE | \
 				DMA_INTR_ENA_UNE)
-
+#endif
 /* DMA default interrupt mask */
 #define DMA_INTR_DEFAULT_MASK	(DMA_INTR_NORMAL | DMA_INTR_ABNORMAL)
 
@@ -104,14 +115,13 @@
 #define DMA_STATUS_TI	0x00000001	/* Transmit Interrupt */
 #define DMA_CONTROL_FTF		0x00100000	/* Flush transmit FIFO */
 
-extern void dwmac_enable_dma_transmission(void __iomem *ioaddr);
-extern void dwmac_enable_dma_irq(void __iomem *ioaddr);
-extern void dwmac_disable_dma_irq(void __iomem *ioaddr);
-extern void dwmac_dma_start_tx(void __iomem *ioaddr);
-extern void dwmac_dma_stop_tx(void __iomem *ioaddr);
-extern void dwmac_dma_start_rx(void __iomem *ioaddr);
-extern void dwmac_dma_stop_rx(void __iomem *ioaddr);
-extern int dwmac_dma_interrupt(void __iomem *ioaddr,
-			       struct stmmac_extra_stats *x);
+void dwmac_enable_dma_transmission(void __iomem *ioaddr);
+void dwmac_enable_dma_irq(void __iomem *ioaddr);
+void dwmac_disable_dma_irq(void __iomem *ioaddr);
+void dwmac_dma_start_tx(void __iomem *ioaddr);
+void dwmac_dma_stop_tx(void __iomem *ioaddr);
+void dwmac_dma_start_rx(void __iomem *ioaddr);
+void dwmac_dma_stop_rx(void __iomem *ioaddr);
+int dwmac_dma_interrupt(void __iomem *ioaddr, struct stmmac_extra_stats *x);
 
 #endif /* __DWMAC_DMA_H__ */

@@ -1,4 +1,4 @@
-/******************** (C) COPYRIGHT 2011 STMicroelectronics ********************
+/******************** (C) COPYRIGHT 2011 STMicroelectronics ****************
  *
  * File Name          : lis3dh_acc.c
  * Authors            : MSH - Motion Mems BU - Application Team
@@ -10,7 +10,7 @@
  * Date               : 2012/Feb/29
  * Description        : LIS3DH accelerometer sensor API
  *
- *******************************************************************************
+ ***************************************************************************
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -20,31 +20,31 @@
  * OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED, FOR THE SOLE
  * PURPOSE TO SUPPORT YOUR APPLICATION DEVELOPMENT.
  * AS A RESULT, STMICROELECTRONICS SHALL NOT BE HELD LIABLE FOR ANY DIRECT,
- * INDIRECT OR CONSEQUENTIAL DAMAGES WITH RESPECT TO ANY CLAIMS ARISING FROM THE
+ * INDIRECT OR CONSEQUENTIAL DAMAGES WITH RESPECT TO ANY CLAIMS ARISING FROM
  * CONTENT OF SUCH SOFTWARE AND/OR THE USE MADE BY CUSTOMERS OF THE CODING
  * INFORMATION CONTAINED HEREIN IN CONNECTION WITH THEIR PRODUCTS.
  *
- ******************************************************************************
+ **************************************************************************
  Revision 1.0.6 15/11/2010
-  first revision
-  supports sysfs;
-  no more support for ioctl;
+ first revision
+ supports sysfs;
+ no more support for ioctl;
  Revision 1.0.7 26/11/2010
-  checks for availability of interrupts pins
-  correction on FUZZ and FLAT values;
+ checks for availability of interrupts pins
+ correction on FUZZ and FLAT values;
  Revision 1.0.8 2010/Apr/01
-  corrects a bug in interrupt pin management in 1.0.7
+ corrects a bug in interrupt pin management in 1.0.7
  Revision 1.0.9: 2011/May/23
-  update_odr func correction;
+ update_odr func correction;
  Revision 1.0.10: 2011/Aug/16
-  introduces default_platform_data, i2c_read and i2c_write function rewritten,
-  manages smbus beside i2c
+ introduces default_platform_data, i2c_read and i2c_write function rewritten,
+ manages smbus beside i2c
  Revision 1.0.11: 2012/Jan/09
-  moved under input/misc
+ moved under input/misc
  Revision 1.0.12: 2012/Feb/29
-  moved use_smbus inside status struct; modified:-update_fs_range;-set_range
-  input format; allows gpio_intX to be passed as parameter at insmod time;
- ******************************************************************************/
+ moved use_smbus inside status struct; modified:-update_fs_range;-set_range
+ input format; allows gpio_intX to be passed as parameter at insmod time;
+ ***************************************************************************/
 
 #include	<linux/err.h>
 #include	<linux/errno.h>
@@ -63,8 +63,15 @@
 #include	<linux/module.h>
 #include	<linux/moduleparam.h>
 
-#include	<linux/sensor/lis3dh.h>
-#include <linux/sensor/sensor_common.h>
+#include	<linux/amlogic/sensor/lis3dh.h>
+#include <linux/amlogic/sensor/sensor_common.h>
+
+
+#if 1
+#define dprintk(x...) printk(x)
+#else
+#define dprintk(x...)
+#endif
 
 /* #define	DEBUG		1 */
 
@@ -200,20 +207,20 @@
 
 #define	RESUME_ENTRIES		17
 /* end RESUME STATE INDICES */
-
+struct i2c_client *lis3dh_acc_client;
 
 struct {
 	unsigned int cutoff_ms;
 	unsigned int mask;
 } lis3dh_acc_odr_table[] = {
-		{    1, LIS3DH_ACC_ODR1250 },
-		{    3, LIS3DH_ACC_ODR400  },
-		{    5, LIS3DH_ACC_ODR200  },
-		{   10, LIS3DH_ACC_ODR100  },
-		{   20, LIS3DH_ACC_ODR50   },
-		{   40, LIS3DH_ACC_ODR25   },
-		{  100, LIS3DH_ACC_ODR10   },
-		{ 1000, LIS3DH_ACC_ODR1    },
+	{    1, LIS3DH_ACC_ODR1250 },
+	{    3, LIS3DH_ACC_ODR400  },
+	{    5, LIS3DH_ACC_ODR200  },
+	{   10, LIS3DH_ACC_ODR100  },
+	{   20, LIS3DH_ACC_ODR50   },
+	{   40, LIS3DH_ACC_ODR25   },
+	{  100, LIS3DH_ACC_ODR10   },
+	{ 1000, LIS3DH_ACC_ODR1    },
 };
 
 static int int1_gpio = LIS3DH_ACC_DEFAULT_INT1_GPIO;
@@ -248,7 +255,7 @@ struct lis3dh_acc_status {
 	struct work_struct irq2_work;
 	struct workqueue_struct *irq2_work_queue;
 
-     int debug_flag;
+	int debug_flag;
 
 #ifdef DEBUG
 	u8 reg_addr;
@@ -270,19 +277,23 @@ static struct lis3dh_acc_platform_data default_lis3dh_acc_pdata = {
 };
 
 static int lis3dh_acc_i2c_read(struct lis3dh_acc_status *stat, u8 *buf,
-									int len)
+		int len)
 {
 	int ret;
+
+#ifdef DEBUG
+	unsigned int ii;
+#endif
 	u8 reg = buf[0];
 	u8 cmd = reg;
 
-/*
-	if (len > sizeof(buf))
-			dev_err(&stat->client->dev,
-				"read error insufficient buffer length: "
-				"len:%d, buf size=%d\n",
-				len, sizeof(buf));
-*/
+	/*
+	   if (len > sizeof(buf))
+	   dev_err(&stat->client->dev,
+	   "read error insufficient buffer length: "
+	   "len:%d, buf size=%d\n",
+	   len, sizeof(buf));
+	 */
 	if (len > 1)
 		cmd = (I2C_AUTO_INCREMENT | reg);
 	if (stat->use_smbus) {
@@ -291,24 +302,25 @@ static int lis3dh_acc_i2c_read(struct lis3dh_acc_status *stat, u8 *buf,
 			buf[0] = ret & 0xff;
 #ifdef DEBUG
 			dev_warn(&stat->client->dev,
-				"i2c_smbus_read_byte_data: ret=0x%02x, len:%d ,"
+				"i2c_smbus_read_byte_data: ret=0x%02x, len:%d,",
+				ret, len);
+			dev_warn(&stat->client->dev,
 				"command=0x%02x, buf[0]=0x%02x\n",
-				ret, len, cmd , buf[0]);
+				 cmd , buf[0]);
 #endif
 		} else if (len > 1) {
 			ret = i2c_smbus_read_i2c_block_data(stat->client,
-								cmd, len, buf);
+					cmd, len, buf);
 #ifdef DEBUG
 			dev_warn(&stat->client->dev,
-				"i2c_smbus_read_i2c_block_data: ret:%d len:%d, "
-				"command=0x%02x, ",
-				ret, len, cmd);
-			unsigned int ii;
+				"i2c_smbus_read_i2c_block_data: ret:%d len:%d,",
+				ret, len);
+			dev_warn(&stat->client->dev, "command=0x%02x", cmd);
 			for (ii = 0; ii < len; ii++)
-				printk(KERN_DEBUG "buf[%d]=0x%02x,",
-								ii, buf[ii]);
+				dprintk(KERN_DEBUG "buf[%d]=0x%02x,",
+						ii, buf[ii]);
 
-			printk("\n");
+			dprintk("\n");
 #endif
 		} else
 			ret = -1;
@@ -330,7 +342,7 @@ static int lis3dh_acc_i2c_read(struct lis3dh_acc_status *stat, u8 *buf,
 }
 
 static int lis3dh_acc_i2c_write(struct lis3dh_acc_status *stat, u8 *buf,
-									int len)
+		int len)
 {
 	int ret;
 	u8 reg, value;
@@ -344,28 +356,31 @@ static int lis3dh_acc_i2c_write(struct lis3dh_acc_status *stat, u8 *buf,
 	if (stat->use_smbus) {
 		if (len == 1) {
 			ret = i2c_smbus_write_byte_data(stat->client,
-								reg, value);
+					reg, value);
 #ifdef DEBUG
 			dev_warn(&stat->client->dev,
-				"i2c_smbus_write_byte_data: ret=%d, len:%d, "
+				"i2c_smbus_write_byte_data: ret=%d, len:%d,",
+				ret, len);
+			dev_warn(&stat->client->dev,
 				"command=0x%02x, value=0x%02x\n",
-				ret, len, reg , value);
+				reg , value);
 #endif
 			return ret;
 		} else if (len > 1) {
 			ret = i2c_smbus_write_i2c_block_data(stat->client,
-							reg, len, buf + 1);
+					reg, len, buf + 1);
 #ifdef DEBUG
 			dev_warn(&stat->client->dev,
-				"i2c_smbus_write_i2c_block_data: ret=%d, "
-				"len:%d, command=0x%02x, ",
-				ret, len, reg);
+				"i2c_smbus_write_i2c_block_data: ret=%d,",
+				ret);
+			dev_warn(&stat->client->dev, "len:%d, command=0x%02x,",
+				len, reg);
 			unsigned int ii;
 			for (ii = 0; ii < (len + 1); ii++)
-				printk(KERN_DEBUG "value[%d]=0x%02x,",
-								ii, buf[ii]);
+				dprintk(KERN_DEBUG "value[%d]=0x%02x,",
+						ii, buf[ii]);
 
-			printk("\n");
+			dprintk("\n");
 #endif
 			return ret;
 		}
@@ -385,16 +400,15 @@ static int lis3dh_acc_hw_init(struct lis3dh_acc_status *stat)
 	buf[0] = WHO_AM_I;
 	err = lis3dh_acc_i2c_read(stat, buf, 1);
 	if (err < 0) {
-		dev_warn(&stat->client->dev, "Error reading WHO_AM_I:"
-				" is device available/working?\n");
+		dev_warn(&stat->client->dev,
+			"Error readingWHO_AM_I:is device available/working?\n");
 		goto err_firstread;
 	} else
 		stat->hw_working = 1;
 
 	if (buf[0] != WHOAMI_LIS3DH_ACC) {
 		dev_err(&stat->client->dev,
-			"device unknown. Expected: 0x%02x,"
-			" Replies: 0x%02x\n",
+			"device unknown. Expected: 0x%02x, Replies: 0x%02x\n",
 			WHOAMI_LIS3DH_ACC, buf[0]);
 		err = -1; /* choose the right coded error */
 		goto err_unknown_device;
@@ -557,13 +571,13 @@ static void lis3dh_acc_irq1_work_func(struct work_struct *work)
 {
 
 	struct lis3dh_acc_status *stat =
-	container_of(work, struct lis3dh_acc_status, irq1_work);
+		container_of(work, struct lis3dh_acc_status, irq1_work);
 	/* TODO  add interrupt service procedure.
-		 ie:lis3dh_acc_get_int1_source(stat); */
+ie:lis3dh_acc_get_int1_source(stat); */
 
 	/* ; */
 	pr_debug("%s: IRQ1 triggered\n", LIS3DH_ACC_DEV_NAME);
-/* exit: */
+	/* exit: */
 	enable_irq(stat->irq1);
 }
 
@@ -571,19 +585,19 @@ static void lis3dh_acc_irq2_work_func(struct work_struct *work)
 {
 
 	struct lis3dh_acc_status *stat =
-	container_of(work, struct lis3dh_acc_status, irq2_work);
+		container_of(work, struct lis3dh_acc_status, irq2_work);
 	/* TODO  add interrupt service procedure.
-		 ie:lis3dh_acc_get_tap_source(stat); */
+ie:lis3dh_acc_get_tap_source(stat); */
 
 	/* ; */
 
 	pr_debug("%s: IRQ2 triggered\n", LIS3DH_ACC_DEV_NAME);
-/* exit: */
+	/* exit: */
 	enable_irq(stat->irq2);
 }
 
 static int lis3dh_acc_update_fs_range(struct lis3dh_acc_status *stat,
-							u8 new_fs_range)
+		u8 new_fs_range)
 {
 	int err = -1;
 
@@ -596,7 +610,6 @@ static int lis3dh_acc_update_fs_range(struct lis3dh_acc_status *stat,
 
 	switch (new_fs_range) {
 	case LIS3DH_ACC_G_2G:
-
 		sensitivity = SENSITIVITY_2G;
 		break;
 	case LIS3DH_ACC_G_4G:
@@ -619,7 +632,7 @@ static int lis3dh_acc_update_fs_range(struct lis3dh_acc_status *stat,
 
 
 	/* Updates configuration register 4,
-	* which contains fs range setting */
+	 * which contains fs range setting */
 	buf[0] = CTRL_REG4;
 	err = lis3dh_acc_i2c_read(stat, buf, 1);
 	if (err < 0)
@@ -646,7 +659,7 @@ error:
 }
 
 static int lis3dh_acc_update_odr(struct lis3dh_acc_status *stat,
-							int poll_interval_ms)
+		int poll_interval_ms)
 {
 	int err = -1;
 	int i;
@@ -658,7 +671,7 @@ static int lis3dh_acc_update_odr(struct lis3dh_acc_status *stat,
 	 * It must be the longest interval lower then the poll interval.*/
 	for (i = ARRAY_SIZE(lis3dh_acc_odr_table) - 1; i >= 0; i--) {
 		if ((lis3dh_acc_odr_table[i].cutoff_ms <= poll_interval_ms)
-								|| (i == 0))
+				|| (i == 0))
 			break;
 	}
 	config[1] = lis3dh_acc_odr_table[i].mask;
@@ -687,52 +700,52 @@ error:
 
 
 static int lis3dh_acc_register_write(struct lis3dh_acc_status *stat,
-					u8 *buf, u8 reg_address, u8 new_value)
+		u8 *buf, u8 reg_address, u8 new_value)
 {
 	int err = -1;
 
-		/* Sets configuration register at reg_address
-		 *  NOTE: this is a straight overwrite  */
-		buf[0] = reg_address;
-		buf[1] = new_value;
-		err = lis3dh_acc_i2c_write(stat, buf, 1);
-		if (err < 0)
-			return err;
+	/* Sets configuration register at reg_address
+	 *  NOTE: this is a straight overwrite  */
+	buf[0] = reg_address;
+	buf[1] = new_value;
+	err = lis3dh_acc_i2c_write(stat, buf, 1);
+	if (err < 0)
+		return err;
 	return err;
 }
 
 /*
-static int lis3dh_acc_register_read(struct lis3dh_acc_status *stat,
-							u8 *buf, u8 reg_address)
-{
+   static int lis3dh_acc_register_read(struct lis3dh_acc_status *stat,
+   u8 *buf, u8 reg_address)
+   {
 
-	int err = -1;
-	buf[0] = (reg_address);
-	err = lis3dh_acc_i2c_read(stat, buf, 1);
-	return err;
-}
-*/
+   int err = -1;
+   buf[0] = (reg_address);
+   err = lis3dh_acc_i2c_read(stat, buf, 1);
+   return err;
+   }
+ */
 
 /*
-static int lis3dh_acc_register_update(struct lis3dh_acc_status *stat,
-		u8 *buf, u8 reg_address, u8 mask, u8 new_bit_values)
-{
-	int err = -1;
-	u8 init_val;
-	u8 updated_val;
-	err = lis3dh_acc_register_read(stat, buf, reg_address);
-	if (!(err < 0)) {
-		init_val = buf[1];
-		updated_val = ((mask & new_bit_values) | ((~mask) & init_val));
-		err = lis3dh_acc_register_write(stat, buf, reg_address,
-				updated_val);
-	}
-	return err;
-}
-*/
+   static int lis3dh_acc_register_update(struct lis3dh_acc_status *stat,
+   u8 *buf, u8 reg_address, u8 mask, u8 new_bit_values)
+   {
+   int err = -1;
+   u8 init_val;
+   u8 updated_val;
+   err = lis3dh_acc_register_read(stat, buf, reg_address);
+   if (!(err < 0)) {
+   init_val = buf[1];
+   updated_val = ((mask & new_bit_values) | ((~mask) & init_val));
+   err = lis3dh_acc_register_write(stat, buf, reg_address,
+   updated_val);
+   }
+   return err;
+   }
+ */
 
 static int lis3dh_acc_get_acceleration_data(
-				struct lis3dh_acc_status *stat, int *xyz)
+		struct lis3dh_acc_status *stat, int *xyz)
 {
 	int err = -1;
 	/* Data bytes from hardware xL, xH, yL, yH, zL, zH */
@@ -757,28 +770,30 @@ static int lis3dh_acc_get_acceleration_data(
 
 
 	xyz[0] = ((stat->pdata->negate_x) ? (-hw_d[stat->pdata->axis_map_x])
-		   : (hw_d[stat->pdata->axis_map_x]));
+			: (hw_d[stat->pdata->axis_map_x]));
 	xyz[1] = ((stat->pdata->negate_y) ? (-hw_d[stat->pdata->axis_map_y])
-		   : (hw_d[stat->pdata->axis_map_y]));
+			: (hw_d[stat->pdata->axis_map_y]));
 	xyz[2] = ((stat->pdata->negate_z) ? (-hw_d[stat->pdata->axis_map_z])
-		   : (hw_d[stat->pdata->axis_map_z]));
+			: (hw_d[stat->pdata->axis_map_z]));
 
 #ifdef DEBUG
-/*
-	pr_debug("%s read x=%d, y=%d, z=%d\n",
-			LIS3DH_ACC_DEV_NAME, xyz[0], xyz[1], xyz[2]);
-*/
+	/*
+	   pr_debug("%s read x=%d, y=%d, z=%d\n",
+	   LIS3DH_ACC_DEV_NAME, xyz[0], xyz[1], xyz[2]);
+	 */
 #endif
 	return err;
 }
 
 static void lis3dh_acc_report_values(struct lis3dh_acc_status *stat,
-					int *xyz)
+		int *xyz)
 {
-     if(stat->debug_flag)
-	      printk("%s read x=%d, y=%d, z=%d\n", LIS3DH_ACC_DEV_NAME, xyz[0], xyz[1], xyz[2]);
+	if (stat->debug_flag)
+		dprintk("%s read x=%d, y=%d, z=%d\n", LIS3DH_ACC_DEV_NAME,
+			xyz[0], xyz[1], xyz[2]);
 
-    aml_sensor_report_acc(stat->client, stat->input_dev, xyz[0], xyz[1], xyz[2]);
+	aml_sensor_report_acc(stat->client, stat->input_dev, xyz[0],
+		xyz[1], xyz[2]);
 }
 
 static int lis3dh_acc_enable(struct lis3dh_acc_status *stat)
@@ -833,7 +848,7 @@ static int write_reg(struct device *dev, const char *buf, u8 reg,
 	u8 new_val;
 	unsigned long val;
 
-	if (strict_strtoul(buf, 16, &val))
+	if (kstrtoul(buf, 16, &val))
 		return -EINVAL;
 
 	new_val = ((u8) val & mask);
@@ -847,8 +862,8 @@ static int write_reg(struct device *dev, const char *buf, u8 reg,
 }
 
 static ssize_t attr_get_delay(struct device *dev,
-				     struct device_attribute *attr,
-				     char *buf)
+		struct device_attribute *attr,
+		char *buf)
 {
 	int val;
 	struct lis3dh_acc_status *stat = dev_get_drvdata(dev);
@@ -859,17 +874,19 @@ static ssize_t attr_get_delay(struct device *dev,
 }
 
 static ssize_t attr_set_delay(struct device *dev,
-				     struct device_attribute *attr,
-				     const char *buf, size_t size)
+		struct device_attribute *attr,
+		const char *buf, size_t size)
 {
 	struct lis3dh_acc_status *stat = dev_get_drvdata(dev);
 	unsigned long interval_ms;
 
-	if (strict_strtoul(buf, 10, &interval_ms))
+	if (kstrtoul(buf, 10, &interval_ms))
 		return -EINVAL;
 	if (!interval_ms)
 		return -EINVAL;
-	interval_ms = max((unsigned int)interval_ms, stat->pdata->min_interval);
+	interval_ms = max_t(unsigned long, (unsigned int)interval_ms,
+		stat->pdata->min_interval);
+
 	mutex_lock(&stat->lock);
 	stat->pdata->poll_interval = interval_ms;
 	lis3dh_acc_update_odr(stat, interval_ms);
@@ -878,13 +895,13 @@ static ssize_t attr_set_delay(struct device *dev,
 }
 
 static ssize_t attr_get_range(struct device *dev,
-			       struct device_attribute *attr, char *buf)
+		struct device_attribute *attr, char *buf)
 {
 	char val;
 	struct lis3dh_acc_status *stat = dev_get_drvdata(dev);
 	char range = 2;
 	mutex_lock(&stat->lock);
-	val = stat->pdata->fs_range ;
+	val = stat->pdata->fs_range;
 	switch (val) {
 	case LIS3DH_ACC_G_2G:
 		range = 2;
@@ -904,14 +921,14 @@ static ssize_t attr_get_range(struct device *dev,
 }
 
 static ssize_t attr_set_range(struct device *dev,
-			      struct device_attribute *attr,
-			      const char *buf, size_t size)
+		struct device_attribute *attr,
+		const char *buf, size_t size)
 {
 	struct lis3dh_acc_status *stat = dev_get_drvdata(dev);
 	unsigned long val;
 	u8 range;
 	int err;
-	if (strict_strtoul(buf, 10, &val))
+	if (kstrtoul(buf, 10, &val))
 		return -EINVAL;
 	switch (val) {
 	case 2:
@@ -927,8 +944,8 @@ static ssize_t attr_set_range(struct device *dev,
 		range = LIS3DH_ACC_G_16G;
 		break;
 	default:
-		dev_err(&stat->client->dev, "invalid range request: %lu,"
-				" discarded\n", val);
+		dev_err(&stat->client->dev, "invalid range request: %lu,", val);
+		dev_err(&stat->client->dev, "discarded\n");
 		return -EINVAL;
 	}
 	mutex_lock(&stat->lock);
@@ -945,7 +962,7 @@ static ssize_t attr_set_range(struct device *dev,
 }
 
 static ssize_t attr_get_enable(struct device *dev,
-			       struct device_attribute *attr, char *buf)
+		struct device_attribute *attr, char *buf)
 {
 	struct lis3dh_acc_status *stat = dev_get_drvdata(dev);
 	int val = atomic_read(&stat->enabled);
@@ -953,13 +970,13 @@ static ssize_t attr_get_enable(struct device *dev,
 }
 
 static ssize_t attr_set_enable(struct device *dev,
-			       struct device_attribute *attr,
-			       const char *buf, size_t size)
+		struct device_attribute *attr,
+		const char *buf, size_t size)
 {
 	struct lis3dh_acc_status *stat = dev_get_drvdata(dev);
 	unsigned long val;
 
-	if (strict_strtoul(buf, 10, &val))
+	if (kstrtoul(buf, 10, &val))
 		return -EINVAL;
 
 	if (val)
@@ -1083,38 +1100,37 @@ static ssize_t attr_get_click_tw(struct device *dev,
 static ssize_t attr_get_debug(struct device *dev,
 		struct device_attribute *attr,	char *buf)
 {
-     struct i2c_client *client = to_i2c_client(dev);
-     struct lis3dh_acc_status *stat = i2c_get_clientdata(client);
-     
+	struct i2c_client *client = to_i2c_client(dev);
+	struct lis3dh_acc_status *stat = i2c_get_clientdata(client);
+
 	return sprintf(buf, "%d\n", stat->debug_flag);
 }
 
 static ssize_t attr_set_debug(struct device *dev,
 		struct device_attribute *attr,	const char *buf, size_t size)
 {
-     struct i2c_client *client = to_i2c_client(dev);
-     struct lis3dh_acc_status *stat = i2c_get_clientdata(client);
-     
-     if(!strncmp(buf, "0", 1))
-         stat->debug_flag = 0;
-     else if(!strncmp(buf, "1", 1)) {
-         stat->debug_flag = 1;
-     }
-     
+	struct i2c_client *client = to_i2c_client(dev);
+	struct lis3dh_acc_status *stat = i2c_get_clientdata(client);
+
+	if (!strncmp(buf, "0", 1))
+		stat->debug_flag = 0;
+	else if (!strncmp(buf, "1", 1))
+		stat->debug_flag = 1;
+
 	return size;
 }
 
 #ifdef DEBUG
 /* PAY ATTENTION: These DEBUG functions don't manage resume_state */
 static ssize_t attr_reg_set(struct device *dev, struct device_attribute *attr,
-				const char *buf, size_t size)
+		const char *buf, size_t size)
 {
 	int rc;
 	struct lis3dh_acc_status *stat = dev_get_drvdata(dev);
 	u8 x[2];
 	unsigned long val;
 
-	if (strict_strtoul(buf, 16, &val))
+	if (kstrtoul(buf, 16, &val))
 		return -EINVAL;
 	mutex_lock(&stat->lock);
 	x[0] = stat->reg_addr;
@@ -1126,7 +1142,7 @@ static ssize_t attr_reg_set(struct device *dev, struct device_attribute *attr,
 }
 
 static ssize_t attr_reg_get(struct device *dev, struct device_attribute *attr,
-				char *buf)
+		char *buf)
 {
 	ssize_t ret;
 	struct lis3dh_acc_status *stat = dev_get_drvdata(dev);
@@ -1143,11 +1159,11 @@ static ssize_t attr_reg_get(struct device *dev, struct device_attribute *attr,
 }
 
 static ssize_t attr_addr_set(struct device *dev, struct device_attribute *attr,
-				const char *buf, size_t size)
+		const char *buf, size_t size)
 {
 	struct lis3dh_acc_status *stat = dev_get_drvdata(dev);
 	unsigned long val;
-	if (strict_strtoul(buf, 16, &val))
+	if (kstrtoul(buf, 16, &val))
 		return -EINVAL;
 	mutex_lock(&stat->lock);
 	stat->reg_addr = val;
@@ -1169,7 +1185,8 @@ static struct device_attribute attributes[] = {
 	__ATTR(click_source, 0444, attr_get_click_source, NULL),
 	__ATTR(click_threshold, 0664, attr_get_click_ths, attr_set_click_ths),
 	__ATTR(click_timelimit, 0664, attr_get_click_tlim, attr_set_click_tlim),
-	__ATTR(click_timelatency, 0664, attr_get_click_tlat,attr_set_click_tlat),
+	__ATTR(click_timelatency, 0664, attr_get_click_tlat,
+		attr_set_click_tlat),
 	__ATTR(click_timewindow, 0664, attr_get_click_tw, attr_set_click_tw),
 	__ATTR(debug, 0664, attr_get_debug, attr_set_debug),
 
@@ -1208,19 +1225,19 @@ static void lis3dh_acc_input_work_func(struct work_struct *work)
 
 	int xyz[3] = { 0 };
 	int err;
-  
+
 	stat = container_of((struct delayed_work *)work,
 			struct lis3dh_acc_status, input_work);
 
 	mutex_lock(&stat->lock);
 	err = lis3dh_acc_get_acceleration_data(stat, xyz);
-	if (err < 0) 
-		dev_err(&stat->client->dev, "get_acceleration_data failed\n"); 
+	if (err < 0)
+		dev_err(&stat->client->dev, "get_acceleration_data failed\n");
 	else
 		lis3dh_acc_report_values(stat, xyz);
 
 	schedule_delayed_work(&stat->input_work, msecs_to_jiffies(
-			stat->pdata->poll_interval));
+				stat->pdata->poll_interval));
 	mutex_unlock(&stat->lock);
 }
 
@@ -1243,27 +1260,29 @@ static int lis3dh_acc_validate_pdata(struct lis3dh_acc_status *stat)
 	/* checks for correctness of minimal polling period */
 	stat->pdata->min_interval =
 		max((unsigned int)LIS3DH_ACC_MIN_POLL_PERIOD_MS,
-						stat->pdata->min_interval);
+				stat->pdata->min_interval);
 
 	stat->pdata->poll_interval = max(stat->pdata->poll_interval,
 			stat->pdata->min_interval);
 
 	if (stat->pdata->axis_map_x > 2 ||
-		stat->pdata->axis_map_y > 2 ||
-		 stat->pdata->axis_map_z > 2) {
-		dev_err(&stat->client->dev, "invalid axis_map value "
-			"x:%u y:%u z%u\n", stat->pdata->axis_map_x,
-					stat->pdata->axis_map_y,
-						stat->pdata->axis_map_z);
+			stat->pdata->axis_map_y > 2 ||
+			stat->pdata->axis_map_z > 2) {
+		dev_err(&stat->client->dev,
+			"invalid axis_map value x:%u y:%u z%u\n",
+			stat->pdata->axis_map_x,
+			stat->pdata->axis_map_y,
+			stat->pdata->axis_map_z);
 		return -EINVAL;
 	}
 
 	/* Only allow 0 and 1 for negation boolean flag */
 	if (stat->pdata->negate_x > 1 || stat->pdata->negate_y > 1
 			|| stat->pdata->negate_z > 1) {
-		dev_err(&stat->client->dev, "invalid negate value "
-			"x:%u y:%u z:%u\n", stat->pdata->negate_x,
-				stat->pdata->negate_y, stat->pdata->negate_z);
+		dev_err(&stat->client->dev,
+			"invalid negate value x:%u y:%u z:%u\n",
+			stat->pdata->negate_x,
+			stat->pdata->negate_y, stat->pdata->negate_z);
 		return -EINVAL;
 	}
 
@@ -1310,7 +1329,7 @@ static int lis3dh_acc_input_init(struct lis3dh_acc_status *stat)
 	input_set_abs_params(stat->input_dev, ABS_MISC, INT_MIN, INT_MAX, 0, 0);
 	/*	next is used for interruptB sources data if the case */
 	input_set_abs_params(stat->input_dev, ABS_WHEEL, INT_MIN,
-								INT_MAX, 0, 0);
+			INT_MAX, 0, 0);
 
 
 	err = input_register_device(stat->input_dev);
@@ -1345,15 +1364,14 @@ static int lis3dh_acc_probe(struct i2c_client *client,
 			I2C_FUNC_SMBUS_WORD_DATA | I2C_FUNC_SMBUS_I2C_BLOCK);
 
 	int err = -1;
-   
+
 	dev_info(&client->dev, "probe start.\n");
 
 	stat = kzalloc(sizeof(struct lis3dh_acc_status), GFP_KERNEL);
 	if (stat == NULL) {
 		err = -ENOMEM;
 		dev_err(&client->dev,
-				"failed to allocate memory for module data: "
-					"%d\n", err);
+			"failed to allocate memory for module data: %d\n", err);
 		goto exit_check_functionality_failed;
 	}
 
@@ -1390,11 +1408,11 @@ static int lis3dh_acc_probe(struct i2c_client *client,
 		default_lis3dh_acc_pdata.gpio_int1 = int1_gpio;
 		default_lis3dh_acc_pdata.gpio_int2 = int2_gpio;
 		memcpy(stat->pdata, &default_lis3dh_acc_pdata,
-							sizeof(*stat->pdata));
+				sizeof(*stat->pdata));
 		dev_info(&client->dev, "using default plaform_data\n");
 	} else {
 		memcpy(stat->pdata, client->dev.platform_data,
-							sizeof(*stat->pdata));
+				sizeof(*stat->pdata));
 	}
 
 	err = lis3dh_acc_validate_pdata(stat);
@@ -1413,45 +1431,43 @@ static int lis3dh_acc_probe(struct i2c_client *client,
 
 	if (stat->pdata->gpio_int1 >= 0) {
 		stat->irq1 = gpio_to_irq(stat->pdata->gpio_int1);
-		pr_info("%s: %s has set irq1 to irq: %d, "
-							"mapped on gpio:%d\n",
-			LIS3DH_ACC_DEV_NAME, __func__, stat->irq1,
-							stat->pdata->gpio_int1);
+		pr_info("%s: %s has set irq1 to irq: %d, mapped on gpio:%d\n",
+				LIS3DH_ACC_DEV_NAME, __func__, stat->irq1,
+				stat->pdata->gpio_int1);
 	}
-  
+
 	if (stat->pdata->gpio_int2 >= 0) {
 		stat->irq2 = gpio_to_irq(stat->pdata->gpio_int2);
-		pr_info("%s: %s has set irq2 to irq: %d, "
-							"mapped on gpio:%d\n",
+		pr_info("%s: %s has set irq2 to irq: %d, mapped on gpio:%d\n",
 			LIS3DH_ACC_DEV_NAME, __func__, stat->irq2,
-							stat->pdata->gpio_int2);
+			stat->pdata->gpio_int2);
 	}
 
 	memset(stat->resume_state, 0, ARRAY_SIZE(stat->resume_state));
 
 	stat->resume_state[RES_CTRL_REG1] = (ALL_ZEROES |
-					LIS3DH_ACC_ENABLE_ALL_AXES);
+			LIS3DH_ACC_ENABLE_ALL_AXES);
 	stat->resume_state[RES_CTRL_REG4] = (ALL_ZEROES | CTRL_REG4_BDU_ENABLE);
 
-/*
-	stat->resume_state[RES_CTRL_REG2] = ALL_ZEROES;
-	stat->resume_state[RES_CTRL_REG3] = ALL_ZEROES;
-	stat->resume_state[RES_CTRL_REG4] = ALL_ZEROES;
-	stat->resume_state[RES_CTRL_REG5] = ALL_ZEROES;
-	stat->resume_state[RES_CTRL_REG6] = ALL_ZEROES;
+	/*
+	   stat->resume_state[RES_CTRL_REG2] = ALL_ZEROES;
+	   stat->resume_state[RES_CTRL_REG3] = ALL_ZEROES;
+	   stat->resume_state[RES_CTRL_REG4] = ALL_ZEROES;
+	   stat->resume_state[RES_CTRL_REG5] = ALL_ZEROES;
+	   stat->resume_state[RES_CTRL_REG6] = ALL_ZEROES;
 
-	stat->resume_state[RES_TEMP_CFG_REG] = ALL_ZEROES;
-	stat->resume_state[RES_FIFO_CTRL_REG] = ALL_ZEROES;
-	stat->resume_state[RES_INT_CFG1] = ALL_ZEROES;
-	stat->resume_state[RES_INT_THS1] = ALL_ZEROES;
-	stat->resume_state[RES_INT_DUR1] = ALL_ZEROES;
+	   stat->resume_state[RES_TEMP_CFG_REG] = ALL_ZEROES;
+	   stat->resume_state[RES_FIFO_CTRL_REG] = ALL_ZEROES;
+	   stat->resume_state[RES_INT_CFG1] = ALL_ZEROES;
+	   stat->resume_state[RES_INT_THS1] = ALL_ZEROES;
+	   stat->resume_state[RES_INT_DUR1] = ALL_ZEROES;
 
-	stat->resume_state[RES_TT_CFG] = ALL_ZEROES;
-	stat->resume_state[RES_TT_THS] = ALL_ZEROES;
-	stat->resume_state[RES_TT_LIM] = ALL_ZEROES;
-	stat->resume_state[RES_TT_TLAT] = ALL_ZEROES;
-	stat->resume_state[RES_TT_TW] = ALL_ZEROES;
-*/
+	   stat->resume_state[RES_TT_CFG] = ALL_ZEROES;
+	   stat->resume_state[RES_TT_THS] = ALL_ZEROES;
+	   stat->resume_state[RES_TT_LIM] = ALL_ZEROES;
+	   stat->resume_state[RES_TT_TLAT] = ALL_ZEROES;
+	   stat->resume_state[RES_TT_TW] = ALL_ZEROES;
+	 */
 
 	err = lis3dh_acc_device_power_on(stat);
 	if (err < 0) {
@@ -1465,14 +1481,14 @@ static int lis3dh_acc_probe(struct i2c_client *client,
 	if (err < 0) {
 		dev_err(&client->dev, "update_fs_range failed\n");
 		goto  err_power_off;
-	}   
+	}
 
 	err = lis3dh_acc_update_odr(stat, stat->pdata->poll_interval);
 	if (err < 0) {
 		dev_err(&client->dev, "update_odr failed\n");
 		goto  err_power_off;
 	}
-   
+
 	err = lis3dh_acc_input_init(stat);
 	if (err < 0) {
 		dev_err(&client->dev, "input init failed\n");
@@ -1482,7 +1498,7 @@ static int lis3dh_acc_probe(struct i2c_client *client,
 	err = create_sysfs_interfaces(&stat->input_dev->dev);
 	if (err < 0) {
 		dev_err(&client->dev,
-		   "device LIS3DH_ACC_DEV_NAME sysfs register failed\n");
+			"device LIS3DH_ACC_DEV_NAME sysfs register failed\n");
 		goto err_input_cleanup;
 	}
 
@@ -1498,11 +1514,11 @@ static int lis3dh_acc_probe(struct i2c_client *client,
 		if (!stat->irq1_work_queue) {
 			err = -ENOMEM;
 			dev_err(&client->dev,
-					"cannot create work queue1: %d\n", err);
+				"cannot create work queue1: %d\n", err);
 			goto err_remove_sysfs_int;
 		}
 		err = request_irq(stat->irq1, lis3dh_acc_isr1,
-			IRQF_TRIGGER_RISING, "lis3dh_acc_irq1", stat);
+				IRQF_TRIGGER_RISING, "lis3dh_acc_irq1", stat);
 		if (err < 0) {
 			dev_err(&client->dev, "request irq1 failed: %d\n", err);
 			goto err_destoyworkqueue1;
@@ -1517,11 +1533,11 @@ static int lis3dh_acc_probe(struct i2c_client *client,
 		if (!stat->irq2_work_queue) {
 			err = -ENOMEM;
 			dev_err(&client->dev,
-					"cannot create work queue2: %d\n", err);
+				"cannot create work queue2: %d\n", err);
 			goto err_free_irq1;
 		}
 		err = request_irq(stat->irq2, lis3dh_acc_isr2,
-			IRQF_TRIGGER_RISING, "lis3dh_acc_irq2", stat);
+				IRQF_TRIGGER_RISING, "lis3dh_acc_irq2", stat);
 		if (err < 0) {
 			dev_err(&client->dev, "request irq2 failed: %d\n", err);
 			goto err_destoyworkqueue2;
@@ -1530,7 +1546,7 @@ static int lis3dh_acc_probe(struct i2c_client *client,
 	}
 
 	mutex_unlock(&stat->lock);
-
+	lis3dh_acc_client = client;
 	dev_info(&client->dev, "%s: probed\n", LIS3DH_ACC_DEV_NAME);
 
 	return 0;
@@ -1556,7 +1572,7 @@ exit_kfree_pdata:
 	kfree(stat->pdata);
 err_mutexunlock:
 	mutex_unlock(&stat->lock);
-/* err_freedata: */
+	/* err_freedata: */
 	kfree(stat);
 exit_check_functionality_failed:
 	pr_err("%s: Driver Init failed\n", LIS3DH_ACC_DEV_NAME);
@@ -1567,7 +1583,7 @@ static int lis3dh_acc_remove(struct i2c_client *client)
 {
 
 	struct lis3dh_acc_status *stat = i2c_get_clientdata(client);
-   
+
 	if (stat->pdata->gpio_int1 >= 0) {
 		free_irq(stat->irq1, stat);
 		gpio_free(stat->pdata->gpio_int1);
@@ -1593,19 +1609,19 @@ static int lis3dh_acc_remove(struct i2c_client *client)
 }
 
 #ifdef CONFIG_PM
-static int lis3dh_acc_resume(struct i2c_client *client)
+static int lis3dh_acc_resume(struct device *dev)
 {
-	struct lis3dh_acc_status *stat = i2c_get_clientdata(client);
-   
+	struct lis3dh_acc_status *stat = i2c_get_clientdata(lis3dh_acc_client);
+
 	if (stat->on_before_suspend)
 		return lis3dh_acc_enable(stat);
 	return 0;
 }
 
-static int lis3dh_acc_suspend(struct i2c_client *client, pm_message_t mesg)
+static int lis3dh_acc_suspend(struct device *dev)
 {
-	struct lis3dh_acc_status *stat = i2c_get_clientdata(client);
-        
+	struct lis3dh_acc_status *stat = i2c_get_clientdata(lis3dh_acc_client);
+
 	stat->on_before_suspend = atomic_read(&stat->enabled);
 	return lis3dh_acc_disable(stat);
 }
@@ -1615,20 +1631,23 @@ static int lis3dh_acc_suspend(struct i2c_client *client, pm_message_t mesg)
 #endif /* CONFIG_PM */
 
 static const struct i2c_device_id lis3dh_acc_id[]
-		= { { LIS3DH_ACC_DEV_NAME, 0 }, { }, };
+= { { LIS3DH_ACC_DEV_NAME, 0 }, { }, };
 
 MODULE_DEVICE_TABLE(i2c, lis3dh_acc_id);
 
+static const struct dev_pm_ops lis3dh_acc_pm_ops = {
+	.suspend_noirq = lis3dh_acc_suspend,
+	.resume_noirq  = lis3dh_acc_resume,
+};
 
 static struct i2c_driver lis3dh_acc_driver = {
 	.driver = {
-			.owner = THIS_MODULE,
-			.name = LIS3DH_ACC_DEV_NAME,
-		  },
+		.owner = THIS_MODULE,
+		.name = LIS3DH_ACC_DEV_NAME,
+		.pm = &lis3dh_acc_pm_ops,
+	},
 	.probe = lis3dh_acc_probe,
 	.remove = lis3dh_acc_remove,
-	.suspend = lis3dh_acc_suspend,
-	.resume = lis3dh_acc_resume,
 	.id_table = lis3dh_acc_id,
 };
 
@@ -1636,7 +1655,7 @@ static struct i2c_driver lis3dh_acc_driver = {
 
 static int __init lis3dh_acc_init(void)
 {
-   
+
 	return i2c_add_driver(&lis3dh_acc_driver);
 }
 
@@ -1644,8 +1663,8 @@ static void __exit lis3dh_acc_exit(void)
 {
 
 	pr_info("%s accelerometer driver exit\n",
-						LIS3DH_ACC_DEV_NAME);   
-     
+			LIS3DH_ACC_DEV_NAME);
+
 	i2c_del_driver(&lis3dh_acc_driver);
 
 	return;

@@ -116,7 +116,10 @@ struct svc_program		nfsd_program = {
 
 };
 
-u32 nfsd_supported_minorversion;
+static bool nfsd_supported_minorversions[NFSD_SUPPORTED_MINOR_VERSION + 1] = {
+	[0] = 1,
+	[1] = 1,
+};
 
 int nfsd_vers(int vers, enum vers_op change)
 {
@@ -151,15 +154,13 @@ int nfsd_minorversion(u32 minorversion, enum vers_op change)
 		return -1;
 	switch(change) {
 	case NFSD_SET:
-		nfsd_supported_minorversion = minorversion;
+		nfsd_supported_minorversions[minorversion] = true;
 		break;
 	case NFSD_CLEAR:
-		if (minorversion == 0)
-			return -1;
-		nfsd_supported_minorversion = minorversion - 1;
+		nfsd_supported_minorversions[minorversion] = false;
 		break;
 	case NFSD_TEST:
-		return minorversion <= nfsd_supported_minorversion;
+		return nfsd_supported_minorversions[minorversion];
 	case NFSD_AVAIL:
 		return minorversion <= NFSD_SUPPORTED_MINOR_VERSION;
 	}
@@ -243,6 +244,15 @@ static void nfsd_shutdown_generic(void)
 	nfsd_racache_shutdown();
 }
 
+static bool nfsd_needs_lockd(void)
+{
+#if defined(CONFIG_NFSD_V3)
+	return (nfsd_versions[2] != NULL) || (nfsd_versions[3] != NULL);
+#else
+	return (nfsd_versions[2] != NULL);
+#endif
+}
+
 static int nfsd_startup_net(int nrservs, struct net *net)
 {
 	struct nfsd_net *nn = net_generic(net, nfsd_net_id);
@@ -257,9 +267,14 @@ static int nfsd_startup_net(int nrservs, struct net *net)
 	ret = nfsd_init_socks(net);
 	if (ret)
 		goto out_socks;
-	ret = lockd_up(net);
-	if (ret)
-		goto out_socks;
+
+	if (nfsd_needs_lockd() && !nn->lockd_up) {
+		ret = lockd_up(net);
+		if (ret)
+			goto out_socks;
+		nn->lockd_up = 1;
+	}
+
 	ret = nfs4_state_start_net(net);
 	if (ret)
 		goto out_lockd;
@@ -268,7 +283,10 @@ static int nfsd_startup_net(int nrservs, struct net *net)
 	return 0;
 
 out_lockd:
-	lockd_down(net);
+	if (nn->lockd_up) {
+		lockd_down(net);
+		nn->lockd_up = 0;
+	}
 out_socks:
 	nfsd_shutdown_generic();
 	return ret;
@@ -279,7 +297,10 @@ static void nfsd_shutdown_net(struct net *net)
 	struct nfsd_net *nn = net_generic(net, nfsd_net_id);
 
 	nfs4_state_shutdown_net(net);
-	lockd_down(net);
+	if (nn->lockd_up) {
+		lockd_down(net);
+		nn->lockd_up = 0;
+	}
 	nn->nfsd_net_up = false;
 	nfsd_shutdown_generic();
 }
@@ -627,37 +648,6 @@ static __be32 map_new_errors(u32 vers, __be32 nfserr)
 	return nfserr;
 }
 
-/*
- * A write procedure can have a large argument, and a read procedure can
- * have a large reply, but no NFSv2 or NFSv3 procedure has argument and
- * reply that can both be larger than a page.  The xdr code has taken
- * advantage of this assumption to be a sloppy about bounds checking in
- * some cases.  Pending a rewrite of the NFSv2/v3 xdr code to fix that
- * problem, we enforce these assumptions here:
- */
-static bool nfs_request_too_big(struct svc_rqst *rqstp,
-				struct svc_procedure *proc)
-{
-	/*
-	 * The ACL code has more careful bounds-checking and is not
-	 * susceptible to this problem:
-	 */
-	if (rqstp->rq_prog != NFS_PROGRAM)
-		return false;
-	/*
-	 * Ditto NFSv4 (which can in theory have argument and reply both
-	 * more than a page):
-	 */
-	if (rqstp->rq_vers >= 4)
-		return false;
-	/* The reply will be small, we're OK: */
-	if (proc->pc_xdrressize > 0 &&
-	    proc->pc_xdrressize < XDR_QUADLEN(PAGE_SIZE))
-		return false;
-
-	return rqstp->rq_arg.len > PAGE_SIZE;
-}
-
 int
 nfsd_dispatch(struct svc_rqst *rqstp, __be32 *statp)
 {
@@ -670,11 +660,6 @@ nfsd_dispatch(struct svc_rqst *rqstp, __be32 *statp)
 				rqstp->rq_vers, rqstp->rq_proc);
 	proc = rqstp->rq_procinfo;
 
-	if (nfs_request_too_big(rqstp, proc)) {
-		dprintk("nfsd: NFSv%d argument too large\n", rqstp->rq_vers);
-		*statp = rpc_garbage_args;
-		return 1;
-	}
 	/*
 	 * Give the xdr decoder a chance to change this if it wants
 	 * (necessary in the NFSv4.0 compound case)

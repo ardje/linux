@@ -11,6 +11,7 @@
 #include <linux/kernel.h>
 #include <linux/kprobes.h>
 #include <linux/module.h>
+#include <asm/opcodes.h>
 
 #include "kprobes.h"
 

@@ -12,10 +12,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
- *
  */
 
 #include	<linux/err.h>
@@ -39,8 +35,14 @@
 #include        <linux/earlysuspend.h>
 #endif
 
-#include <linux/sensor/mxc622x.h>
-#include <linux/sensor/sensor_common.h>
+#include <linux/amlogic/sensor/mxc622x.h>
+#include <linux/amlogic/sensor/sensor_common.h>
+
+#if 1
+#define dprintk(x...) printk(x)
+#else
+#define dprintk(x...)
+#endif
 
 #define WHOAMI_MXC622X_ACC	0x25	/*	Expctd content for WAI	*/
 
@@ -61,7 +63,7 @@
 /*
 #define DEBUG
 #define MXC622X_DEBUG
-*/
+ */
 
 #define	MIN_INTERVAL	10
 #define	MAX_INTERVAL	100
@@ -70,14 +72,14 @@
 struct mxc622x_acc_data {
 	struct i2c_client *client;
 	struct input_dev *input_dev;
-    
+
 	struct mutex lock;
 	struct delayed_work input_work;
 
-       int poll_interval;
-       int min_interval;
-       int max_interval;
-       
+	int poll_interval;
+	int min_interval;
+	int max_interval;
+
 	int hw_initialized;/* hw_initialized =1 meas init succefull */
 	/* hw_working=0 means not tested yet */
 	int hw_working;
@@ -87,7 +89,7 @@ struct mxc622x_acc_data {
 	u8 resume_state[RESUME_ENTRIES];
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
-        struct early_suspend early_suspend;
+	struct early_suspend early_suspend;
 #endif
 };
 
@@ -98,7 +100,7 @@ struct mxc622x_acc_data {
 struct mxc622x_acc_data *mxc622x_acc_misc_data;
 struct i2c_client      *mxc622x_i2c_client;
 
-static int mxc622x_acc_i2c_read(struct mxc622x_acc_data *acc, u8 * buf, int len)
+static int mxc622x_acc_i2c_read(struct mxc622x_acc_data *acc, u8 *buf, int len)
 {
 	int err;
 	int tries = 0;
@@ -125,21 +127,21 @@ static int mxc622x_acc_i2c_read(struct mxc622x_acc_data *acc, u8 * buf, int len)
 	if (err != 2) {
 		dev_err(&acc->client->dev, "read transfer error\n");
 		err = -EIO;
-	} else {
+	} else
 		err = 0;
-	}
 
 	return err;
 }
 
-static int mxc622x_acc_i2c_write(struct mxc622x_acc_data *acc, u8 * buf, int len)
+static int mxc622x_acc_i2c_write(struct mxc622x_acc_data *acc,
+	u8 *buf, int len)
 {
 	int err;
 	int tries = 0;
 
 	struct i2c_msg msgs[] = { { .addr = acc->client->addr,
-			.flags = acc->client->flags & I2C_M_TEN,
-			.len = len + 1, .buf = buf, }, };
+		.flags = acc->client->flags & I2C_M_TEN,
+		.len = len + 1, .buf = buf, }, };
 	do {
 		err = i2c_transfer(acc->client->adapter, msgs, 1);
 		if (err != 1)
@@ -149,9 +151,8 @@ static int mxc622x_acc_i2c_write(struct mxc622x_acc_data *acc, u8 * buf, int len
 	if (err != 1) {
 		dev_err(&acc->client->dev, "write transfer error\n");
 		err = -EIO;
-	} else {
+	} else
 		err = 0;
-	}
 
 	return err;
 }
@@ -161,7 +162,7 @@ static int mxc622x_acc_hw_init(struct mxc622x_acc_data *acc)
 	int err = -1;
 	u8 buf[7];
 
-	printk(KERN_INFO "%s: hw init start\n", MXC622X_ACC_DEV_NAME);
+	dprintk(KERN_INFO "%s: hw init start\n", MXC622X_ACC_DEV_NAME);
 
 	buf[0] = WHO_AM_I;
 	err = mxc622x_acc_i2c_read(acc, buf, 1);
@@ -175,18 +176,18 @@ static int mxc622x_acc_hw_init(struct mxc622x_acc_data *acc)
 	}
 
 	acc->hw_initialized = 1;
-	printk(KERN_INFO "%s: hw init done\n", MXC622X_ACC_DEV_NAME);
+	dprintk(KERN_INFO "%s: hw init done\n", MXC622X_ACC_DEV_NAME);
 	return 0;
 
 error_firstread:
 	acc->hw_working = 0;
-	dev_warn(&acc->client->dev, "Error reading WHO_AM_I: is device "
-		"available/working?\n");
+	dev_warn(&acc->client->dev,
+		"Error reading WHO_AM_I: is device available/working?\n");
 	goto error1;
 error_unknown_device:
 	dev_err(&acc->client->dev,
-		"device unknown. Expected: 0x%x,"
-		" Replies: 0x%x\n", WHOAMI_MXC622X_ACC, buf[0]);
+		"device unknown. Expected: 0x%x, Replies: 0x%x\n",
+		WHOAMI_MXC622X_ACC, buf[0]);
 error1:
 	acc->hw_initialized = 0;
 	dev_err(&acc->client->dev, "hw init error 0x%x,0x%x: %d\n", buf[0],
@@ -248,36 +249,38 @@ static int mxc622x_acc_get_acceleration_data(struct mxc622x_acc_data *acc,
 	acc_data[0] = MXC622X_REG_DATA;
 	err = mxc622x_acc_i2c_read(acc, acc_data, 2);
 
-	if (err < 0)
-        {
-                #ifdef DEBUG
-                printk(KERN_INFO "%s I2C read error %d\n", MXC622X_ACC_I2C_NAME, err);
-                #endif
+	if (err < 0) {
+#ifdef DEBUG
+		dprintk(KERN_INFO "%s I2C read error %d\n",
+			MXC622X_ACC_I2C_NAME, err);
+#endif
 		return err;
-        }
+	}
 
 	xyz[0] = (signed char)acc_data[0];
 	xyz[1] = (signed char)acc_data[1];
 	xyz[2] = 64;
 
-      #ifdef MXC622X_DEBUG
-      printk("x = %d, y = %d\n", xyz[0], xyz[1]);
-      #endif
+#ifdef MXC622X_DEBUG
+	dprintk("x = %d, y = %d\n", xyz[0], xyz[1]);
+#endif
 
-      #ifdef MXC622X_DEBUG
+#ifdef MXC622X_DEBUG
 
-		printk(KERN_INFO "%s read x=%d, y=%d, z=%d\n",
-			MXC622X_ACC_DEV_NAME, xyz[0], xyz[1], xyz[2]);
-		printk(KERN_INFO "%s poll interval %d\n", MXC622X_ACC_DEV_NAME, acc->poll_interval);
+	dprintk(KERN_INFO "%s read x=%d, y=%d, z=%d\n",
+		MXC622X_ACC_DEV_NAME, xyz[0], xyz[1], xyz[2]);
+	dprintk(KERN_INFO "%s poll interval %d\n", MXC622X_ACC_DEV_NAME,
+		acc->poll_interval);
 
-	#endif
+#endif
 	return err;
 }
 
 static void mxc622x_acc_report_values(struct mxc622x_acc_data *acc, int *xyz)
 {
 
-	aml_sensor_report_acc(acc->client, acc->input_dev, xyz[0], xyz[1], xyz[2]);
+	aml_sensor_report_acc(acc->client, acc->input_dev,
+		xyz[0], xyz[1], xyz[2]);
 }
 
 static int mxc622x_acc_enable(struct mxc622x_acc_data *acc)
@@ -292,7 +295,7 @@ static int mxc622x_acc_enable(struct mxc622x_acc_data *acc)
 		}
 
 		schedule_delayed_work(&acc->input_work, msecs_to_jiffies(
-				acc->poll_interval));
+					acc->poll_interval));
 	}
 
 	return 0;
@@ -320,20 +323,23 @@ static int mxc622x_acc_misc_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static long mxc622x_acc_misc_ioctl(struct file *file,unsigned int cmd, unsigned long arg)
+static long mxc622x_acc_misc_ioctl(struct file *file, unsigned int cmd,
+	unsigned long arg)
 {
 	void __user *argp = (void __user *)arg;
-	//u8 buf[4];
-	//u8 mask;
-	//u8 reg_address;
-	//u8 bit_values;
+	/*u8 buf[4];
+	u8 mask;
+	u8 reg_address;
+	u8 bit_values;*/
+	u8 devid = 0;
+	u8 devinfo[DEVICE_INFO_LEN] = {0};
 	int err;
 	int interval;
-        int xyz[3] = {0};
+	int xyz[3] = {0};
 	struct mxc622x_acc_data *acc = file->private_data;
 
-//	printk(KERN_INFO "%s: %s call with cmd 0x%x and arg 0x%x\n",
-//			MXC622X_ACC_DEV_NAME, __func__, cmd, (unsigned int)arg);
+	/*dprintk(KERN_INFO "%s: %s call with cmd 0x%x and arg 0x%x\n",
+		MXC622X_ACC_DEV_NAME, __func__, cmd, (unsigned int)arg);*/
 
 	switch (cmd) {
 	case MXC622X_ACC_IOCTL_GET_DELAY:
@@ -347,7 +353,7 @@ static long mxc622x_acc_misc_ioctl(struct file *file,unsigned int cmd, unsigned 
 			return -EFAULT;
 		if (interval < 0 || interval > 1000)
 			return -EINVAL;
-		if(interval > acc->max_interval)
+		if (interval > acc->max_interval)
 			interval = acc->max_interval;
 		acc->poll_interval = max(interval,
 				acc->min_interval);
@@ -374,33 +380,32 @@ static long mxc622x_acc_misc_ioctl(struct file *file,unsigned int cmd, unsigned 
 		err = mxc622x_acc_get_acceleration_data(acc, xyz);
 		if (err < 0)
 			return err;
-		#ifdef DEBUG
-		//   printk(KERN_ALERT "%s Get coordinate xyz:[%d, %d, %d]\n",
-		//      __func__, xyz[0], xyz[1], xyz[2]);
-		#endif
+#ifdef DEBUG
+		/*dprintk(KERN_ALERT "%s Get coordinate xyz:
+		  [%d, %d, %d]\n", __func__,
+		  xyz[0], xyz[1], xyz[2]);*/
+#endif
 		if (copy_to_user(argp, xyz, sizeof(xyz))) {
-			printk(KERN_ERR " %s %d error in copy_to_user \n",
-				__func__, __LINE__);
+			dprintk(KERN_ERR "%s %d error in copy_to_user\n",
+					__func__, __LINE__);
 			return -EINVAL;
-			}
+		}
 		break;
 	case MXC622X_ACC_IOCTL_GET_CHIP_ID:
-	{
-		u8 devid = 0;
-		u8 devinfo[DEVICE_INFO_LEN] = {0};
 		err = mxc622x_acc_register_read(acc, &devid, WHO_AM_I);
 		if (err < 0) {
-			printk("%s, error read register WHO_AM_I\n", __func__);
+			dprintk("%s, error read register WHO_AM_I\n",
+					__func__);
 			return -EAGAIN;
 		}
 		sprintf(devinfo, "%s, %#x", DEVICE_INFO, devid);
 
 		if (copy_to_user(argp, devinfo, sizeof(devinfo))) {
-			printk("%s error in copy_to_user(IOCTL_GET_CHIP_ID)\n", __func__);
+			dprintk("%s error in copy_to_user(IOCTL_GET_CHIP_ID)\n",
+				__func__);
 			return -EINVAL;
 		}
-	}
-            break;
+		break;
 
 	default:
 		return -EINVAL;
@@ -410,15 +415,15 @@ static long mxc622x_acc_misc_ioctl(struct file *file,unsigned int cmd, unsigned 
 }
 
 static const struct file_operations mxc622x_acc_misc_fops = {
-        .owner = THIS_MODULE,
-        .open = mxc622x_acc_misc_open,
-        .unlocked_ioctl = mxc622x_acc_misc_ioctl,
+	.owner = THIS_MODULE,
+	.open = mxc622x_acc_misc_open,
+	.unlocked_ioctl = mxc622x_acc_misc_ioctl,
 };
 
 static struct miscdevice mxc622x_acc_misc_device = {
-        .minor = MISC_DYNAMIC_MINOR,
-        .name = MXC622X_ACC_DEV_NAME,
-        .fops = &mxc622x_acc_misc_fops,
+	.minor = MISC_DYNAMIC_MINOR,
+	.name = MXC622X_ACC_DEV_NAME,
+	.fops = &mxc622x_acc_misc_fops,
 };/* misc deive valite*/
 
 
@@ -440,16 +445,17 @@ static ssize_t mxc622x_enable_store(struct device *dev,
 	struct i2c_client *client = to_i2c_client(dev);
 	struct mxc622x_acc_data *acc = i2c_get_clientdata(client);
 
-	error = strict_strtoul(buf, 10, &data);
-    	if (error) {
-            printk(KERN_ERR "%s: strict_strtoul failed, error=0x%x\n", __func__, error);
-            return error;
+	error = kstrtoul(buf, 10, &data);
+	if (error) {
+		dprintk(KERN_ERR "%s: kstrtoul failed, error=0x%x\n",
+			__func__, error);
+		return error;
 	}
-       data = !!data;
-	if (data) 
-            mxc622x_acc_enable(acc);
-       else
-            mxc622x_acc_disable(acc);
+	data = !!data;
+	if (data)
+		mxc622x_acc_enable(acc);
+	else
+		mxc622x_acc_disable(acc);
 
 	return count;
 }
@@ -472,15 +478,17 @@ static ssize_t mxc622x_delay_store(struct device *dev,
 	struct i2c_client *client = to_i2c_client(dev);
 	struct mxc622x_acc_data *acc = i2c_get_clientdata(client);
 
-	error = strict_strtoul(buf, 10, &delay);
+	error = kstrtoul(buf, 10, &delay);
 	if (error) {
-            printk(KERN_ERR "%s: strict_strtoul failed, error=0x%x\n", __func__, error);
-            return error;
+		dprintk(KERN_ERR "%s: kstrtoul failed, error=0x%x\n",
+			__func__, error);
+		return error;
 	}
 
-	acc->poll_interval = (delay > acc->max_interval) ? acc->max_interval : delay;
-       acc->poll_interval = max(acc->poll_interval, acc->min_interval);
-    
+	acc->poll_interval =
+		(delay > acc->max_interval) ? acc->max_interval : delay;
+	acc->poll_interval = max(acc->poll_interval, acc->min_interval);
+
 	return count;
 }
 
@@ -515,7 +523,7 @@ static void mxc622x_acc_input_work_func(struct work_struct *work)
 		mxc622x_acc_report_values(acc, xyz);
 
 	schedule_delayed_work(&acc->input_work, msecs_to_jiffies(
-			acc->poll_interval));
+				acc->poll_interval));
 	mutex_unlock(&acc->lock);
 }
 
@@ -539,10 +547,10 @@ void mxc622x_acc_input_close(struct input_dev *dev)
 static int mxc622x_acc_input_init(struct mxc622x_acc_data *acc)
 {
 	int err;
-    // Polling rx data when the interrupt is not used.
-    if (1/*acc->irq1 == 0 && acc->irq1 == 0*/) {
-		INIT_DELAYED_WORK(&acc->input_work, mxc622x_acc_input_work_func);
-    }
+	/* Polling rx data when the interrupt is not used. */
+	if (1/*acc->irq1 == 0 && acc->irq1 == 0*/)
+		INIT_DELAYED_WORK(&acc->input_work,
+			mxc622x_acc_input_work_func);
 
 	acc->input_dev = input_allocate_device();
 	if (!acc->input_dev) {
@@ -569,8 +577,8 @@ static int mxc622x_acc_input_init(struct mxc622x_acc_data *acc)
 	err = input_register_device(acc->input_dev);
 	if (err) {
 		dev_err(&acc->client->dev,
-				"unable to register input polled device %s\n",
-				acc->input_dev->name);
+			"unable to register input polled device %s\n",
+			acc->input_dev->name);
 		goto err1;
 	}
 
@@ -589,8 +597,8 @@ static void mxc622x_acc_input_cleanup(struct mxc622x_acc_data *acc)
 }
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
-static void mxc622x_early_suspend (struct early_suspend* es);
-static void mxc622x_early_resume (struct early_suspend* es);
+static void mxc622x_early_suspend(struct early_suspend *es);
+static void mxc622x_early_resume(struct early_suspend *es);
 #endif
 
 static int mxc622x_acc_probe(struct i2c_client *client,
@@ -609,8 +617,8 @@ static int mxc622x_acc_probe(struct i2c_client *client,
 
 	adapter = to_i2c_adapter(client->dev.parent);
 	result = i2c_check_functionality(adapter,
-					 I2C_FUNC_SMBUS_BYTE |
-					 I2C_FUNC_SMBUS_BYTE_DATA);
+			I2C_FUNC_SMBUS_BYTE |
+			I2C_FUNC_SMBUS_BYTE_DATA);
 	if (!result)
 		goto exit_check_functionality_failed;
 	/*
@@ -622,8 +630,7 @@ static int mxc622x_acc_probe(struct i2c_client *client,
 	if (acc == NULL) {
 		err = -ENOMEM;
 		dev_err(&client->dev,
-				"failed to allocate memory for module data: "
-					"%d\n", err);
+			"failed to allocate memory for module data: %d\n", err);
 		goto exit_alloc_data_failed;
 	}
 
@@ -631,27 +638,28 @@ static int mxc622x_acc_probe(struct i2c_client *client,
 	mutex_lock(&acc->lock);
 
 	acc->client = client;
-       mxc622x_i2c_client = client;
+	mxc622x_i2c_client = client;
 	i2c_set_clientdata(client, acc);
 
 	/* read chip id */
 	tempvalue = i2c_smbus_read_word_data(client, WHO_AM_I);
 
-	if ((tempvalue & 0x003F) == WHOAMI_MXC622X_ACC) {
-		printk(KERN_INFO "%s I2C driver registered!\n",
-							MXC622X_ACC_DEV_NAME);
-	} else {
+	if ((tempvalue & 0x003F) == WHOAMI_MXC622X_ACC)
+		dprintk(KERN_INFO "%s I2C driver registered!\n",
+				MXC622X_ACC_DEV_NAME);
+	else {
 		acc->client = NULL;
-		printk(KERN_INFO "I2C driver not registered!"
-				" Device unknown 0x%x\n", tempvalue);
+		dprintk(KERN_INFO
+			"I2C driver not registered! Device unknown 0x%x\n",
+			tempvalue);
 		goto err_mutexunlockfreedata;
 	}
 
-       acc->min_interval = MIN_INTERVAL;
-       acc->max_interval = MAX_INTERVAL;
-       acc->poll_interval = POLL_INTERVAL;
+	acc->min_interval = MIN_INTERVAL;
+	acc->max_interval = MAX_INTERVAL;
+	acc->poll_interval = POLL_INTERVAL;
 	acc->hw_initialized = 0;
-       acc->hw_working = 0;
+	acc->hw_working = 0;
 
 	err = mxc622x_acc_device_power_on(acc);
 	if (err < 0) {
@@ -679,20 +687,21 @@ static int mxc622x_acc_probe(struct i2c_client *client,
 
 	/* As default, do not report information */
 	atomic_set(&acc->enabled, 0);
-    
-	err = sysfs_create_group(&acc->input_dev->dev.kobj, &mxc622x_attribute_group);
+
+	err = sysfs_create_group(&acc->input_dev->dev.kobj,
+		&mxc622x_attribute_group);
 	if (err) {
-		printk(KERN_ERR "%s: sysfs_create_group failed\n", __func__);
+		dprintk(KERN_ERR "%s: sysfs_create_group failed\n", __func__);
 		goto err_misc_unregister;
 	}
 
-       acc->on_before_suspend = 0;
+	acc->on_before_suspend = 0;
 
- #ifdef CONFIG_HAS_EARLYSUSPEND
-       acc->early_suspend.suspend = mxc622x_early_suspend;
-       acc->early_suspend.resume  = mxc622x_early_resume;
-       acc->early_suspend.level   = EARLY_SUSPEND_LEVEL_BLANK_SCREEN;
-       register_early_suspend(&acc->early_suspend);
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	acc->early_suspend.suspend = mxc622x_early_suspend;
+	acc->early_suspend.resume  = mxc622x_early_resume;
+	acc->early_suspend.level   = EARLY_SUSPEND_LEVEL_BLANK_SCREEN;
+	register_early_suspend(&acc->early_suspend);
 #endif
 
 	mutex_unlock(&acc->lock);
@@ -702,7 +711,7 @@ static int mxc622x_acc_probe(struct i2c_client *client,
 	return 0;
 
 err_misc_unregister:
-        misc_deregister(&mxc622x_acc_misc_device);
+	misc_deregister(&mxc622x_acc_misc_device);
 err_input_cleanup:
 	mxc622x_acc_input_cleanup(acc);
 err_power_off:
@@ -711,10 +720,10 @@ err_mutexunlockfreedata:
 	kfree(acc);
 	mutex_unlock(&acc->lock);
 	i2c_set_clientdata(client, NULL);
-       mxc622x_acc_misc_data = NULL;
+	mxc622x_acc_misc_data = NULL;
 exit_alloc_data_failed:
 exit_check_functionality_failed:
-	printk(KERN_ERR "%s: Driver Init failed\n", MXC622X_ACC_DEV_NAME);
+	dprintk(KERN_ERR "%s: Driver Init failed\n", MXC622X_ACC_DEV_NAME);
 	return err;
 }
 
@@ -723,19 +732,19 @@ static int mxc622x_acc_remove(struct i2c_client *client)
 	/* TODO: revisit ordering here once _probe order is finalized */
 	struct mxc622x_acc_data *acc = i2c_get_clientdata(client);
 
-       misc_deregister(&mxc622x_acc_misc_device);/* unregist misc */
-       mxc622x_acc_input_cleanup(acc);
-       mxc622x_acc_device_power_off(acc);
-       kfree(acc);
+	misc_deregister(&mxc622x_acc_misc_device);/* unregist misc */
+	mxc622x_acc_input_cleanup(acc);
+	mxc622x_acc_device_power_off(acc);
+	kfree(acc);
 
 	return 0;
 }
 
-static int mxc622x_acc_resume(struct i2c_client *client)
+static int mxc622x_acc_resume(struct device *dev)
 {
-	struct mxc622x_acc_data *acc = i2c_get_clientdata(client);
+	struct mxc622x_acc_data *acc = i2c_get_clientdata(mxc622x_i2c_client);
 #ifdef MXC622X_DEBUG
-    printk("%s.\n", __func__);
+	dprintk("%s.\n", __func__);
 #endif
 
 	if (acc != NULL && acc->on_before_suspend) {
@@ -746,56 +755,59 @@ static int mxc622x_acc_resume(struct i2c_client *client)
 	return 0;
 }
 
-static int mxc622x_acc_suspend(struct i2c_client *client, pm_message_t mesg)
+static int mxc622x_acc_suspend(struct device *dev)
 {
-	struct mxc622x_acc_data *acc = i2c_get_clientdata(client);
+	struct mxc622x_acc_data *acc = i2c_get_clientdata(mxc622x_i2c_client);
 #ifdef MXC622X_DEBUG
-    printk("%s.\n", __func__);
+	dprintk("%s.\n", __func__);
 #endif
-    if (acc != NULL) {
-        if (atomic_read(&acc->enabled)) {
-		acc->on_before_suspend = 1;
-		return mxc622x_acc_disable(acc);
-        }
-    }
-    return 0;
+	if (acc != NULL) {
+		if (atomic_read(&acc->enabled)) {
+			acc->on_before_suspend = 1;
+			return mxc622x_acc_disable(acc);
+		}
+	}
+	return 0;
 }
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 
-static void mxc622x_early_suspend (struct early_suspend* es)
+static void mxc622x_early_suspend(struct early_suspend *es)
 {
 #ifdef MXC622X_DEBUG
-    printk("%s.\n", __func__);
+	dprintk("%s.\n", __func__);
 #endif
-    mxc622x_acc_suspend(mxc622x_i2c_client,
-         (pm_message_t){.event=0});
+	mxc622x_acc_suspend(&mxc622x_i2c_client->dev);
 }
 
-static void mxc622x_early_resume (struct early_suspend* es)
+static void mxc622x_early_resume(struct early_suspend *es)
 {
 #ifdef MXC622X_DEBUG
-    printk("%s.\n", __func__);
+	dprintk("%s.\n", __func__);
 #endif
-    mxc622x_acc_resume(mxc622x_i2c_client);
+	mxc622x_acc_resume(&mxc622x_i2c_client->dev);
 }
 
 #endif /* CONFIG_HAS_EARLYSUSPEND */
 
 static const struct i2c_device_id mxc622x_acc_id[]
-				= { { MXC622X_ACC_DEV_NAME, 0 }, { }, };
+= { { MXC622X_ACC_DEV_NAME, 0 }, { }, };
 
 MODULE_DEVICE_TABLE(i2c, mxc622x_acc_id);
 
+static const struct dev_pm_ops mxc622x_acc_pm_ops = {
+	.suspend_noirq = mxc622x_acc_suspend,
+	.resume_noirq  = mxc622x_acc_resume,
+};
+
 static struct i2c_driver mxc622x_acc_driver = {
 	.driver = {
-            .owner = THIS_MODULE,
-            .name = MXC622X_ACC_I2C_NAME,
-        },
+		.owner = THIS_MODULE,
+		.name = MXC622X_ACC_I2C_NAME,
+		.pm = &mxc622x_acc_pm_ops,
+	},
 	.probe = mxc622x_acc_probe,
 	.remove = mxc622x_acc_remove,
-	.resume = mxc622x_acc_resume,
-	.suspend = mxc622x_acc_suspend,
 	.id_table = mxc622x_acc_id,
 };
 
@@ -805,7 +817,7 @@ static int __init mxc622x_acc_init(void)
 {
 	int  ret = 0;
 
-	printk(KERN_INFO "%s accelerometer driver: init\n", MXC622X_ACC_I2C_NAME);
+	dprintk(KERN_INFO "Sensor: %s\n", __func__);
 
 	return i2c_add_driver(&mxc622x_acc_driver);
 
@@ -814,7 +826,7 @@ static int __init mxc622x_acc_init(void)
 
 static void __exit mxc622x_acc_exit(void)
 {
-	printk(KERN_INFO "%s accelerometer driver exit\n", MXC622X_ACC_DEV_NAME);
+	dprintk(KERN_INFO "Sensor: %s\n", __func__);
 	i2c_del_driver(&mxc622x_acc_driver);
 }
 

@@ -14,10 +14,6 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  *  General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License along
- *  with this program; if not, write to the Free Software Foundation, Inc.,
- *  59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
- *
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
 
@@ -31,7 +27,9 @@ struct cpucore_cooling_device {
 	struct thermal_cooling_device *cool_dev;
 	unsigned int cpucore_state;
 	unsigned int cpucore_val;
+	struct list_head node;
 	int max_cpu_core_num;
+	int cluster_id;
 	int stop_flag;
 };
 #define CPU_STOP 0x80000000
@@ -41,7 +39,8 @@ struct cpucore_cooling_device {
  * cpucore_cooling_register - function to create cpucore cooling device.
  * @clip_cpus: cpumask of cpus where the frequency constraints will happen
  */
-struct thermal_cooling_device * cpucore_cooling_register(void);
+struct thermal_cooling_device *cpucore_cooling_register(struct device_node *,
+							int);
 
 /**
  * cpucore_cooling_unregister - function to remove cpucore cooling device.
@@ -52,7 +51,7 @@ void cpucore_cooling_unregister(struct thermal_cooling_device *cdev);
 
 #else /* !CONFIG_CPU_THERMAL */
 static inline struct thermal_cooling_device *
-cpucore_cooling_register(void)
+cpucore_cooling_register(struct device_node *np)
 {
 	return NULL;
 }

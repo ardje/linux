@@ -14,7 +14,7 @@
  * Copyright (c) 2004, Intel Corporation
  *
  * Modified for Realtek's wi-fi cards by Andrea Merello
- * <andreamrl@tiscali.it>
+ * <andrea.merello@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -2761,6 +2761,7 @@ extern void rtllib_stop_scan(struct rtllib_device *ieee);
 extern bool rtllib_act_scanning(struct rtllib_device *ieee, bool sync_scan);
 extern void rtllib_stop_scan_syncro(struct rtllib_device *ieee);
 extern void rtllib_start_scan_syncro(struct rtllib_device *ieee, u8 is_mesh);
+extern inline struct sk_buff *rtllib_probe_req(struct rtllib_device *ieee);
 extern u8 MgntQuery_MgntFrameTxRate(struct rtllib_device *ieee);
 extern void rtllib_sta_ps_send_null_frame(struct rtllib_device *ieee,
 					  short pwr);
@@ -2895,7 +2896,7 @@ extern void HTConstructCapabilityElement(struct rtllib_device *ieee,
 extern void HTConstructInfoElement(struct rtllib_device *ieee,
 				   u8 *posHTInfo, u8 *len, u8 isEncrypt);
 extern void HTConstructRT2RTAggElement(struct rtllib_device *ieee,
-				       u8 *posRT2RTAgg, u8* len);
+				       u8 *posRT2RTAgg, u8 *len);
 extern void HTOnAssocRsp(struct rtllib_device *ieee);
 extern void HTInitializeHTInfo(struct rtllib_device *ieee);
 extern void HTInitializeBssDesc(struct bss_ht *pBssHT);
@@ -2942,12 +2943,12 @@ void rtllib_softmac_scan_syncro(struct rtllib_device *ieee, u8 is_mesh);
 
 extern const long rtllib_wlan_frequencies[];
 
-static inline void rtllib_increment_scans(struct rtllib_device *ieee)
+extern inline void rtllib_increment_scans(struct rtllib_device *ieee)
 {
 	ieee->scans++;
 }
 
-static inline int rtllib_get_scans(struct rtllib_device *ieee)
+extern inline int rtllib_get_scans(struct rtllib_device *ieee)
 {
 	return ieee->scans;
 }

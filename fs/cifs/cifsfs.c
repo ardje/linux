@@ -120,14 +120,16 @@ cifs_read_super(struct super_block *sb)
 {
 	struct inode *inode;
 	struct cifs_sb_info *cifs_sb;
+	struct cifs_tcon *tcon;
 	int rc = 0;
 
 	cifs_sb = CIFS_SB(sb);
+	tcon = cifs_sb_master_tcon(cifs_sb);
 
 	if (cifs_sb->mnt_cifs_flags & CIFS_MOUNT_POSIXACL)
 		sb->s_flags |= MS_POSIXACL;
 
-	if (cifs_sb_master_tcon(cifs_sb)->ses->capabilities & CAP_LARGE_FILES)
+	if (tcon->ses->capabilities & tcon->ses->server->vals->cap_large_files)
 		sb->s_maxbytes = MAX_LFS_FILESIZE;
 	else
 		sb->s_maxbytes = MAX_NON_LFS;
@@ -147,17 +149,16 @@ cifs_read_super(struct super_block *sb)
 		goto out_no_root;
 	}
 
+	if (tcon->nocase)
+		sb->s_d_op = &cifs_ci_dentry_ops;
+	else
+		sb->s_d_op = &cifs_dentry_ops;
+
 	sb->s_root = d_make_root(inode);
 	if (!sb->s_root) {
 		rc = -ENOMEM;
 		goto out_no_root;
 	}
-
-	/* do that *after* d_make_root() - we want NULL ->d_op for root here */
-	if (cifs_sb_master_tcon(cifs_sb)->nocase)
-		sb->s_d_op = &cifs_ci_dentry_ops;
-	else
-		sb->s_d_op = &cifs_dentry_ops;
 
 #ifdef CONFIG_CIFS_NFSD_EXPORT
 	if (cifs_sb->mnt_cifs_flags & CIFS_MOUNT_SERVER_INUM) {
@@ -252,10 +253,16 @@ cifs_alloc_inode(struct super_block *sb)
 	cifs_set_oplock_level(cifs_inode, 0);
 	cifs_inode->delete_pending = false;
 	cifs_inode->invalid_mapping = false;
+	clear_bit(CIFS_INODE_PENDING_OPLOCK_BREAK, &cifs_inode->flags);
+	clear_bit(CIFS_INODE_PENDING_WRITERS, &cifs_inode->flags);
+	clear_bit(CIFS_INODE_DOWNGRADE_OPLOCK_TO_L2, &cifs_inode->flags);
+	spin_lock_init(&cifs_inode->writers_lock);
+	cifs_inode->writers = 0;
 	cifs_inode->vfs_inode.i_blkbits = 14;  /* 2**14 = CIFS_MAX_MSGSIZE */
 	cifs_inode->server_eof = 0;
 	cifs_inode->uniqueid = 0;
 	cifs_inode->createtime = 0;
+	cifs_inode->epoch = 0;
 #ifdef CONFIG_CIFS_SMB2
 	get_random_bytes(cifs_inode->lease_key, SMB2_LEASE_KEY_SIZE);
 #endif
@@ -312,11 +319,14 @@ cifs_show_address(struct seq_file *s, struct TCP_Server_Info *server)
 }
 
 static void
-cifs_show_security(struct seq_file *s, struct TCP_Server_Info *server)
+cifs_show_security(struct seq_file *s, struct cifs_ses *ses)
 {
+	if (ses->sectype == Unspecified)
+		return;
+
 	seq_printf(s, ",sec=");
 
-	switch (server->secType) {
+	switch (ses->sectype) {
 	case LANMAN:
 		seq_printf(s, "lanman");
 		break;
@@ -338,7 +348,7 @@ cifs_show_security(struct seq_file *s, struct TCP_Server_Info *server)
 		break;
 	}
 
-	if (server->sec_mode & (SECMODE_SIGN_REQUIRED | SECMODE_SIGN_ENABLED))
+	if (ses->sign)
 		seq_printf(s, "i");
 }
 
@@ -355,6 +365,18 @@ cifs_show_cache_flavor(struct seq_file *s, struct cifs_sb_info *cifs_sb)
 		seq_printf(s, "loose");
 }
 
+static void
+cifs_show_nls(struct seq_file *s, struct nls_table *cur)
+{
+	struct nls_table *def;
+
+	/* Display iocharset= option if it's not default charset */
+	def = load_nls_default();
+	if (def != cur)
+		seq_printf(s, ",iocharset=%s", cur->charset);
+	unload_nls(def);
+}
+
 /*
  * cifs_show_options() is for displaying mount options in /proc/mounts.
  * Not all settable options are displayed but most of the important
@@ -369,7 +391,7 @@ cifs_show_options(struct seq_file *s, struct dentry *root)
 	srcaddr = (struct sockaddr *)&tcon->ses->server->srcaddr;
 
 	seq_printf(s, ",vers=%s", tcon->ses->server->vals->version_string);
-	cifs_show_security(s, tcon->ses->server);
+	cifs_show_security(s, tcon->ses);
 	cifs_show_cache_flavor(s, cifs_sb);
 
 	if (cifs_sb->mnt_cifs_flags & CIFS_MOUNT_MULTIUSER)
@@ -416,6 +438,9 @@ cifs_show_options(struct seq_file *s, struct dentry *root)
 		seq_printf(s, ",file_mode=0%ho,dir_mode=0%ho",
 					   cifs_sb->mnt_file_mode,
 					   cifs_sb->mnt_dir_mode);
+
+	cifs_show_nls(s, cifs_sb->local_nls);
+
 	if (tcon->seal)
 		seq_printf(s, ",seal");
 	if (tcon->nocase)
@@ -565,9 +590,6 @@ cifs_get_root(struct smb_vol *vol, struct super_block *sb)
 	char *s, *p;
 	char sep;
 
-	if (cifs_sb->mnt_cifs_flags & CIFS_MOUNT_USE_PREFIX_PATH)
-		return dget(sb->s_root);
-
 	full_path = cifs_build_path_to_root(vol, cifs_sb,
 					    cifs_sb_master_tcon(cifs_sb));
 	if (full_path == NULL)
@@ -647,14 +669,10 @@ cifs_do_mount(struct file_system_type *fs_type,
 	cifs_sb->mountdata = kstrndup(data, PAGE_SIZE, GFP_KERNEL);
 	if (cifs_sb->mountdata == NULL) {
 		root = ERR_PTR(-ENOMEM);
-		goto out_free;
+		goto out_cifs_sb;
 	}
 
-	rc = cifs_setup_cifs_sb(volume_info, cifs_sb);
-	if (rc) {
-		root = ERR_PTR(rc);
-		goto out_free;
-	}
+	cifs_setup_cifs_sb(volume_info, cifs_sb);
 
 	rc = cifs_mount(cifs_sb, volume_info);
 	if (rc) {
@@ -662,7 +680,7 @@ cifs_do_mount(struct file_system_type *fs_type,
 			cifs_dbg(VFS, "cifs_mount failed w/return code = %d\n",
 				 rc);
 		root = ERR_PTR(rc);
-		goto out_free;
+		goto out_mountdata;
 	}
 
 	mnt_data.vol = volume_info;
@@ -705,9 +723,9 @@ out:
 	cifs_cleanup_volume_info(volume_info);
 	return root;
 
-out_free:
-	kfree(cifs_sb->prepath);
+out_mountdata:
 	kfree(cifs_sb->mountdata);
+out_cifs_sb:
 	kfree(cifs_sb);
 out_nls:
 	unload_nls(volume_info->local_nls);
@@ -718,19 +736,26 @@ static ssize_t cifs_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 				   unsigned long nr_segs, loff_t pos)
 {
 	struct inode *inode = file_inode(iocb->ki_filp);
+	struct cifsInodeInfo *cinode = CIFS_I(inode);
 	ssize_t written;
 	int rc;
 
+	written = cifs_get_writer(cinode);
+	if (written)
+		return written;
+
 	written = generic_file_aio_write(iocb, iov, nr_segs, pos);
 
-	if (CIFS_I(inode)->clientCanCacheAll)
-		return written;
+	if (CIFS_CACHE_WRITE(CIFS_I(inode)))
+		goto out;
 
 	rc = filemap_fdatawrite(inode->i_mapping);
 	if (rc)
 		cifs_dbg(FYI, "cifs_file_aio_write: %d rc on %p inode\n",
 			 rc, inode);
 
+out:
+	cifs_put_writer(cinode);
 	return written;
 }
 
@@ -748,7 +773,7 @@ static loff_t cifs_llseek(struct file *file, loff_t offset, int whence)
 		 * We need to be sure that all dirty pages are written and the
 		 * server has the newest file length.
 		 */
-		if (!CIFS_I(inode)->clientCanCacheRead && inode->i_mapping &&
+		if (!CIFS_CACHE_READ(CIFS_I(inode)) && inode->i_mapping &&
 		    inode->i_mapping->nrpages != 0) {
 			rc = filemap_fdatawait(inode->i_mapping);
 			if (rc) {
@@ -772,8 +797,10 @@ static loff_t cifs_llseek(struct file *file, loff_t offset, int whence)
 
 static int cifs_setlease(struct file *file, long arg, struct file_lock **lease)
 {
-	/* note that this is called by vfs setlease with lock_flocks held
-	   to protect *lease from going away */
+	/*
+	 * Note that this is called by vfs setlease with i_lock held to
+	 * protect *lease from going away.
+	 */
 	struct inode *inode = file_inode(file);
 	struct cifsFileInfo *cfile = file->private_data;
 
@@ -781,20 +808,19 @@ static int cifs_setlease(struct file *file, long arg, struct file_lock **lease)
 		return -EINVAL;
 
 	/* check if file is oplocked */
-	if (((arg == F_RDLCK) &&
-		(CIFS_I(inode)->clientCanCacheRead)) ||
-	    ((arg == F_WRLCK) &&
-		(CIFS_I(inode)->clientCanCacheAll)))
+	if (((arg == F_RDLCK) && CIFS_CACHE_READ(CIFS_I(inode))) ||
+	    ((arg == F_WRLCK) && CIFS_CACHE_WRITE(CIFS_I(inode))))
 		return generic_setlease(file, arg, lease);
 	else if (tlink_tcon(cfile->tlink)->local_lease &&
-		 !CIFS_I(inode)->clientCanCacheRead)
-		/* If the server claims to support oplock on this
-		   file, then we still need to check oplock even
-		   if the local_lease mount option is set, but there
-		   are servers which do not support oplock for which
-		   this mount option may be useful if the user
-		   knows that the file won't be changed on the server
-		   by anyone else */
+		 !CIFS_CACHE_READ(CIFS_I(inode)))
+		/*
+		 * If the server claims to support oplock on this file, then we
+		 * still need to check oplock even if the local_lease mount
+		 * option is set, but there are servers which do not support
+		 * oplock for which this mount option may be useful if the user
+		 * knows that the file won't be changed on the server by anyone
+		 * else.
+		 */
 		return generic_setlease(file, arg, lease);
 	else
 		return -EAGAIN;
@@ -848,7 +874,7 @@ const struct inode_operations cifs_file_inode_ops = {
 const struct inode_operations cifs_symlink_inode_ops = {
 	.readlink = generic_readlink,
 	.follow_link = cifs_follow_link,
-	.put_link = cifs_put_link,
+	.put_link = kfree_put_link,
 	.permission = cifs_permission,
 	/* BB add the following two eventually */
 	/* revalidate: cifs_revalidate,
@@ -975,7 +1001,7 @@ const struct file_operations cifs_file_direct_nobrl_ops = {
 };
 
 const struct file_operations cifs_dir_ops = {
-	.readdir = cifs_readdir,
+	.iterate = cifs_readdir,
 	.release = cifs_closedir,
 	.read    = generic_read_dir,
 	.unlocked_ioctl  = cifs_ioctl,

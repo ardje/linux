@@ -1,3 +1,20 @@
+/*
+ * include/linux/amlogic/amlog.h
+ *
+ * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+*/
+
 #ifndef __AMLOG_H
 #define __AMLOG_H
 
@@ -36,39 +53,40 @@ extern u32 LOG_LEVEL_VAR, LOG_MASK_VAR;
 	do { \
 		if (level >= LOG_LEVEL_VAR) \
 			printk(x); \
-	} while (0);
+	} while (0)
 
 #define amlog_mask(mask, x...) \
 	do { \
 		if (mask & LOG_MASK_VAR) \
 			printk(x); \
-	} while (0);
+	} while (0)
 
 #define amlog_mask_level(mask, level, x...) \
 	do { \
 		if ((level >= LOG_LEVEL_VAR) && (mask & LOG_MASK_VAR)) \
 			printk(x); \
-	} while (0);
+	} while (0)
 
-#define amlog_if(cond, x...) do {if (cond) printk(x);} while {0};
+#define amlog_if(cond, x...) do {if (cond) printk(x); } while {0};
 
 #define amlog_level_if(cond, level, x...) \
 	do { \
 		if ((cond) && (level >= LOG_LEVEL_VAR)) \
 			printk(x); \
-	} while (0);
+	} while (0)
 
 #define amlog_mask_if(cond, mask, x...) \
 	do { \
 		if ((cond) && (mask & LOG_MASK_VAR)) \
 			printk(x); \
-	} while (0);
+	} while (0)
 
 #define amlog_mask_levelif(cond, mask, level, x...) \
 	do { \
-		if ((cond) && (level >= LOG_LEVEL_VAR) && (mask & LOG_MASK_VAR)) \
+		if ((cond) && (level >= LOG_LEVEL_VAR) &&\
+					(mask & LOG_MASK_VAR)) \
 			printk(x...); \
-	} while (0);
+	} while (0)
 
 #else
 #define MODULE_AMLOG(def_level, def_mask, desc_level, desc_mask)
@@ -80,6 +98,6 @@ extern u32 LOG_LEVEL_VAR, LOG_MASK_VAR;
 #define amlog_level_if(cond, level, x...)
 #define amlog_mask_if(cond, mask, x...)
 #define amlog_mask_level_if(cond, mask, level, x...)
-#endif 
+#endif
 
-#endif /* __AMLOG_H */
+#endif				/* __AMLOG_H */

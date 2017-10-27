@@ -4,7 +4,6 @@
  * Copyright (C) 2002, 2003, 2006 David S. Miller (davem@davemloft.net)
  */
 
-#include <linux/init.h>
 #include <linux/fs.h>
 #include <linux/mm.h>
 #include <linux/hugetlb.h>
@@ -21,8 +20,6 @@
 /* Slightly simplified from the non-hugepage variant because by
  * definition we don't have to worry about any page coloring stuff
  */
-#define VA_EXCLUDE_START (0x0000080000000000UL - (1UL << 32UL))
-#define VA_EXCLUDE_END   (0xfffff80000000000UL + (1UL << 32UL))
 
 static unsigned long hugetlb_get_unmapped_area_bottomup(struct file *filp,
 							unsigned long addr,
@@ -118,7 +115,7 @@ hugetlb_get_unmapped_area(struct file *file, unsigned long addr,
 		addr = ALIGN(addr, HPAGE_SIZE);
 		vma = find_vma(mm, addr);
 		if (task_size - len >= addr &&
-		    (!vma || addr + len <= vm_start_gap(vma)))
+		    (!vma || addr + len <= vma->vm_start))
 			return addr;
 	}
 	if (mm->get_unmapped_area == arch_get_unmapped_area)

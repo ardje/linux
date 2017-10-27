@@ -30,8 +30,8 @@
  * Endian independent macros for shifting bytes within registers.
  */
 #ifndef __ARMEB__
-#define pull            lsr
-#define push            lsl
+#define lspull          lsr
+#define lspush          lsl
 #define get_byte_0      lsl #0
 #define get_byte_1	lsr #8
 #define get_byte_2	lsr #16
@@ -41,8 +41,8 @@
 #define put_byte_2	lsl #16
 #define put_byte_3	lsl #24
 #else
-#define pull            lsl
-#define push            lsr
+#define lspull          lsl
+#define lspush          lsr
 #define get_byte_0	lsr #24
 #define get_byte_1	lsr #16
 #define get_byte_2	lsr #8
@@ -51,6 +51,13 @@
 #define put_byte_1	lsl #16
 #define put_byte_2	lsl #8
 #define put_byte_3      lsl #0
+#endif
+
+/* Select code for any configuration running in BE8 mode */
+#ifdef CONFIG_CPU_ENDIAN_BE8
+#define ARM_BE8(code...) code
+#else
+#define ARM_BE8(code...)
 #endif
 
 /*
@@ -136,7 +143,11 @@
  * assumes FIQs are enabled, and that the processor is in SVC mode.
  */
 	.macro	save_and_disable_irqs, oldcpsr
+#ifdef CONFIG_CPU_V7M
+	mrs	\oldcpsr, primask
+#else
 	mrs	\oldcpsr, cpsr
+#endif
 	disable_irq
 	.endm
 
@@ -150,7 +161,11 @@
  * guarantee that this will preserve the flags.
  */
 	.macro	restore_irqs_notrace, oldcpsr
+#ifdef CONFIG_CPU_V7M
+	msr	primask, \oldcpsr
+#else
 	msr	cpsr_c, \oldcpsr
+#endif
 	.endm
 
 	.macro restore_irqs, oldcpsr
@@ -212,9 +227,9 @@
 #ifdef CONFIG_SMP
 #if __LINUX_ARM_ARCH__ >= 7
 	.ifeqs "\mode","arm"
-	ALT_SMP(dmb)
+	ALT_SMP(dmb	ish)
 	.else
-	ALT_SMP(W(dmb))
+	ALT_SMP(W(dmb)	ish)
 	.endif
 #elif __LINUX_ARM_ARCH__ == 6
 	ALT_SMP(mcr	p15, 0, r0, c7, c10, 5)	@ dmb
@@ -229,7 +244,14 @@
 #endif
 	.endm
 
-#ifdef CONFIG_THUMB2_KERNEL
+#if defined(CONFIG_CPU_V7M)
+	/*
+	 * setmode is used to assert to be in svc mode during boot. For v7-M
+	 * this is done in __v7m_setup, so setmode can be empty here.
+	 */
+	.macro	setmode, mode, reg
+	.endm
+#elif defined(CONFIG_THUMB2_KERNEL)
 	.macro	setmode, mode, reg
 	mov	\reg, #\mode
 	msr	cpsr_c, \reg

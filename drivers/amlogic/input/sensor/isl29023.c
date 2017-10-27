@@ -16,9 +16,6 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA	02110-1301, USA.
  */
 
 
@@ -31,7 +28,7 @@
 #include <linux/mutex.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
-#include <linux/sensor/isl290xx.h>
+#include <linux/amlogic/sensor/isl290xx.h>
 #include <linux/irq.h>
 #include <linux/interrupt.h>
 #include <linux/input.h>
@@ -43,7 +40,7 @@
  * FIXME: This value too short for ADC?
  */
 
-#define  ISL29023_DEVICE 		"isl29023"
+#define  ISL29023_DEVICE		"isl29023"
 #define  ISL29023_INPUT_DEV	"isl29023"
 
 #define CONVERSION_TIME_MS		2
@@ -53,7 +50,7 @@
 #define COMMMAND1_OPMODE_MASK		(7 << COMMMAND1_OPMODE_SHIFT)
 #define COMMMAND1_OPMODE_POWER_DOWN	0
 #define COMMMAND1_OPMODE_ALS_ONCE	1
-#define COMMMAND1_OPMODE_ALS_CONTINUOUS   5 
+#define COMMMAND1_OPMODE_ALS_CONTINUOUS   5
 
 #define ISL29023_REG_ADD_COMMANDII	0x01
 #define COMMANDII_RESOLUTION_SHIFT	2
@@ -81,14 +78,14 @@ struct isl29023_chip {
 	unsigned int		range;
 	unsigned int		adc_bit;
 	u8			reg_cache[ISL29023_MAX_REGS];
-	struct regulator 	*regulator;
-	char 			*regulator_name;
+	struct regulator	*regulator;
+	char			*regulator_name;
 	int irq;
 	struct input_dev *input_dev;
-	#if 0
+#if 0
 	struct work_struct	work;
 	struct workqueue_struct *isl_work_queue;
-	#endif
+#endif
 	uint8_t bThreadRunning;
 	int32_t als_lux_last;
 	uint32_t als_delay;
@@ -97,7 +94,7 @@ struct isl29023_chip {
 #endif
 };
 
-static struct isl29023_chip *the_data_isl29023 = NULL; 
+static struct isl29023_chip *the_data_isl29023;
 
 
 #define CONFIG_STK_ALS_CHANGE_THRESHOLD	 20
@@ -106,14 +103,14 @@ static struct isl29023_chip *the_data_isl29023 = NULL;
 #define STK_LOCK1 mutex_lock(&isl_io_lock)
 
 
-static int polling_function(void* arg);
+static int polling_function(void *arg);
 static struct task_struct *polling_tsk;
 
 static struct mutex isl_io_lock;
 static struct completion thread_completion;
 
 
-static void report_event(struct input_dev* dev,int32_t report_value)
+static void report_event(struct input_dev *dev, int32_t report_value)
 {
 	input_report_abs(dev, ABS_MISC, report_value);
 	input_sync(dev);
@@ -122,25 +119,19 @@ static void report_event(struct input_dev* dev,int32_t report_value)
 
 static int32_t enable_als(uint32_t enable)
 {
-	//ret = set_power_state(enable?0:1);
-	if (enable)
-	{
+	/* ret = set_power_state(enable?0:1); */
+	if (enable) {
 
-		if (the_data_isl29023->bThreadRunning == 0)
-		{
+		if (the_data_isl29023->bThreadRunning == 0) {
 			the_data_isl29023->als_lux_last = 0;
 			the_data_isl29023->bThreadRunning = 1;
-			polling_tsk = kthread_run(polling_function,NULL,"als_polling");
+			polling_tsk = kthread_run(polling_function, NULL,
+				"als_polling");
+		} else {
+			/* WARNING("STK_ALS : thread has running\n"); */
 		}
-		else
-		{
-		    //WARNING("STK_ALS : thread has running\n");
-        }
-	}
-	else
-	{
-		if (the_data_isl29023->bThreadRunning)
-		{
+	} else {
+		if (the_data_isl29023->bThreadRunning) {
 			the_data_isl29023->bThreadRunning = 0;
 			STK_LOCK0;
 			wait_for_completion(&thread_completion);
@@ -154,30 +145,28 @@ static int32_t enable_als(uint32_t enable)
 
 static void update_and_check_report_als(int32_t lux)
 {
-    int32_t lux_last;
-    lux_last = the_data_isl29023->als_lux_last;
+	int32_t lux_last;
+	lux_last = the_data_isl29023->als_lux_last;
 
-    if (unlikely(abs(lux - lux_last)>=CONFIG_STK_ALS_CHANGE_THRESHOLD))
-    {
-        the_data_isl29023->als_lux_last = lux;
-		//printk("report_event,lux=%d\n",lux);
-        report_event(the_data_isl29023->input_dev,lux);
-    }
+	if (unlikely(abs(lux - lux_last) >= CONFIG_STK_ALS_CHANGE_THRESHOLD)) {
+		the_data_isl29023->als_lux_last = lux;
+		/* printk("report_event,lux=%d\n",lux); */
+		report_event(the_data_isl29023->input_dev, lux);
+	}
 }
 static bool isl29023_read_lux(struct i2c_client *client, int *lux);
 
-static int polling_function(void* arg)
+static int polling_function(void *arg)
 {
 	uint32_t lux = 0;
 	uint32_t delay;
 	init_completion(&thread_completion);
 
-	while (1)
-	{
+	while (1) {
 		STK_LOCK1;
-		delay = 1000;//the_data_isl29023->als_delay;
-		isl29023_read_lux(the_data_isl29023->client,&lux);
-        update_and_check_report_als(lux);
+		delay = 1000;/* the_data_isl29023->als_delay; */
+		isl29023_read_lux(the_data_isl29023->client, &lux);
+		update_and_check_report_als(lux);
 		if (the_data_isl29023->bThreadRunning == 0)
 			break;
 		STK_LOCK0;
@@ -185,14 +174,14 @@ static int polling_function(void* arg)
 
 	};
 
-    STK_LOCK0;
-    complete(&thread_completion);
+	STK_LOCK0;
+	complete(&thread_completion);
 	return 0;
 }
 
 
 static bool isl29023_write_data(struct i2c_client *client, u8 reg,
-	u8 val, u8 mask, u8 shift)
+		u8 val, u8 mask, u8 shift)
 {
 	u8 regval;
 	int ret = 0;
@@ -213,9 +202,8 @@ static bool isl29023_write_data(struct i2c_client *client, u8 reg,
 
 static void isl29023_disable(void)
 {
-	printk("isl29023_disable\n");
-	isl29023_write_data(the_data_isl29023->client, ISL29023_REG_ADD_COMMAND1,
-			0, 0xff, 0);
+	isl29023_write_data(the_data_isl29023->client,
+		ISL29023_REG_ADD_COMMAND1, 0, 0xff, 0);
 }
 
 static bool isl29023_set_range(struct i2c_client *client, unsigned long range,
@@ -224,18 +212,18 @@ static bool isl29023_set_range(struct i2c_client *client, unsigned long range,
 	unsigned long supp_ranges[] = {1000, 4000, 16000, 64000};
 	int i;
 
-	for (i = 0; i < (ARRAY_SIZE(supp_ranges) -1); ++i) {
+	for (i = 0; i < (ARRAY_SIZE(supp_ranges) - 1); ++i) {
 		if (range <= supp_ranges[i])
 			break;
 	}
 	*new_range = (unsigned int)supp_ranges[i];
 
 	return isl29023_write_data(client, ISL29023_REG_ADD_COMMANDII,
-		i, COMMANDII_RANGE_MASK, COMMANDII_RANGE_SHIFT);
+			i, COMMANDII_RANGE_MASK, COMMANDII_RANGE_SHIFT);
 }
 
 static bool isl29023_set_resolution(struct i2c_client *client,
-			unsigned long adcbit, unsigned int *conf_adc_bit)
+		unsigned long adcbit, unsigned int *conf_adc_bit)
 {
 	unsigned long supp_adcbit[] = {16, 12, 8, 4};
 	int i;
@@ -247,7 +235,8 @@ static bool isl29023_set_resolution(struct i2c_client *client,
 	*conf_adc_bit = (unsigned int)supp_adcbit[i];
 
 	return isl29023_write_data(client, ISL29023_REG_ADD_COMMANDII,
-		i, COMMANDII_RESOLUTION_MASK, COMMANDII_RESOLUTION_SHIFT);
+			i, COMMANDII_RESOLUTION_MASK,
+			COMMANDII_RESOLUTION_SHIFT);
 }
 
 static int isl29023_read_sensor_input(struct i2c_client *client, int mode)
@@ -255,7 +244,7 @@ static int isl29023_read_sensor_input(struct i2c_client *client, int mode)
 	bool status;
 	int lsb;
 	int msb;
-
+	int ret;
 	/* Set mode */
 	status = isl29023_write_data(client, ISL29023_REG_ADD_COMMAND1,
 			mode, COMMMAND1_OPMODE_MASK, COMMMAND1_OPMODE_SHIFT);
@@ -280,7 +269,8 @@ static int isl29023_read_sensor_input(struct i2c_client *client, int mode)
 
 	dev_vdbg(&client->dev, "MSB 0x%x and LSB 0x%x\n", msb, lsb);
 
-	return ((msb << 8) | lsb);
+	ret =  ((msb << 8) | lsb);
+	return ret;
 }
 
 static bool isl29023_read_lux(struct i2c_client *client, int *lux)
@@ -288,10 +278,10 @@ static bool isl29023_read_lux(struct i2c_client *client, int *lux)
 	int lux_data;
 	struct isl29023_chip *chip = i2c_get_clientdata(client);
 
-	lux_data = isl29023_read_sensor_input(client, COMMMAND1_OPMODE_ALS_CONTINUOUS);
+	lux_data = isl29023_read_sensor_input(client,
+		COMMMAND1_OPMODE_ALS_CONTINUOUS);
 	if (lux_data > 0) {
 		*lux = (lux_data * chip->range) >> chip->adc_bit;
-		//printk("*lux=%d,lux_data=%d,chip->range=%d,chip->adc_bit=%d\n",*lux,lux_data,chip->range,chip->adc_bit);//edwin
 		return true;
 	}
 	return false;
@@ -338,11 +328,10 @@ static int isl29023_chip_init(struct i2c_client *client)
 	int new_adc_bit;
 	unsigned int new_range;
 
-	//isl29023_regulator_enable(client);
+	/* isl29023_regulator_enable(client); */
 
-	for (i = 0; i < ARRAY_SIZE(chip->reg_cache); i++) {
+	for (i = 0; i < ARRAY_SIZE(chip->reg_cache); i++)
 		chip->reg_cache[i] = 0;
-	}
 
 	/* set defaults */
 	status = isl29023_set_range(client, chip->range, &new_range);
@@ -353,7 +342,7 @@ static int isl29023_chip_init(struct i2c_client *client)
 		dev_err(&client->dev, "Init of isl29023 fails\n");
 		return -ENODEV;
 	}
-	
+
 	return 0;
 }
 
@@ -361,40 +350,39 @@ static int isl29023_chip_init(struct i2c_client *client)
 static void isl29023_early_suspend(struct early_suspend *handler)
 {
 	/*int ret;
-	
-	LTR558_DEBUG("%s\n", __func__);
- 
- 	//ret=ltr558_ps_disable(); 
-	if(1 == als_active_ltr558)
-	{
-  		ret = ltr558_als_disable(); 
+
+	  LTR558_DEBUG("%s\n", __func__);
+
+	//ret=ltr558_ps_disable();
+	if(1 == als_active_ltr558) {
+		ret = ltr558_als_disable();
 	}*/
-	//enable_als(0);
+	/* enable_als(0); */
 	isl29023_disable();
-	
+
 }
 
 
 static void isl29023_early_resume(struct early_suspend *handler)
-{	
-	
- /*int ret; 
- //ret = ltr558_devinit(); 
- LTR558_DEBUG("%s\n", __func__);
- // ret = ltr558_ps_enable(PS_RANGE1); 
- 
- // Enable ALS to Full Range at startup 
-  
- //ret = ltr558_als_enable(ALS_RANGE1_320);
- if(1 == als_active_ltr558)
- 	ltr558_als_enable(als_gainrange_ltr558);
- */
-    //enable_als(1);
+{
+
+	/*int ret;
+	//ret = ltr558_devinit();
+	LTR558_DEBUG("%s\n", __func__);
+	// ret = ltr558_ps_enable(PS_RANGE1);
+
+	// Enable ALS to Full Range at startup
+
+	//ret = ltr558_als_enable(ALS_RANGE1_320);
+	if(1 == als_active_ltr558)
+	ltr558_als_enable(als_gainrange_ltr558);
+	 */
+	/* enable_als(1); */
 }
 
 
 static int isl29023_probe(struct i2c_client *client,
-	const struct i2c_device_id *id)
+		const struct i2c_device_id *id)
 {
 	struct isl290xx_platform_data *pdata;
 	struct isl29023_chip *chip;
@@ -402,7 +390,7 @@ static int isl29023_probe(struct i2c_client *client,
 	struct input_dev *input_dev;
 	int ret;
 
-	chip = kzalloc(sizeof (struct isl29023_chip), GFP_KERNEL);
+	chip = kzalloc(sizeof(struct isl29023_chip), GFP_KERNEL);
 	if (!chip) {
 		dev_err(&client->dev, "Memory allocation fails\n");
 		err = -ENOMEM;
@@ -433,12 +421,11 @@ static int isl29023_probe(struct i2c_client *client,
 
 
 	input_dev = input_allocate_device();
-	if (!input_dev) 
-	{
+	if (!input_dev) {
 		ret = -ENOMEM;
 		goto exit_input_device_alloc_failed;
 	}
-	chip->input_dev= input_dev;
+	chip->input_dev = input_dev;
 	input_dev->name = ISL29023_DEVICE;
 	input_dev->phys  = ISL29023_DEVICE;
 	input_dev->id.bustype = BUS_I2C;
@@ -446,15 +433,14 @@ static int isl29023_probe(struct i2c_client *client,
 	input_dev->id.vendor = 0x0001;
 	input_dev->id.product = 0x0001;
 	input_dev->id.version = 0x0010;
-	
-	__set_bit(EV_ABS, input_dev->evbit);	
 
-	//for lightsensor
+	__set_bit(EV_ABS, input_dev->evbit);
+
+	/* for lightsensor */
 	input_set_abs_params(input_dev, ABS_MISC, 0, 100001, 0, 0);
-	
+
 	ret = input_register_device(input_dev);
-	if (ret < 0)
-	{
+	if (ret < 0) {
 		input_free_device(input_dev);
 		goto exit_input_register_device_failed;
 	}
@@ -466,7 +452,8 @@ static int isl29023_probe(struct i2c_client *client,
 	the_data_isl29023->input_dev = input_dev;
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
-	the_data_isl29023->isl_early_suspend.level = EARLY_SUSPEND_LEVEL_DISABLE_FB + 25;
+	the_data_isl29023->isl_early_suspend.level =
+		EARLY_SUSPEND_LEVEL_DISABLE_FB + 25;
 	the_data_isl29023->isl_early_suspend.suspend = isl29023_early_suspend;
 	the_data_isl29023->isl_early_suspend.resume = isl29023_early_resume;
 	register_early_suspend(&the_data_isl29023->isl_early_suspend);
@@ -479,7 +466,7 @@ static int isl29023_probe(struct i2c_client *client,
 
 exit_input_device_alloc_failed:
 exit_input_register_device_failed:
-    input_unregister_device(input_dev);
+	input_unregister_device(input_dev);
 	input_free_device(input_dev);
 
 exit_free:
@@ -497,18 +484,16 @@ static int isl29023_remove(struct i2c_client *client)
 	unregister_early_suspend(&the_data_isl29023->isl_early_suspend);
 #endif
 
-	//isl29023_regulator_disable(client);
-
+	/* isl29023_regulator_disable(client); */
 
 	mutex_destroy(&isl_io_lock);
-	if (the_data_isl29023)
-	{
-        input_unregister_device(the_data_isl29023->input_dev);
-        input_free_device(the_data_isl29023->input_dev);
+	if (the_data_isl29023) {
+		input_unregister_device(the_data_isl29023->input_dev);
+		input_free_device(the_data_isl29023->input_dev);
 		kfree(the_data_isl29023);
 		the_data_isl29023 = 0;
 	}
-	
+
 	kfree(chip);
 	return 0;
 }
@@ -534,7 +519,7 @@ static struct i2c_driver isl29023_driver = {
 static int __init isl29023_init(void)
 {
 	return i2c_add_driver(&isl29023_driver);
-	
+
 }
 
 static void __exit isl29023_exit(void)

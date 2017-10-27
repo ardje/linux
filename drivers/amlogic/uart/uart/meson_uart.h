@@ -1,16 +1,24 @@
 /*
- *  linux/include/linux/serial_8250.h
+ * drivers/amlogic/uart/uart/meson_uart.h
  *
- *  Copyright (C) 2004 Russell King
+ * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- */
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+*/
+
 #ifndef _LINUX_AM_UART_H
 #define _LINUX_AM_UART_H
-#include <mach/am_regs.h>
+/* #include <mach/am_regs.h> */
+
 #define UART_OVERFLOW_ERR (0x01<<18)
 #define UART_FRAME_ERR (0x01<<17)
 #define UART_PARITY_ERR (0x01<<16)
@@ -34,13 +42,13 @@
 #define UART_CONTROL    2
 #define UART_STATUS     3
 #define UART_MISC       4
-#define UART_REG5   		5
+#define UART_REG5		5
 
-#define P_UART(uart_base,reg)    	CBUS_REG_ADDR(uart_base+reg)
-#define P_UART_WFIFO(uart_base)   	P_UART(uart_base,UART_WFIFO)
-#define P_UART_RFIFO(uart_base)   	P_UART(uart_base,UART_RFIFO)
+#define P_UART(uart_base, reg)	CBUS_REG_ADDR(uart_base+reg)
+#define P_UART_WFIFO(uart_base)	P_UART(uart_base, UART_WFIFO)
+#define P_UART_RFIFO(uart_base)	P_UART(uart_base, UART_RFIFO)
 
-#define P_UART_CONTROL(uart_base)    P_UART(uart_base,UART_CONTROL)
+#define P_UART_CONTROL(uart_base)    P_UART(uart_base, UART_CONTROL)
     #define UART_CNTL_MASK_BAUD_RATE                (0xfff)
     #define UART_CNTL_MASK_TX_EN                    (1<<12)
     #define UART_CNTL_MASK_RX_EN                    (1<<13)
@@ -67,7 +75,7 @@
     #define UART_CNTL_MASK_INV_CTS                  (1<<29)
     #define UART_CNTL_MASK_MASK_ERR                 (1<<30)
     #define UART_CNTL_MASK_INV_RTS                  (1<<31)
-    #define P_UART_STATUS(uart_base)  P_UART(uart_base,UART_STATUS )
+    #define P_UART_STATUS(uart_base)  P_UART(uart_base, UART_STATUS)
     #define UART_STAT_MASK_RFIFO_CNT                (0x7f<<0)
     #define UART_STAT_MASK_TFIFO_CNT                (0x7f<<8)
     #define UART_STAT_MASK_PRTY_ERR                 (1<<16)
@@ -77,7 +85,7 @@
     #define UART_STAT_MASK_RFIFO_EMPTY              (1<<20)
     #define UART_STAT_MASK_TFIFO_FULL               (1<<21)
     #define UART_STAT_MASK_TFIFO_EMPTY              (1<<22)
-#define P_UART_MISC(uart_base)    P_UART(uart_base,UART_MISC   )
+#define P_UART_MISC(uart_base)    P_UART(uart_base, UART_MISC)
 
 
 typedef volatile struct {

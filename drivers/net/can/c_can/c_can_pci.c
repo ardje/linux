@@ -109,7 +109,6 @@ static int c_can_pci_probe(struct pci_dev *pdev,
 
 	dev->irq = pdev->irq;
 	priv->base = addr;
-	priv->device = &pdev->dev;
 
 	if (!c_can_pci_data->freq) {
 		dev_err(&pdev->dev, "no clock frequency defined\n");
@@ -161,7 +160,6 @@ static int c_can_pci_probe(struct pci_dev *pdev,
 	return 0;
 
 out_free_c_can:
-	pci_set_drvdata(pdev, NULL);
 	free_c_can_dev(dev);
 out_iounmap:
 	pci_iounmap(pdev, addr);
@@ -182,7 +180,6 @@ static void c_can_pci_remove(struct pci_dev *pdev)
 
 	unregister_c_can_dev(dev);
 
-	pci_set_drvdata(pdev, NULL);
 	free_c_can_dev(dev);
 
 	pci_iounmap(pdev, priv->base);

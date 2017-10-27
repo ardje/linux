@@ -14,6 +14,8 @@
 ifneq ($(MACHINE),)
 include $(srctree)/$(MACHINE)/Makefile.boot
 endif
+include $(srctree)/arch/arm/boot/dts/Makefile
+include $(srctree)/arch/arm/boot/dts/amlogic/Makefile
 
 # Note: the following conditions must always be true:
 #   ZRELADDR == virt_to_phys(PAGE_OFFSET + TEXT_OFFSET)
@@ -40,18 +42,9 @@ UIMAGE_COMPRESSION ?= xz
 kcomp=xz
 karg="-z"
 endif
-
-export ZRELADDR INITRD_PHYS PARAMS_PHYS UIMAGE_COMPRESSION
+export ZRELADDR INITRD_PHYS PARAMS_PHYS
 
 targets := Image zImage xipImage bootpImage uImage
-
-DTB_NAMES := $(subst $\",,$(CONFIG_BUILD_ARM_APPENDED_DTB_IMAGE_NAMES))
-ifneq ($(DTB_NAMES),)
-DTB_LIST := $(addsuffix .dtb,$(DTB_NAMES))
-else
-DTB_LIST := $(dtb-y)
-endif
-DTB_OBJS := $(addprefix $(obj)/dts/,$(DTB_LIST))
 
 ifeq ($(CONFIG_XIP_KERNEL),y)
 
@@ -80,10 +73,6 @@ $(obj)/compressed/vmlinux: $(obj)/Image FORCE
 $(obj)/zImage:	$(obj)/compressed/vmlinux FORCE
 	$(call if_changed,objcopy)
 	@$(kecho) '  Kernel: $@ is ready'
-
-$(obj)/zImage-dtb:	$(obj)/zImage $(DTB_OBJS) FORCE
-	$(call if_changed,cat)
-	@echo '  Kernel: $@ is ready'
 
 endif
 
@@ -143,24 +132,24 @@ initrd:
 	@test "$(INITRD)" != "" || \
 	(echo You must specify INITRD; exit -1)
 
-install: $(obj)/Image
-	$(CONFIG_SHELL) $(srctree)/$(src)/install.sh $(KERNELRELEASE) \
+install:
+	$(CONFIG_SHELL) $(srctree)/$(src)/install.sh "$(KERNELRELEASE)" \
 	$(obj)/Image System.map "$(INSTALL_PATH)"
 
-zinstall: $(obj)/zImage
-	$(CONFIG_SHELL) $(srctree)/$(src)/install.sh $(KERNELRELEASE) \
+zinstall:
+	$(CONFIG_SHELL) $(srctree)/$(src)/install.sh "$(KERNELRELEASE)" \
 	$(obj)/zImage System.map "$(INSTALL_PATH)"
 
-uinstall: $(obj)/uImage
-	$(CONFIG_SHELL) $(srctree)/$(src)/install.sh $(KERNELRELEASE) \
+uinstall:
+	$(CONFIG_SHELL) $(srctree)/$(src)/install.sh "$(KERNELRELEASE)" \
 	$(obj)/uImage System.map "$(INSTALL_PATH)"
 
 zi:
-	$(CONFIG_SHELL) $(srctree)/$(src)/install.sh $(KERNELRELEASE) \
+	$(CONFIG_SHELL) $(srctree)/$(src)/install.sh "$(KERNELRELEASE)" \
 	$(obj)/zImage System.map "$(INSTALL_PATH)"
 
 i:
-	$(CONFIG_SHELL) $(srctree)/$(src)/install.sh $(KERNELRELEASE) \
+	$(CONFIG_SHELL) $(srctree)/$(src)/install.sh "$(KERNELRELEASE)" \
 	$(obj)/Image System.map "$(INSTALL_PATH)"
 
 subdir-	    := bootp compressed dts

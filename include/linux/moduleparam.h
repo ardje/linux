@@ -36,7 +36,18 @@ static const char __UNIQUE_ID(name)[]					  \
 
 struct kernel_param;
 
+/*
+ * Flags available for kernel_param_ops
+ *
+ * NOARG - the parameter allows for no argument (foo instead of foo=1)
+ */
+enum {
+	KERNEL_PARAM_FL_NOARG = (1 << 0)
+};
+
 struct kernel_param_ops {
+	/* How the ops should behave */
+	unsigned int flags;
 	/* Returns 0, or -errno.  arg is in kp->arg. */
 	int (*set)(const char *val, const struct kernel_param *kp);
 	/* Returns length written or -errno.  Buffer is 4k (ie. be short!) */
@@ -176,7 +187,7 @@ struct kparam_array
 #define __module_param_call(prefix, name, ops, arg, perm, level)	\
 	/* Default value instead of permissions? */			\
 	static int __param_perm_check_##name __attribute__((unused)) =	\
-	BUILD_BUG_ON_ZERO((perm) < 0 || (perm) > 0777)	\
+	BUILD_BUG_ON_ZERO((perm) < 0 || (perm) > 0777 || ((perm) & 2))	\
 	+ BUILD_BUG_ON_ZERO(sizeof(""prefix) > MAX_PARAM_PREFIX_LEN);	\
 	static const char __param_str_##name[] = prefix #name;		\
 	static struct kernel_param __moduleparam_const __param_##name	\
@@ -187,7 +198,7 @@ struct kparam_array
 /* Obsolete - use module_param_cb() */
 #define module_param_call(name, set, get, arg, perm)			\
 	static struct kernel_param_ops __param_ops_##name =		\
-		 { (void *)set, (void *)get };				\
+		{ 0, (void *)set, (void *)get };			\
 	__module_param_call(MODULE_PARAM_PREFIX,			\
 			    name, &__param_ops_##name, arg,		\
 			    (perm) + sizeof(__check_old_set_param(set))*0, -1)
@@ -439,7 +450,7 @@ extern struct kernel_param_ops param_ops_string;
 extern int param_set_copystring(const char *val, const struct kernel_param *);
 extern int param_get_string(char *buffer, const struct kernel_param *kp);
 
-/* for exporting parameters in /sys/parameters */
+/* for exporting parameters in /sys/module/.../parameters */
 
 struct module;
 

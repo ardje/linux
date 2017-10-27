@@ -1,26 +1,20 @@
 /*
- * drivers/net/phy/micrel.c
+ * drivers/amlogic/ethernet/phy/am_micrel.c
  *
- * Driver for Micrel PHYs
+ * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
  *
- * Author: David J. Choi
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
- * Copyright (c) 2010-2013 Micrel, Inc.
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
  *
- * This program is free software; you can redistribute  it and/or modify it
- * under  the terms of  the GNU General  Public License as published by the
- * Free Software Foundation;  either version 2 of the  License, or (at your
- * option) any later version.
- *
- * Support : Micrel Phys:
- *		Giga phys: ksz9021, ksz9031
- *		100/10 Phys : ksz8001, ksz8721, ksz8737, ksz8041
- *			   ksz8021, ksz8031, ksz8051,
- *			   ksz8081, ksz8091,
- *			   ksz8061,
- *		Switch : ksz8873, ksz886x
- * Support : KSZ8091 wol by baoqi.wang@amlogic.com
- */
+*/
+
 
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -38,6 +32,7 @@
 #include <linux/phy.h>
 /* Operation Mode Strap Override */
 #define MII_KSZPHY_OMSO				0x16
+#define PHY_ID_KSZ9031_RNX			0x221622
 #define KSZPHY_OMSO_B_CAST_OFF			(1 << 9)
 #define KSZPHY_OMSO_RMII_OVERRIDE		(1 << 1)
 #define KSZPHY_OMSO_MII_OVERRIDE		(1 << 0)
@@ -128,14 +123,78 @@ static int ks8737_config_intr(struct phy_device *phydev)
 	rc = kszphy_set_interrupt(phydev);
 	return rc < 0 ? rc : 0;
 }
+#define MMD_CTRL			       0x0d
+#define MMD_REG_DATA			0x0e
+static int cnt;
+static int ksz9031RNX_read_status(struct phy_device *phydev)
+{
+	int val = 0;
+	int err = genphy_read_status(phydev);
+	if ((!phydev->link) && (cnt <= 1)) {
+		cnt++;
+		phy_write(phydev, 0x4, 0x5e1);
+		val = phy_read(phydev, 0x0);
+		phy_write(phydev, 0x0, val|1<<9);
+	}
+	return err;
 
+}
+static int ksz9031_RNX_config_init(struct phy_device *phydev)
+{
+/*Set Auto-Negotiation FLP interval to 16ms
+using the following programming sequence to set MMD
+Device Address 0h, Register 4h = 0x0006
+and MMD Device Address 0h, Register 3h = 0x1A80
+*/
+	int val = 0;
+	cnt = 0;
+#if 1
+	phy_write(phydev, MMD_CTRL, 0x0);
+	phy_write(phydev, MMD_REG_DATA, 0x4);
+	phy_write(phydev, MMD_CTRL, 0x4000);
+	phy_write(phydev, MMD_REG_DATA, 0x6);
+
+	phy_write(phydev, MMD_CTRL, 0x0);
+	phy_write(phydev, MMD_REG_DATA, 0x3);
+	phy_write(phydev, MMD_CTRL, 0x4000);
+	phy_write(phydev, MMD_REG_DATA, 0x1A80);
+
+	phy_write(phydev, MMD_CTRL, 0x1);
+	phy_write(phydev, MMD_REG_DATA, 0x5a);
+	phy_write(phydev, MMD_CTRL, 0x4001);
+	phy_write(phydev, MMD_REG_DATA, 0x106);
+#endif
+	pr_info("----micrel phy init-----\n");
+
+/*
+delay rxclock
+SET MMD ? Device Address 2h, Register 8h = 0x01F
+*/
+#if 0
+	phy_write(phydev, MMD_CTRL, 0x2);
+	phy_write(phydev, MMD_REG_DATA, 0x8);
+	phy_write(phydev, MMD_CTRL, 0x4002);
+	phy_write(phydev, MMD_REG_DATA, 0x3de0);
+#endif
+	phy_write(phydev, MMD_CTRL, 0x2);
+	phy_write(phydev, MMD_REG_DATA, 0x5);
+	phy_write(phydev, MMD_CTRL, 0x4002);
+	phy_write(phydev, MMD_REG_DATA, 0xffff);
+	phy_write(phydev, 0x4, 0x5e1);
+	val = phy_read(phydev, 0x0);
+	phy_write(phydev, 0x0, val|1<<9);
+	return 0;
+}
+static int ksz9031_config_init(struct phy_device *phydev)
+{
+	return 0;
+}
 static int kszphy_config_init(struct phy_device *phydev)
 {
 	int temp;
 	temp = phy_read(phydev, 0x16);
-	//phy_write(phydev, 0x16, ((temp|(1 << 1)) & ~(0x8020)));
 	phy_write(phydev, 0x16, 0x2);
-	temp = phy_read(phydev, 0x1f);// link speed 1f bit5 4 = 01
+	temp = phy_read(phydev, 0x1f);/*link speed 1f bit5 4 = 01*/
 	phy_write(phydev, 0x1f, (temp | 1 << 4));
 	return 0;
 }
@@ -205,16 +264,15 @@ static int KSZ8091_resume(struct phy_device *phydev)
 	value = phy_read(phydev, MII_BMCR);
 	phy_write(phydev, MII_BMCR, (value & ~BMCR_PDOWN));
 		/* Software Reset 2 time PHY  */
-	for(i = 0; i < 2; i++)
-	{
+	for (i = 0; i < 2; i++) {
 		value = phy_read(phydev, MII_BMCR);
 		value |= BMCR_RESET;
 		value = phy_write(phydev, MII_BMCR, value);
-	do {
-		value = phy_read(phydev, MII_BMCR);
-		if (value < 0)
-			return value;
-	} while (value & BMCR_RESET);
+		do {
+			value = phy_read(phydev, MII_BMCR);
+			if (value < 0)
+				return value;
+		} while (value & BMCR_RESET);
 	}
 	return 0;
 }
@@ -236,113 +294,129 @@ static int KSZ8091_resume(struct phy_device *phydev)
 #define KSZ8091_WOL_MACDA2			0x1b
 #define KSZ8091_WOL_OMSO                         0x16
 
-static void ksz8091_get_wol(struct phy_device *phydev, struct ethtool_wolinfo *wol)
+static void ksz8091_get_wol(struct phy_device *phydev,
+				struct ethtool_wolinfo *wol)
 {
 	int err;
 	wol->supported = WAKE_MAGIC;
 	wol->wolopts = 0;
-		// write addr 1f reg 0 bit6 0  disable Magic
+		/*write addr 1f reg 0 bit6 0  disable Magic*/
 	err = phy_write(phydev, KSZ8091_MMD_CTRL, 0x1F);
-	err = phy_write(phydev, KSZ8091_MMD_REG_DATA, KSZ8091_WOL_C);// select reg 0
-	err = phy_write(phydev, KSZ8091_MMD_CTRL, 0x801f); //read
-	if (phy_read(phydev,KSZ8091_MMD_REG_DATA ) & ( 1<<6))
+	err = phy_write(phydev, KSZ8091_MMD_REG_DATA, KSZ8091_WOL_C);
+	err = phy_write(phydev, KSZ8091_MMD_CTRL, 0x801f);
+	if (phy_read(phydev, KSZ8091_MMD_REG_DATA) & (1<<6))
 		wol->wolopts |= WAKE_MAGIC;
 }
 
 
-static int ksz8091_set_wol(struct phy_device *phydev, struct ethtool_wolinfo *wol)
+static int ksz8091_set_wol(struct phy_device *phydev,
+				struct ethtool_wolinfo *wol)
 {
 	int err, oldpage, temp;
-
 	int i = 0;
+
 	oldpage = phy_read(phydev, KSZ8091_MMD_CTRL);
 /*
-Magic-packet detection is enabled by writing a 1 to MMD address 1Fh,register 0h, bit [6]
- The MAC address (for the local MAC device) is written to and stored in MMD address 1Fh, registers 19h -1Bh
-The KSZ8091MNX/RNB does not generate the magic packet. The magic packet must be provided by the external system.
+Magic-packet detection is enabled by writing a 1 to MMD
+address 1Fh,register 0h, bit [6]
+The MAC address (for the local MAC device) is
+written to and stored in MMD address 1Fh,
+ registers 19h -1Bh The KSZ8091MNX/RNB does not generate the magic packet.
+ The magic packet must be provided by the external system.
 */
-	printk("wol->wolopts = %d\nWAKE_MAGIC = %d\n",wol->wolopts,WAKE_MAGIC);
+	pr_info("wol->wolopts = %d\nWAKE_MAGIC = %d\n",
+	wol->wolopts, WAKE_MAGIC);
 	if (wol->wolopts & WAKE_MAGIC) {
-	temp =  phy_read(phydev, KSZ8091_WOL_OMSO);
-
-	phy_write(phydev, KSZ8091_WOL_OMSO,temp| 1<<15);
+		temp = phy_read(phydev, KSZ8091_WOL_OMSO);
+		phy_write(phydev, KSZ8091_WOL_OMSO, temp|1<<15);
 		/* Explicitly switch to page 0x1F, just to be sure */
-	printk("wol->wolopts = %d\nWAKE_MAGIC = %d\n",wol->wolopts,WAKE_MAGIC);
-	for(i =0;i< 6;i++){
-		printk("phydev->attached_dev->dev_addr[%d] = %x \n ",i,phydev->attached_dev->dev_addr[i]);
-	}
+		for (i = 0; i < 6; i++)
+			pr_info("attached_dev->dev_addr[%d] = %x\n",
+			i, phydev->attached_dev->dev_addr[i]);
 
 		/* Store the device address for the magic packet */
-	/***************************************KSZ8091_WOL_MACDA2************************************************************/
+/*************KSZ8091_WOL_MACDA2**********************/
 		err = phy_write(phydev, KSZ8091_MMD_CTRL, 0x1F);
 		if (err < 0)
 			return err;
-		err = phy_write(phydev, KSZ8091_MMD_REG_DATA, KSZ8091_WOL_MACDA2);
+		err = phy_write(phydev, KSZ8091_MMD_REG_DATA,
+			KSZ8091_WOL_MACDA2);
 		if (err < 0)
 			return err;
-		err = phy_write(phydev, KSZ8091_MMD_CTRL, 0x401f); //write
+		err = phy_write(phydev, KSZ8091_MMD_CTRL, 0x401f);
 		if (err < 0)
 			return err;
-		err = phy_write(phydev, KSZ8091_MMD_REG_DATA, (phydev->attached_dev->dev_addr[5] ) << 8 |(phydev->attached_dev->dev_addr[4]));
+		err = phy_write(phydev, KSZ8091_MMD_REG_DATA,
+			(phydev->attached_dev->dev_addr[5]) << 8 |
+			(phydev->attached_dev->dev_addr[4]));
 		if (err < 0)
 			return err;
-	/***************************************KSZ8091_WOL_MACDA1*********************************************/
+/**************KSZ8091_WOL_MACDA1**************************/
 		err = phy_write(phydev, KSZ8091_MMD_CTRL, 0x1F);
 		if (err < 0)
 			return err;
-		err = phy_write(phydev, KSZ8091_MMD_REG_DATA, KSZ8091_WOL_MACDA1);
+		err = phy_write(phydev, KSZ8091_MMD_REG_DATA,
+			KSZ8091_WOL_MACDA1);
 		if (err < 0)
 			return err;
-		err = phy_write(phydev, KSZ8091_MMD_CTRL, 0x401f); //write
+		err = phy_write(phydev, KSZ8091_MMD_CTRL, 0x401f);
 		if (err < 0)
 			return err;
-		err = phy_write(phydev, KSZ8091_MMD_REG_DATA, (phydev->attached_dev->dev_addr[3] ) << 8 | (phydev->attached_dev->dev_addr[2]));
+		err = phy_write(phydev, KSZ8091_MMD_REG_DATA,
+			(phydev->attached_dev->dev_addr[3]) << 8 |
+			(phydev->attached_dev->dev_addr[2]));
 		if (err < 0)
 			return err;
-	/***************************************KSZ8091_WOL_MACDA0*****************************************************/
+/**********KSZ8091_WOL_MACDA0******************************/
 		err = phy_write(phydev, KSZ8091_MMD_CTRL, 0x1F);
 		if (err < 0)
 			return err;
-		err = phy_write(phydev, KSZ8091_MMD_REG_DATA, KSZ8091_WOL_MACDA0);// select reg 0
+		err = phy_write(phydev, KSZ8091_MMD_REG_DATA,
+			KSZ8091_WOL_MACDA0);
 		if (err < 0)
 			return err;
-		err = phy_write(phydev, KSZ8091_MMD_CTRL, 0x401f); //write
+		err = phy_write(phydev, KSZ8091_MMD_CTRL, 0x401f);
 		if (err < 0)
 			return err;
-		err = phy_write(phydev, KSZ8091_MMD_REG_DATA, (phydev->attached_dev->dev_addr[1] ) << 8 |(phydev->attached_dev->dev_addr[0]));
+		err = phy_write(phydev, KSZ8091_MMD_REG_DATA,
+			(phydev->attached_dev->dev_addr[1]) << 8 |
+			(phydev->attached_dev->dev_addr[0]));
 		if (err < 0)
 			return err;
-	/**************************************************MACEND***************************************************/
+/***************MACEND****************************************/
 		err = phy_write(phydev, KSZ8091_MMD_CTRL, 0x1F);
 		if (err < 0)
 			return err;
-		err = phy_write(phydev, KSZ8091_MMD_REG_DATA, KSZ8091_WOL_C);// select reg 0
+		err = phy_write(phydev, KSZ8091_MMD_REG_DATA,
+			KSZ8091_WOL_C);
 		if (err < 0)
 			return err;
-		err = phy_write(phydev, KSZ8091_MMD_CTRL, 0x401f); //write
+		err = phy_write(phydev, KSZ8091_MMD_CTRL, 0x401f);
 		if (err < 0)
 			return err;
-		err = phy_write(phydev, KSZ8091_MMD_REG_DATA, 1<<6| 1<<14); //link down enable
+		err = phy_write(phydev, KSZ8091_MMD_REG_DATA,
+			1<<6 | 1<<14);
 		if (err < 0)
 			return err;
-		/* Clear WOL status and enable magic packet matching */
+/* Clear WOL status and enable magic packet matching */
 	} else {
-		// write addr 1f reg 0 bit6 0  disable Magic
+		/*write addr 1f reg 0 bit6 0  disable Magic*/
 		err = phy_write(phydev, KSZ8091_MMD_CTRL, 0x1F);
 		if (err < 0)
 			return err;
-		err = phy_write(phydev, KSZ8091_MMD_REG_DATA, KSZ8091_WOL_C);// select reg 0
+		err = phy_write(phydev, KSZ8091_MMD_REG_DATA,
+			KSZ8091_WOL_C);
 		if (err < 0)
 			return err;
-		err = phy_write(phydev, KSZ8091_MMD_CTRL, 0x401f); //write
+		err = phy_write(phydev, KSZ8091_MMD_CTRL, 0x401f);
 		if (err < 0)
 			return err;
-		err = phy_write(phydev, KSZ8091_MMD_REG_DATA,  ~(1<<6)); //link down enable
+		err = phy_write(phydev, KSZ8091_MMD_REG_DATA, ~(1<<6));
 		if (err < 0)
 			return err;
-	temp =  phy_read(phydev, KSZ8091_WOL_OMSO);
+		temp =  phy_read(phydev, KSZ8091_WOL_OMSO);
 
-	phy_write(phydev, KSZ8091_WOL_OMSO,temp|~( 1<<15));
+		phy_write(phydev, KSZ8091_WOL_OMSO, temp|~(1<<15));
 	}
 
 
@@ -436,7 +510,7 @@ static struct phy_driver ksphy_driver[] = {
 	.read_status	= genphy_read_status,
 	.ack_interrupt	= kszphy_ack_interrupt,
 	.config_intr	= kszphy_config_intr,
-	.suspend   	= ksz8091_suspend,
+	.suspend	= ksz8091_suspend,
 	.resume		= KSZ8091_resume,
 	.set_wol        = ksz8091_set_wol,
 	.get_wol         = ksz8091_get_wol,
@@ -467,16 +541,28 @@ static struct phy_driver ksphy_driver[] = {
 	.driver		= { .owner = THIS_MODULE, },
 }, {
 	.phy_id		= PHY_ID_KSZ9031,
-	.phy_id_mask	= 0x00fffff0,
+	.phy_id_mask	= 0x00ffffff,
 	.name		= "Micrel KSZ9031 Gigabit PHY",
 	.features	= (PHY_GBIT_FEATURES | SUPPORTED_Pause
 				| SUPPORTED_Asym_Pause),
 	.flags		= PHY_HAS_MAGICANEG | PHY_HAS_INTERRUPT,
-	.config_init	= kszphy_config_init,
+	.config_init	= ksz9031_config_init,
 	.config_aneg	= genphy_config_aneg,
 	.read_status	= genphy_read_status,
 	.ack_interrupt	= kszphy_ack_interrupt,
 	.config_intr	= ksz9021_config_intr,
+	.driver		= { .owner = THIS_MODULE, },
+}, {
+	.phy_id		= PHY_ID_KSZ9031_RNX,
+	.phy_id_mask	= 0x00ffffff,
+	.name		= "Micrel KSZ9031RNX Gigabit PHY",
+	.features	= (PHY_GBIT_FEATURES | SUPPORTED_Pause
+				| SUPPORTED_Asym_Pause),
+	.flags		= PHY_HAS_MAGICANEG | PHY_HAS_INTERRUPT,
+	.config_init	= ksz9031_RNX_config_init,
+	.config_aneg	= genphy_config_aneg,
+	.read_status	= ksz9031RNX_read_status,
+	.ack_interrupt	= kszphy_ack_interrupt,
 	.driver		= { .owner = THIS_MODULE, },
 }, {
 	.phy_id		= PHY_ID_KSZ8873MLL,
@@ -521,7 +607,8 @@ MODULE_LICENSE("GPL");
 
 static struct mdio_device_id __maybe_unused micrel_tbl[] = {
 	{ PHY_ID_KSZ9021, 0x000ffffe },
-	{ PHY_ID_KSZ9031, 0x00fffff0 },
+	{ PHY_ID_KSZ9031, 0x00ffffff },
+	{ PHY_ID_KSZ9031_RNX, 0x00ffffff },
 	{ PHY_ID_KSZ8001, 0x00ffffff },
 	{ PHY_ID_KS8737, 0x00fffff0 },
 	{ PHY_ID_KSZ8021, 0x00ffffff },
@@ -536,3 +623,4 @@ static struct mdio_device_id __maybe_unused micrel_tbl[] = {
 };
 
 MODULE_DEVICE_TABLE(mdio, micrel_tbl);
+

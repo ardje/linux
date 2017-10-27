@@ -11,7 +11,6 @@
 
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/platform_device.h>
@@ -1313,7 +1312,7 @@ static int ican3_napi(struct napi_struct *napi, int budget)
 
 	/* process all communication messages */
 	while (true) {
-		struct ican3_msg msg;
+		struct ican3_msg uninitialized_var(msg);
 		ret = ican3_recv_msg(mod, &msg);
 		if (ret)
 			break;
@@ -1724,7 +1723,7 @@ static ssize_t ican3_sysfs_set_term(struct device *dev,
 	unsigned long enable;
 	int ret;
 
-	if (strict_strtoul(buf, 0, &enable))
+	if (kstrtoul(buf, 0, &enable))
 		return -EINVAL;
 
 	ret = ican3_set_termination(mod, enable);
@@ -1759,7 +1758,7 @@ static int ican3_probe(struct platform_device *pdev)
 	struct device *dev;
 	int ret;
 
-	pdata = pdev->dev.platform_data;
+	pdata = dev_get_platdata(&pdev->dev);
 	if (!pdata)
 		return -ENXIO;
 

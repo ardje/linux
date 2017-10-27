@@ -3,6 +3,7 @@
  *
  * Copyright (C) 1995-2009 Russell King
  * Copyright (C) 2012 ARM Ltd.
+ * Copyright (c) 2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -32,6 +33,7 @@
 #include <linux/syscalls.h>
 
 #include <asm/atomic.h>
+#include <asm/debug-monitors.h>
 #include <asm/traps.h>
 #include <asm/stacktrace.h>
 #include <asm/exception.h>
@@ -256,17 +258,58 @@ void arm64_notify_die(const char *str, struct pt_regs *regs,
 		die(str, regs, err);
 }
 
+static LIST_HEAD(undef_hook);
+
+void register_undef_hook(struct undef_hook *hook)
+{
+	list_add(&hook->node, &undef_hook);
+}
+
+static int call_undef_hook(struct pt_regs *regs, unsigned int instr)
+{
+	struct undef_hook *hook;
+	int (*fn)(struct pt_regs *regs, unsigned int instr) = NULL;
+
+	list_for_each_entry(hook, &undef_hook, node)
+		if ((instr & hook->instr_mask) == hook->instr_val &&
+		    (regs->pstate & hook->pstate_mask) == hook->pstate_val)
+			fn = hook->fn;
+
+	return fn ? fn(regs, instr) : 1;
+}
+
 asmlinkage void __exception do_undefinstr(struct pt_regs *regs)
 {
+	u32 instr;
 	siginfo_t info;
 	void __user *pc = (void __user *)instruction_pointer(regs);
 
-#ifdef CONFIG_COMPAT
 	/* check for AArch32 breakpoint instructions */
-	if (compat_user_mode(regs) && aarch32_break_trap(regs) == 0)
+	if (!aarch32_break_handler(regs))
 		return;
-#endif
+	if (user_mode(regs)) {
+		if (compat_thumb_mode(regs)) {
+			if (get_user(instr, (u16 __user *)pc))
+				goto die_sig;
+			if (is_wide_instruction(instr)) {
+				u32 instr2;
+				if (get_user(instr2, (u16 __user *)pc+1))
+					goto die_sig;
+				instr <<= 16;
+				instr |= instr2;
+			}
+		} else if (get_user(instr, (u32 __user *)pc)) {
+			goto die_sig;
+		}
+	} else {
+		/* kernel mode */
+		instr = *((u32 *)pc);
+	}
 
+	if (call_undef_hook(regs, instr) == 0)
+		return;
+
+die_sig:
 	if (show_unhandled_signals && unhandled_signal(current, SIGILL) &&
 	    printk_ratelimit()) {
 		pr_info("%s[%d]: undefined instruction: pc=%p\n",
@@ -307,33 +350,16 @@ asmlinkage long do_ni_syscall(struct pt_regs *regs)
 }
 
 /*
- * bad_mode handles the impossible case in the exception vector. This is always
- * fatal.
+ * bad_mode handles the impossible case in the exception vector.
  */
 asmlinkage void bad_mode(struct pt_regs *regs, int reason, unsigned int esr)
-{
-	console_verbose();
-
-	pr_crit("Bad mode in %s handler detected, code 0x%08x\n",
-		handler[reason], esr);
-
-	die("Oops - bad mode", regs, 0);
-	local_irq_disable();
-	panic("bad mode");
-}
-
-/*
- * bad_el0_sync handles unexpected, but potentially recoverable synchronous
- * exceptions taken from EL0. Unlike bad_mode, this returns.
- */
-asmlinkage void bad_el0_sync(struct pt_regs *regs, int reason, unsigned int esr)
 {
 	siginfo_t info;
 	void __user *pc = (void __user *)instruction_pointer(regs);
 	console_verbose();
 
-	pr_crit("Bad EL0 synchronous exception detected on CPU%d, code 0x%08x\n",
-		smp_processor_id(), esr);
+	pr_crit("Bad mode in %s handler detected, code 0x%08x\n",
+		handler[reason], esr);
 	__show_regs(regs);
 
 	info.si_signo = SIGILL;
@@ -341,7 +367,7 @@ asmlinkage void bad_el0_sync(struct pt_regs *regs, int reason, unsigned int esr)
 	info.si_code  = ILL_ILLOPC;
 	info.si_addr  = pc;
 
-	force_sig_info(info.si_signo, &info, current);
+	arm64_notify_die("Oops - bad mode", regs, &info, 0);
 }
 
 void __pte_error(const char *file, int line, unsigned long val)

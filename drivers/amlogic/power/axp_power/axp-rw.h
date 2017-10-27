@@ -1,15 +1,32 @@
+/*
+ * drivers/amlogic/power/axp_power/axp-rw.h
+ *
+ * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+*/
+
 #ifndef _LINUX_AXP_RW_H_
 #define _LINUX_AXP_RW_H_
 
 #include "axp-mfd.h"
 
-static uint8_t axp_reg_addr = 0;
+static uint8_t axp_reg_addr;
 
 struct i2c_client *axp = NULL;
 EXPORT_SYMBOL_GPL(axp);
 
 static inline int __axp_read(struct i2c_client *client,
-				int reg, uint8_t *val)
+			     int reg, uint8_t *val)
 {
 	int ret;
 
@@ -24,7 +41,7 @@ static inline int __axp_read(struct i2c_client *client,
 }
 
 static inline int __axp_reads(struct i2c_client *client, int reg,
-				 int len, uint8_t *val)
+			      int len, uint8_t *val)
 {
 	int ret;
 
@@ -37,14 +54,14 @@ static inline int __axp_reads(struct i2c_client *client, int reg,
 }
 
 static inline int __axp_write(struct i2c_client *client,
-				 int reg, uint8_t val)
+			      int reg, uint8_t val)
 {
 	int ret;
 
 	ret = i2c_smbus_write_byte_data(client, reg, val);
 	if (ret < 0) {
 		dev_err(&client->dev, "failed writing 0x%02x to 0x%02x\n",
-				val, reg);
+			val, reg);
 		return ret;
 	}
 	return 0;
@@ -52,7 +69,7 @@ static inline int __axp_write(struct i2c_client *client,
 
 
 static inline int __axp_writes(struct i2c_client *client, int reg,
-				  int len, uint8_t *val)
+		int len, uint8_t *val)
 {
 	int ret;
 
@@ -65,27 +82,28 @@ static inline int __axp_writes(struct i2c_client *client, int reg,
 }
 
 int axp_register_notifier(struct device *dev, struct notifier_block *nb,
-				uint64_t irqs)
+		uint64_t irqs)
 {
-	struct axp_mfd_chip *chip = dev_get_drvdata(dev);
+	struct axp_mfd_chip *c = dev_get_drvdata(dev);
 
-	chip->ops->enable_irqs(chip, irqs);
-	if(NULL != nb) {
-	    return blocking_notifier_chain_register(&chip->notifier_list, nb);
-    }
+	c->ops->enable_irqs(c, irqs);
+	if (NULL != nb)
+		return blocking_notifier_chain_register(&c->notifier_list, nb);
 
-    return 0;
+	return 0;
 }
 EXPORT_SYMBOL_GPL(axp_register_notifier);
 
 int axp_unregister_notifier(struct device *dev, struct notifier_block *nb,
-				uint64_t irqs)
+		uint64_t irqs)
 {
-	struct axp_mfd_chip *chip = dev_get_drvdata(dev);
+	struct axp_mfd_chip *c = dev_get_drvdata(dev);
+	int ret;
 
-	chip->ops->disable_irqs(chip, irqs);
-	if(NULL != nb) {
-	    return blocking_notifier_chain_unregister(&chip->notifier_list, nb);
+	c->ops->disable_irqs(c, irqs);
+	if (NULL != nb) {
+		ret = blocking_notifier_chain_unregister(&c->notifier_list, nb);
+		return ret;
 	}
 
 	return 0;

@@ -135,6 +135,7 @@ struct file *get_empty_filp(void)
 	atomic_long_set(&f->f_count, 1);
 	rwlock_init(&f->f_owner.lock);
 	spin_lock_init(&f->f_lock);
+	mutex_init(&f->f_pos_lock);
 	eventpoll_init_file(f);
 	/* f->f_version: 0 */
 	return f;
@@ -224,7 +225,7 @@ static void __fput(struct file *file)
 {
 	struct dentry *dentry = file->f_path.dentry;
 	struct vfsmount *mnt = file->f_path.mnt;
-	struct inode *inode = dentry->d_inode;
+	struct inode *inode = file->f_inode;
 
 	might_sleep();
 
@@ -237,11 +238,11 @@ static void __fput(struct file *file)
 	locks_remove_flock(file);
 
 	if (unlikely(file->f_flags & FASYNC)) {
-		if (file->f_op && file->f_op->fasync)
+		if (file->f_op->fasync)
 			file->f_op->fasync(-1, file, 0);
 	}
 	ima_file_free(file);
-	if (file->f_op && file->f_op->release)
+	if (file->f_op->release)
 		file->f_op->release(inode, file);
 	security_file_free(file);
 	if (unlikely(S_ISCHR(inode->i_mode) && inode->i_cdev != NULL &&
@@ -294,7 +295,7 @@ void flush_delayed_fput(void)
 	delayed_fput(NULL);
 }
 
-static DECLARE_WORK(delayed_fput_work, delayed_fput);
+static DECLARE_DELAYED_WORK(delayed_fput_work, delayed_fput);
 
 void fput(struct file *file)
 {
@@ -305,10 +306,15 @@ void fput(struct file *file)
 			init_task_work(&file->f_u.fu_rcuhead, ____fput);
 			if (!task_work_add(task, &file->f_u.fu_rcuhead, true))
 				return;
+			/*
+			 * After this task has run exit_task_work(),
+			 * task_work_add() will fail.  Fall through to delayed
+			 * fput to avoid leaking *file.
+			 */
 		}
 
 		if (llist_add(&file->f_u.fu_llist, &delayed_fput_list))
-			schedule_work(&delayed_fput_work);
+			schedule_delayed_work(&delayed_fput_work, 1);
 	}
 }
 

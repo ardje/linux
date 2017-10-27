@@ -17,7 +17,7 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/rtc.h>
-#include <linux/syscalls.h> /* sys_sync */
+#include <linux/syscalls.h>	/* sys_sync */
 #include <linux/wakelock_android.h>
 #include <linux/workqueue.h>
 
@@ -27,7 +27,7 @@ enum {
 	DEBUG_USER_STATE = 1U << 0,
 	DEBUG_SUSPEND = 1U << 2,
 };
-static int debug_mask = DEBUG_USER_STATE|DEBUG_SUSPEND;
+static int debug_mask = DEBUG_USER_STATE | DEBUG_SUSPEND;
 module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
 
 static DEFINE_MUTEX(early_suspend_lock);
@@ -95,10 +95,7 @@ static void early_suspend(struct work_struct *work)
 		pr_info("early_suspend: call handlers\n");
 	list_for_each_entry(pos, &early_suspend_handlers, link) {
 		if (pos->suspend != NULL)
-		{
-			printk("%pf\n",pos->suspend);
 			pos->suspend(pos);
-		}
 	}
 	mutex_unlock(&early_suspend_lock);
 
@@ -106,7 +103,7 @@ static void early_suspend(struct work_struct *work)
 		pr_info("early_suspend: sync\n");
 
 	sys_sync();
-abort:
+ abort:
 	spin_lock_irqsave(&state_lock, irqflags);
 	if (state == SUSPEND_REQUESTED_AND_SUSPENDED)
 		wake_unlock(&main_wake_lock);
@@ -135,14 +132,11 @@ static void late_resume(struct work_struct *work)
 	if (debug_mask & DEBUG_SUSPEND)
 		pr_info("late_resume: call handlers\n");
 	list_for_each_entry_reverse(pos, &early_suspend_handlers, link)
-		if (pos->resume != NULL)
-		{
-			printk("%pf\n",pos->resume);
-			pos->resume(pos);
-		}
+	    if (pos->resume != NULL)
+		pos->resume(pos);
 	if (debug_mask & DEBUG_SUSPEND)
 		pr_info("late_resume: done\n");
-abort:
+ abort:
 	mutex_unlock(&early_suspend_lock);
 }
 
@@ -166,7 +160,8 @@ void request_suspend_state(suspend_state_t new_state)
 			tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
 			tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec);
 	}
-	printk("%s,%d,old_sleep=%d,new_state=%d\n",__func__,__LINE__,old_sleep,new_state);
+	pr_info("%s,%d,old_sleep=%d,new_state=%d\n", __func__, __LINE__,
+	       old_sleep, new_state);
 	if (!old_sleep && new_state != PM_SUSPEND_ON) {
 		state |= SUSPEND_REQUESTED;
 		queue_work(suspend_work_queue, &early_suspend_work);

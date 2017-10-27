@@ -126,8 +126,6 @@ struct snd_pcm_ops {
 #define SNDRV_PCM_RATE_96000		(1<<10)		/* 96000Hz */
 #define SNDRV_PCM_RATE_176400		(1<<11)		/* 176400Hz */
 #define SNDRV_PCM_RATE_192000		(1<<12)		/* 192000Hz */
-#define SNDRV_PCM_RATE_352800		(1<<13)		/* 352800Hz */
-#define SNDRV_PCM_RATE_384000		(1<<14)		/* 384000Hz */
 
 #define SNDRV_PCM_RATE_CONTINUOUS	(1<<30)		/* continuous range */
 #define SNDRV_PCM_RATE_KNOT		(1<<31)		/* supports more non-continuos rates */
@@ -140,11 +138,6 @@ struct snd_pcm_ops {
 					 SNDRV_PCM_RATE_88200|SNDRV_PCM_RATE_96000)
 #define SNDRV_PCM_RATE_8000_192000	(SNDRV_PCM_RATE_8000_96000|SNDRV_PCM_RATE_176400|\
 					 SNDRV_PCM_RATE_192000)
-#define SNDRV_PCM_RATE_8000_352800	(SNDRV_PCM_RATE_8000_192000|\
-					 SNDRV_PCM_RATE_352800)
-#define SNDRV_PCM_RATE_8000_384000	(SNDRV_PCM_RATE_8000_352800|\
-					 SNDRV_PCM_RATE_384000)
-
 #define _SNDRV_PCM_FMTBIT(fmt)		(1ULL << (__force int)SNDRV_PCM_FORMAT_##fmt)
 #define SNDRV_PCM_FMTBIT_S8		_SNDRV_PCM_FMTBIT(S8)
 #define SNDRV_PCM_FMTBIT_U8		_SNDRV_PCM_FMTBIT(U8)
@@ -388,10 +381,9 @@ struct snd_pcm_substream {
 	struct pm_qos_request latency_pm_qos_req; /* pm_qos request */
 	size_t buffer_bytes_max;	/* limit ring buffer size */
 	struct snd_dma_buffer dma_buffer;
-	unsigned int dma_buf_id;
 	size_t dma_max;
 	/* -- hardware operations -- */
-	struct snd_pcm_ops *ops;
+	const struct snd_pcm_ops *ops;
 	/* -- runtime information -- */
 	struct snd_pcm_runtime *runtime;
         /* -- timer section -- */
@@ -878,7 +870,8 @@ const unsigned char *snd_pcm_format_silence_64(snd_pcm_format_t format);
 int snd_pcm_format_set_silence(snd_pcm_format_t format, void *buf, unsigned int frames);
 snd_pcm_format_t snd_pcm_build_linear_format(int width, int unsigned, int big_endian);
 
-void snd_pcm_set_ops(struct snd_pcm * pcm, int direction, struct snd_pcm_ops *ops);
+void snd_pcm_set_ops(struct snd_pcm * pcm, int direction,
+		     const struct snd_pcm_ops *ops);
 void snd_pcm_set_sync(struct snd_pcm_substream *substream);
 int snd_pcm_lib_interleave_len(struct snd_pcm_substream *substream);
 int snd_pcm_lib_ioctl(struct snd_pcm_substream *substream,
@@ -907,6 +900,8 @@ extern const struct snd_pcm_hw_constraint_list snd_pcm_known_rates;
 int snd_pcm_limit_hw_rates(struct snd_pcm_runtime *runtime);
 unsigned int snd_pcm_rate_to_rate_bit(unsigned int rate);
 unsigned int snd_pcm_rate_bit_to_rate(unsigned int rate_bit);
+unsigned int snd_pcm_rate_mask_intersect(unsigned int rates_a,
+					 unsigned int rates_b);
 
 static inline void snd_pcm_set_runtime_buffer(struct snd_pcm_substream *substream,
 					      struct snd_dma_buffer *bufp)

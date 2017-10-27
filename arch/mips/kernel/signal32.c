@@ -85,8 +85,9 @@ static int protected_save_fp_context32(struct sigcontext32 __user *sc)
 	int err;
 	while (1) {
 		lock_fpu_owner();
-		own_fpu_inatomic(1);
-		err = save_fp_context32(sc); /* this might fail */
+		err = own_fpu_inatomic(1);
+		if (!err)
+			err = save_fp_context32(sc); /* this might fail */
 		unlock_fpu_owner();
 		if (likely(!err))
 			break;
@@ -105,8 +106,9 @@ static int protected_restore_fp_context32(struct sigcontext32 __user *sc)
 	int err, tmp __maybe_unused;
 	while (1) {
 		lock_fpu_owner();
-		own_fpu_inatomic(0);
-		err = restore_fp_context32(sc); /* this might fail */
+		err = own_fpu_inatomic(0);
+		if (!err)
+			err = restore_fp_context32(sc); /* this might fail */
 		unlock_fpu_owner();
 		if (likely(!err))
 			break;
@@ -314,7 +316,7 @@ SYSCALL_DEFINE3(32_sigaction, long, sig, const struct compat_sigaction __user *,
 	return ret;
 }
 
-int copy_siginfo_to_user32(compat_siginfo_t __user *to, siginfo_t *from)
+int copy_siginfo_to_user32(compat_siginfo_t __user *to, const siginfo_t *from)
 {
 	int err;
 
@@ -368,6 +370,8 @@ int copy_siginfo_to_user32(compat_siginfo_t __user *to, siginfo_t *from)
 
 int copy_siginfo_from_user32(siginfo_t *to, compat_siginfo_t __user *from)
 {
+	memset(to, 0, sizeof *to);
+
 	if (copy_from_user(to, from, 3*sizeof(int)) ||
 	    copy_from_user(to->_sifields._pad,
 			   from->_sifields._pad, SI_PAD_SIZE32))

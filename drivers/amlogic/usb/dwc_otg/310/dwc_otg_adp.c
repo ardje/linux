@@ -43,7 +43,7 @@
  *
  */
 
-void dwc_otg_adp_write_reg(dwc_otg_core_if_t * core_if, uint32_t value)
+void dwc_otg_adp_write_reg(dwc_otg_core_if_t *core_if, uint32_t value)
 {
 	adpctl_data_t adpctl;
 
@@ -52,16 +52,14 @@ void dwc_otg_adp_write_reg(dwc_otg_core_if_t * core_if, uint32_t value)
 
 	DWC_WRITE_REG32(&core_if->core_global_regs->adpctl, adpctl.d32);
 
-	while (adpctl.b.ar) {
+	while (adpctl.b.ar)
 		adpctl.d32 = DWC_READ_REG32(&core_if->core_global_regs->adpctl);
-	}
-
 }
 
 /**
  * Function is called to read ADP registers
  */
-uint32_t dwc_otg_adp_read_reg(dwc_otg_core_if_t * core_if)
+uint32_t dwc_otg_adp_read_reg(dwc_otg_core_if_t *core_if)
 {
 	adpctl_data_t adpctl;
 
@@ -70,9 +68,8 @@ uint32_t dwc_otg_adp_read_reg(dwc_otg_core_if_t * core_if)
 
 	DWC_WRITE_REG32(&core_if->core_global_regs->adpctl, adpctl.d32);
 
-	while (adpctl.b.ar) {
+	while (adpctl.b.ar)
 		adpctl.d32 = DWC_READ_REG32(&core_if->core_global_regs->adpctl);
-	}
 
 	return adpctl.d32;
 }
@@ -80,7 +77,7 @@ uint32_t dwc_otg_adp_read_reg(dwc_otg_core_if_t * core_if)
 /**
  * Function is called to read ADPCTL register and filter Write-clear bits
  */
-uint32_t dwc_otg_adp_read_reg_filter(dwc_otg_core_if_t * core_if)
+uint32_t dwc_otg_adp_read_reg_filter(dwc_otg_core_if_t *core_if)
 {
 	adpctl_data_t adpctl;
 
@@ -88,23 +85,23 @@ uint32_t dwc_otg_adp_read_reg_filter(dwc_otg_core_if_t * core_if)
 	adpctl.b.adp_tmout_int = 0;
 	adpctl.b.adp_prb_int = 0;
 	adpctl.b.adp_tmout_int = 0;
-		
+
 	return adpctl.d32;
 }
 
 /**
  * Function is called to write ADP registers
  */
-void dwc_otg_adp_modify_reg(dwc_otg_core_if_t * core_if, uint32_t clr,
+void dwc_otg_adp_modify_reg(dwc_otg_core_if_t *core_if, uint32_t clr,
 			    uint32_t set)
 {
 	dwc_otg_adp_write_reg(core_if,
 			      (dwc_otg_adp_read_reg(core_if) & (~clr)) | set);
 }
 
-static void adp_probe_func(void * ptr)
+static void adp_probe_func(void *ptr)
 {
-	dwc_otg_core_if_t *core_if = (dwc_otg_core_if_t *) ptr;	
+	dwc_otg_core_if_t *core_if = (dwc_otg_core_if_t *) ptr;
 	dwc_otg_adp_probe_start(core_if);
 }
 
@@ -126,10 +123,10 @@ static void adp_sense_timeout(void *ptr)
 static void adp_vbuson_timeout(void *ptr)
 {
 	gpwrdn_data_t gpwrdn;
-	dwc_otg_core_if_t *core_if = (dwc_otg_core_if_t *) ptr;
+	dwc_otg_core_if_t *core_if = (dwc_otg_core_if_t *)ptr;
 	hprt0_data_t hprt0 = {.d32 = 0 };
 	pcgcctl_data_t pcgcctl = {.d32 = 0 };
-	DWC_PRINTF("%s: 1.1 seconds expire after turning on VBUS\n",__FUNCTION__);
+	DWC_PRINTF("%s: 1.1 seconds expire after turning on VBUS\n", __FUNCTION__);
 	if (core_if) {
 		core_if->adp.vbuson_timer_started = 0;
 		/* Turn off vbus */
@@ -140,7 +137,7 @@ static void adp_vbuson_timeout(void *ptr)
 		/* Power off the core */
 		if (core_if->power_down == 2) {
 			/* Enable Wakeup Logic */
-//                      gpwrdn.b.wkupactiv = 1;
+			/*gpwrdn.b.wkupactiv = 1;*/
 			gpwrdn.b.pmuactv = 0;
 			gpwrdn.b.pwrdnrstn = 1;
 			gpwrdn.b.pwrdnclmp = 1;
@@ -152,7 +149,7 @@ static void adp_vbuson_timeout(void *ptr)
 			DWC_MODIFY_REG32(core_if->pcgcctl, 0, pcgcctl.d32);
 
 			/* Switch on VDD */
-//                      gpwrdn.b.wkupactiv = 1;
+			/*gpwrdn.b.wkupactiv = 1;*/
 			gpwrdn.b.pmuactv = 1;
 			gpwrdn.b.pwrdnrstn = 1;
 			gpwrdn.b.pwrdnclmp = 1;
@@ -186,30 +183,30 @@ static void adp_vbuson_timeout(void *ptr)
 }
 
 /**
- * Start the ADP Initial Probe timer to detect if Port Connected interrupt is 
+ * Start the ADP Initial Probe timer to detect if Port Connected interrupt is
  * not asserted within 1.1 seconds.
  *
  * @param core_if the pointer to core_if strucure.
  */
-void dwc_otg_adp_vbuson_timer_start(dwc_otg_core_if_t * core_if)
+void dwc_otg_adp_vbuson_timer_start(dwc_otg_core_if_t *core_if)
 {
 	core_if->adp.vbuson_timer_started = 1;
-	if (core_if->adp.vbuson_timer)
-	{
+	if (core_if->adp.vbuson_timer) {
 		DWC_PRINTF("SCHEDULING VBUSON TIMER\n");
 		/* 1.1 secs + 60ms necessary for cil_hcd_start*/
 		DWC_TIMER_SCHEDULE(core_if->adp.vbuson_timer, 1160);
 	} else {
-		DWC_WARN("VBUSON_TIMER = %p\n",core_if->adp.vbuson_timer);
+		DWC_WARN("VBUSON_TIMER = %p\n", core_if->adp.vbuson_timer);
 	}
 }
+
 
 #if 0
 /**
  * Masks all DWC OTG core interrupts
  *
  */
-static void mask_all_interrupts(dwc_otg_core_if_t * core_if)
+static void mask_all_interrupts(dwc_otg_core_if_t *core_if)
 {
 	int i;
 	gahbcfg_data_t ahbcfg = {.d32 = 0 };
@@ -287,9 +284,9 @@ static void mask_all_interrupts(dwc_otg_core_if_t * core_if)
  * Unmask Port Connection Detected interrupt
  *
  */
-static void unmask_conn_det_intr(dwc_otg_core_if_t * core_if)
+static void unmask_conn_det_intr(dwc_otg_core_if_t *core_if)
 {
-	gintmsk_data_t gintmsk = {.d32 = 0,.b.portintr = 1 };
+	gintmsk_data_t gintmsk = {.d32 = 0, .b.portintr = 1 };
 
 	DWC_WRITE_REG32(&core_if->core_global_regs->gintmsk, gintmsk.d32);
 }
@@ -300,7 +297,7 @@ static void unmask_conn_det_intr(dwc_otg_core_if_t * core_if)
  *
  * @param core_if the pointer to core_if structure.
  */
-uint32_t dwc_otg_adp_probe_start(dwc_otg_core_if_t * core_if)
+uint32_t dwc_otg_adp_probe_start(dwc_otg_core_if_t *core_if)
 {
 
 	adpctl_data_t adpctl = {.d32 = 0};
@@ -313,7 +310,7 @@ uint32_t dwc_otg_adp_probe_start(dwc_otg_core_if_t * core_if)
 		core_if->stop_adpprb = 0;
 		return 0;
 	}
-	
+
 	dwc_otg_disable_global_interrupts(core_if);
 	DWC_PRINTF("ADP Probe Start\n");
 	core_if->adp.probe_enabled = 1;
@@ -321,9 +318,8 @@ uint32_t dwc_otg_adp_probe_start(dwc_otg_core_if_t * core_if)
 	adpctl.b.adpres = 1;
 	dwc_otg_adp_write_reg(core_if, adpctl.d32);
 
-	while (adpctl.b.adpres) {
+	while (adpctl.b.adpres)
 		adpctl.d32 = dwc_otg_adp_read_reg(core_if);
-	}
 
 	adpctl.d32 = 0;
 	gpwrdn.d32 = DWC_READ_REG32(&core_if->core_global_regs->gpwrdn);
@@ -331,9 +327,9 @@ uint32_t dwc_otg_adp_probe_start(dwc_otg_core_if_t * core_if)
 	/* In Host mode unmask SRP detected interrupt */
 	gpwrdn.d32 = 0;
 	gpwrdn.b.sts_chngint_msk = 1;
-	if (!gpwrdn.b.idsts) {
+	if (!gpwrdn.b.idsts)
 		gpwrdn.b.srp_det_msk = 1;
-	}
+
 	DWC_MODIFY_REG32(&core_if->core_global_regs->gpwrdn, 0, gpwrdn.d32);
 
 	adpctl.b.adp_tmout_int_msk = 1;
@@ -350,15 +346,15 @@ uint32_t dwc_otg_adp_probe_start(dwc_otg_core_if_t * core_if)
 }
 
 /**
- * Starts the ADP Sense timer to detect if ADP Sense interrupt is not asserted 
+ * Starts the ADP Sense timer to detect if ADP Sense interrupt is not asserted
  * within 3 seconds.
  *
  * @param core_if the pointer to core_if strucure.
  */
-void dwc_otg_adp_sense_timer_start(dwc_otg_core_if_t * core_if)
+void dwc_otg_adp_sense_timer_start(dwc_otg_core_if_t *core_if)
 {
 	core_if->adp.sense_timer_started = 1;
-	DWC_TIMER_SCHEDULE(core_if->adp.sense_timer, 3300 /* 3.3 secs */ );
+	DWC_TIMER_SCHEDULE(core_if->adp.sense_timer, 3300);
 }
 
 /**
@@ -366,7 +362,7 @@ void dwc_otg_adp_sense_timer_start(dwc_otg_core_if_t * core_if)
  *
  * @param core_if the pointer to core_if strucure.
  */
-uint32_t dwc_otg_adp_sense_start(dwc_otg_core_if_t * core_if)
+uint32_t dwc_otg_adp_sense_start(dwc_otg_core_if_t *core_if)
 {
 	adpctl_data_t adpctl;
 
@@ -376,16 +372,15 @@ uint32_t dwc_otg_adp_sense_start(dwc_otg_core_if_t * core_if)
 	adpctl.d32 = dwc_otg_adp_read_reg_filter(core_if);
 	adpctl.b.adp_sns_int_msk = 1;
 	dwc_otg_adp_write_reg(core_if, adpctl.d32);
-	dwc_otg_disable_global_interrupts(core_if); // vahrama 
+	dwc_otg_disable_global_interrupts(core_if);
 
 	/* Set ADP reset bit*/
 	adpctl.d32 = dwc_otg_adp_read_reg_filter(core_if);
 	adpctl.b.adpres = 1;
 	dwc_otg_adp_write_reg(core_if, adpctl.d32);
 
-	while (adpctl.b.adpres) {
+	while (adpctl.b.adpres)
 		adpctl.d32 = dwc_otg_adp_read_reg(core_if);
-	}
 
 	adpctl.b.adpres = 0;
 	adpctl.b.adpen = 1;
@@ -402,13 +397,13 @@ uint32_t dwc_otg_adp_sense_start(dwc_otg_core_if_t * core_if)
  *
  * @param core_if the pointer to core_if strucure.
  */
-uint32_t dwc_otg_adp_probe_stop(dwc_otg_core_if_t * core_if)
+uint32_t dwc_otg_adp_probe_stop(dwc_otg_core_if_t *core_if)
 {
 
 	adpctl_data_t adpctl;
 	DWC_PRINTF("Stop ADP probe\n");
 	core_if->adp.probe_enabled = 0;
-	//core_if->adp.probe_counter = 0;
+	/*core_if->adp.probe_counter = 0;*/
 	adpctl.d32 = dwc_otg_adp_read_reg(core_if);
 
 	adpctl.b.adpen = 0;
@@ -425,7 +420,7 @@ uint32_t dwc_otg_adp_probe_stop(dwc_otg_core_if_t * core_if)
  *
  * @param core_if the pointer to core_if strucure.
  */
-uint32_t dwc_otg_adp_sense_stop(dwc_otg_core_if_t * core_if)
+uint32_t dwc_otg_adp_sense_stop(dwc_otg_core_if_t *core_if)
 {
 	adpctl_data_t adpctl;
 
@@ -446,17 +441,15 @@ uint32_t dwc_otg_adp_sense_stop(dwc_otg_core_if_t * core_if)
  *
  * @param core_if the pointer to core_if structure.
  */
-void dwc_otg_adp_turnon_vbus(dwc_otg_core_if_t * core_if)
+void dwc_otg_adp_turnon_vbus(dwc_otg_core_if_t *core_if)
 {
 	hprt0_data_t hprt0 = {.d32 = 0 };
 	hprt0.d32 = dwc_otg_read_hprt0(core_if);
 	DWC_PRINTF("Turn on VBUS for 1.1s, port power is %d\n", hprt0.b.prtpwr);
 
-	if (hprt0.b.prtpwr == 0) {
+	if (hprt0.b.prtpwr == 0)
 		hprt0.b.prtpwr = 1;
-		//DWC_WRITE_REG32(core_if->host_if->hprt0, hprt0.d32);
-	}
-	
+
 	dwc_otg_adp_vbuson_timer_start(core_if);
 }
 
@@ -467,7 +460,7 @@ void dwc_otg_adp_turnon_vbus(dwc_otg_core_if_t * core_if)
  * @param core_if the pointer to core_if structure.
  * @param is_host - flag for current mode of operation either from GINTSTS or GPWRDN
  */
-void dwc_otg_adp_start(dwc_otg_core_if_t * core_if, uint8_t is_host)
+void dwc_otg_adp_start(dwc_otg_core_if_t *core_if, uint8_t is_host)
 {
 	gpwrdn_data_t gpwrdn;
 
@@ -490,7 +483,7 @@ void dwc_otg_adp_start(dwc_otg_core_if_t * core_if, uint8_t is_host)
 		gotgctl_data_t gotgctl;
 		gotgctl.d32 = DWC_READ_REG32(&core_if->core_global_regs->gotgctl);
 		DWC_PRINTF("DEVICE MODE\n");
-		//dwc_otg_core_init(core_if);
+		/*dwc_otg_core_init(core_if);*/
 		if (gotgctl.b.bsesvld == 0) {
 			/* Enable Power Down Logic Interrupt*/
 			gpwrdn.d32 = 0;
@@ -503,7 +496,7 @@ void dwc_otg_adp_start(dwc_otg_core_if_t * core_if, uint8_t is_host)
 		} else {
 			DWC_PRINTF("VBUS is valid - initialize core as a Device\n");
 			core_if->op_state = B_PERIPHERAL;
-			//dwc_otg_core_init(core_if);
+			/*dwc_otg_core_init(core_if);*/
 			dwc_otg_enable_global_interrupts(core_if);
 			cil_pcd_start(core_if);
 			dwc_otg_dump_global_registers(core_if);
@@ -512,7 +505,7 @@ void dwc_otg_adp_start(dwc_otg_core_if_t * core_if, uint8_t is_host)
 	}
 }
 
-void dwc_otg_adp_init(dwc_otg_core_if_t * core_if)
+void dwc_otg_adp_init(dwc_otg_core_if_t *core_if)
 {
 	core_if->adp.adp_started = 0;
 	core_if->adp.initial_probe = 0;
@@ -531,37 +524,35 @@ void dwc_otg_adp_init(dwc_otg_core_if_t * core_if)
 	core_if->adp.vbuson_timer =
 	    DWC_TIMER_ALLOC("ADP VBUS ON TIMER", adp_vbuson_timeout, core_if);
 	if (!core_if->adp.sense_timer || !core_if->adp.vbuson_timer)
-	{
 		DWC_ERROR("Could not allocate memory for ADP timers\n");
-	}
 }
 
-void dwc_otg_adp_remove(dwc_otg_core_if_t * core_if)
+void dwc_otg_adp_remove(dwc_otg_core_if_t *core_if)
 {
 	gpwrdn_data_t gpwrdn = { .d32 = 0 };
 	gpwrdn.b.pmuintsel = 1;
 	gpwrdn.b.pmuactv = 1;
 	DWC_MODIFY_REG32(&core_if->core_global_regs->gpwrdn, gpwrdn.d32, 0);
 
-	if (core_if->adp.probe_enabled)		
+	if (core_if->adp.probe_enabled)
 		dwc_otg_adp_probe_stop(core_if);
-	if (core_if->adp.sense_enabled)		
+	if (core_if->adp.sense_enabled)
 		dwc_otg_adp_sense_stop(core_if);
-	if (core_if->adp.sense_timer_started)		
+	if (core_if->adp.sense_timer_started)
 		DWC_TIMER_CANCEL(core_if->adp.sense_timer);
-	if (core_if->adp.vbuson_timer_started)		
+	if (core_if->adp.vbuson_timer_started)
 		DWC_TIMER_CANCEL(core_if->adp.vbuson_timer);
 	DWC_TIMER_FREE(core_if->adp.sense_timer);
 	DWC_TIMER_FREE(core_if->adp.vbuson_timer);
 }
 
-/////////////////////////////////////////////////////////////////////
+/*////////////////////////////////////////////////////////////////////
 ////////////// ADP Interrupt Handlers ///////////////////////////////
-/////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////*/
 /**
  * This function sets Ramp Timer values
  */
-static uint32_t set_timer_value(dwc_otg_core_if_t * core_if, uint32_t val)
+static uint32_t set_timer_value(dwc_otg_core_if_t *core_if, uint32_t val)
 {
 	if (core_if->adp.probe_timer_values[0] == -1) {
 		core_if->adp.probe_timer_values[0] = val;
@@ -578,26 +569,25 @@ static uint32_t set_timer_value(dwc_otg_core_if_t * core_if, uint32_t val)
 /**
  * This function compares Ramp Timer values
  */
-static uint32_t compare_timer_values(dwc_otg_core_if_t * core_if)
+static uint32_t compare_timer_values(dwc_otg_core_if_t *core_if)
 {
 	uint32_t diff;
-	DWC_DEBUGPL(DBG_ANY, "timer value 0 %d timer value 1 %d\n", 
+	DWC_DEBUGPL(DBG_ANY, "timer value 0 %d timer value 1 %d\n",
 		core_if->adp.probe_timer_values[0], core_if->adp.probe_timer_values[1]);
 	if (core_if->adp.probe_timer_values[0] >= core_if->adp.probe_timer_values[1])
 		diff = core_if->adp.probe_timer_values[0] - core_if->adp.probe_timer_values[1];
 	else
-		diff = core_if->adp.probe_timer_values[1] - core_if->adp.probe_timer_values[0];   	
-	if(diff < 3) {
+		diff = core_if->adp.probe_timer_values[1] - core_if->adp.probe_timer_values[0];
+	if (diff < 3)
 		return 0;
-	} else {
+	else
 		return 1;
-	}
 }
 
 /**
  * This function handles ADP Probe Interrupts
  */
-static int32_t dwc_otg_adp_handle_prb_intr(dwc_otg_core_if_t * core_if,
+static int32_t dwc_otg_adp_handle_prb_intr(dwc_otg_core_if_t *core_if,
 						 uint32_t val)
 {
 	adpctl_data_t adpctl = {.d32 = 0 };
@@ -605,14 +595,14 @@ static int32_t dwc_otg_adp_handle_prb_intr(dwc_otg_core_if_t * core_if,
 	adpctl.d32 = val;
 
 	temp.d32 = DWC_READ_REG32(&core_if->core_global_regs->gpwrdn);
-	
+
 	core_if->adp.gpwrdn = DWC_READ_REG32(&core_if->core_global_regs->gpwrdn);
-	if (adpctl.b.rtim == 0 /*&& !temp.b.idsts*/){
-		DWC_PRINTF("RTIM value is 0\n");	
+	if (adpctl.b.rtim == 0 /*&& !temp.b.idsts*/) {
+		DWC_PRINTF("RTIM value is 0\n");
 		goto exit;
 	}
 	core_if->adp.probe_counter++;
-	
+
 	if (set_timer_value(core_if, adpctl.b.rtim) &&
 	    core_if->adp.initial_probe) {
 		core_if->adp.initial_probe = 0;
@@ -641,11 +631,10 @@ static int32_t dwc_otg_adp_handle_prb_intr(dwc_otg_core_if_t * core_if,
 			dwc_otg_enable_global_interrupts(core_if);
 			dwc_otg_initiate_srp(core_if);
 		}
-	} else if (core_if->adp.probe_counter > 2){
+	} else if (core_if->adp.probe_counter > 2) {
 		gpwrdn.d32 = DWC_READ_REG32(&core_if->core_global_regs->gpwrdn);
 		if (compare_timer_values(core_if)) {
 			DWC_PRINTF("Difference in timer values !!! \n");
-//          core_if->adp.attached = DWC_OTG_ADP_ATTACHED;
 			dwc_otg_adp_probe_stop(core_if);
 
 			/* Power on the core */
@@ -690,7 +679,7 @@ static int32_t dwc_otg_adp_handle_prb_intr(dwc_otg_core_if_t * core_if,
 				 * Initialize the Core for Device mode.
 				 */
 				core_if->op_state = B_PERIPHERAL;
-				//dwc_otg_core_init(core_if);
+
 				cil_pcd_start(core_if);
 				dwc_otg_enable_global_interrupts(core_if);
 
@@ -705,7 +694,7 @@ static int32_t dwc_otg_adp_handle_prb_intr(dwc_otg_core_if_t * core_if,
 				gpwrdn.d32 = 0;
 				gpwrdn.b.srp_det_msk = 1;
 				DWC_MODIFY_REG32(&core_if->core_global_regs->gpwrdn, gpwrdn.d32, 0);
-				
+
 				/* Disable Power Down Logic */
 				gpwrdn.d32 = 0;
 				gpwrdn.b.pmuactv = 1;
@@ -733,7 +722,7 @@ exit:
 /**
  * This function hadles ADP Sense Interrupt
  */
-static int32_t dwc_otg_adp_handle_sns_intr(dwc_otg_core_if_t * core_if)
+static int32_t dwc_otg_adp_handle_sns_intr(dwc_otg_core_if_t *core_if)
 {
 	adpctl_data_t adpctl;
 	/* Stop ADP Sense timer */
@@ -741,7 +730,7 @@ static int32_t dwc_otg_adp_handle_sns_intr(dwc_otg_core_if_t * core_if)
 
 	/* Restart ADP Sense timer */
 	dwc_otg_adp_sense_timer_start(core_if);
-	
+
 	/* Clear interrupt */
 	adpctl.d32 = dwc_otg_adp_read_reg(core_if);
 	adpctl.b.adp_sns_int = 1;
@@ -753,13 +742,13 @@ static int32_t dwc_otg_adp_handle_sns_intr(dwc_otg_core_if_t * core_if)
 /**
  * This function handles ADP Probe Interrupts
  */
-static int32_t dwc_otg_adp_handle_prb_tmout_intr(dwc_otg_core_if_t * core_if,
+static int32_t dwc_otg_adp_handle_prb_tmout_intr(dwc_otg_core_if_t *core_if,
 						 uint32_t val)
 {
 	adpctl_data_t adpctl = {.d32 = 0 };
 	adpctl.d32 = val;
 	set_timer_value(core_if, adpctl.b.rtim);
-	
+
 	/* Clear interrupt */
 	adpctl.d32 = dwc_otg_adp_read_reg(core_if);
 	adpctl.b.adp_tmout_int = 1;
@@ -772,13 +761,13 @@ static int32_t dwc_otg_adp_handle_prb_tmout_intr(dwc_otg_core_if_t * core_if,
  * ADP Interrupt handler.
  *
  */
-int32_t dwc_otg_adp_handle_intr(dwc_otg_core_if_t * core_if)
+int32_t dwc_otg_adp_handle_intr(dwc_otg_core_if_t *core_if)
 {
 	int retval = 0;
 	adpctl_data_t adpctl = {.d32 = 0};
 
 	adpctl.d32 = dwc_otg_adp_read_reg(core_if);
-	DWC_PRINTF("ADPCTL = %08x\n",adpctl.d32);
+	DWC_PRINTF("ADPCTL = %08x\n", adpctl.d32);
 
 	if (adpctl.b.adp_sns_int & adpctl.b.adp_sns_int_msk) {
 		DWC_PRINTF("ADP Sense interrupt\n");
@@ -790,12 +779,12 @@ int32_t dwc_otg_adp_handle_intr(dwc_otg_core_if_t * core_if)
 	}
 	if (adpctl.b.adp_prb_int & adpctl.b.adp_prb_int_msk) {
 		DWC_PRINTF("ADP Probe interrupt\n");
-		adpctl.b.adp_prb_int = 1;	
+		adpctl.b.adp_prb_int = 1;
 		retval |= dwc_otg_adp_handle_prb_intr(core_if, adpctl.d32);
 	}
 
-//	dwc_otg_adp_modify_reg(core_if, adpctl.d32, 0);
-	//dwc_otg_adp_write_reg(core_if, adpctl.d32);
+	/*dwc_otg_adp_modify_reg(core_if, adpctl.d32, 0);
+	dwc_otg_adp_write_reg(core_if, adpctl.d32);*/
 	DWC_PRINTF("RETURN FROM ADP ISR\n");
 
 	return retval;
@@ -805,7 +794,7 @@ int32_t dwc_otg_adp_handle_intr(dwc_otg_core_if_t * core_if)
  *
  * @param core_if Programming view of DWC_otg controller.
  */
-int32_t dwc_otg_adp_handle_srp_intr(dwc_otg_core_if_t * core_if)
+int32_t dwc_otg_adp_handle_srp_intr(dwc_otg_core_if_t *core_if)
 {
 
 #ifndef DWC_HOST_ONLY

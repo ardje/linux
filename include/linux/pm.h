@@ -311,6 +311,18 @@ struct dev_pm_ops {
 #define SET_SYSTEM_SLEEP_PM_OPS(suspend_fn, resume_fn)
 #endif
 
+#ifdef CONFIG_PM_SLEEP
+#define SET_LATE_SYSTEM_SLEEP_PM_OPS(suspend_fn, resume_fn) \
+	.suspend_late = suspend_fn, \
+	.resume_early = resume_fn, \
+	.freeze_late = suspend_fn, \
+	.thaw_early = resume_fn, \
+	.poweroff_late = suspend_fn, \
+	.restore_early = resume_fn,
+#else
+#define SET_LATE_SYSTEM_SLEEP_PM_OPS(suspend_fn, resume_fn)
+#endif
+
 #ifdef CONFIG_PM_RUNTIME
 #define SET_RUNTIME_PM_OPS(suspend_fn, resume_fn, idle_fn) \
 	.runtime_suspend = suspend_fn, \
@@ -318,6 +330,15 @@ struct dev_pm_ops {
 	.runtime_idle = idle_fn,
 #else
 #define SET_RUNTIME_PM_OPS(suspend_fn, resume_fn, idle_fn)
+#endif
+
+#ifdef CONFIG_PM
+#define SET_PM_RUNTIME_PM_OPS(suspend_fn, resume_fn, idle_fn) \
+	.runtime_suspend = suspend_fn, \
+	.runtime_resume = resume_fn, \
+	.runtime_idle = idle_fn,
+#else
+#define SET_PM_RUNTIME_PM_OPS(suspend_fn, resume_fn, idle_fn)
 #endif
 
 /*
@@ -443,6 +464,16 @@ const struct dev_pm_ops name = { \
 					{ .event = PM_EVENT_AUTO_RESUME, })
 
 #define PMSG_IS_AUTO(msg)	(((msg).event & PM_EVENT_AUTO) != 0)
+
+#define PMSG_IS_HIBERNATION(msg) \
+	((((msg).event & PM_EVENT_FREEZE) != 0) | \
+	(((msg).event & PM_EVENT_THAW) != 0) | \
+	(((msg).event & PM_EVENT_RESTORE) != 0))
+
+#define PMSG_IS_SUSPEND(msg) \
+	((((msg).event & PM_EVENT_SUSPEND) != 0) | \
+	(((msg).event & PM_EVENT_RESUME) != 0))
+
 
 /**
  * Device run-time power management status.
@@ -575,6 +606,7 @@ extern int dev_pm_put_subsys_data(struct device *dev);
  */
 struct dev_pm_domain {
 	struct dev_pm_ops	ops;
+	void (*detach)(struct device *dev, bool power_off);
 };
 
 /*

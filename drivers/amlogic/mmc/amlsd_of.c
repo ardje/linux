@@ -1,4 +1,20 @@
-/*amlsd_of.c*/
+/*
+ * drivers/amlogic/mmc/amlsd_of.c
+ *
+ * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+*/
+
 #include <linux/debugfs.h>
 #include <linux/kernel.h>
 #include <linux/dma-mapping.h>
@@ -8,14 +24,15 @@
 #include <linux/mmc/mmc.h>
 #include <linux/mtd/partitions.h>
 #include <linux/slab.h>
-#include <mach/sd.h>
-#include <mach/pinmux.h>
+#include <linux/amlogic/sd.h>
+/* #include <mach/pinmux.h> */
 #include <linux/of_address.h>
-#include <mach/am_regs.h>
+/* #include <mach/am_regs.h> */
 #include <linux/amlogic/aml_gpio_consumer.h>
 #include "amlsd.h"
+#include <linux/amlogic/cpu_version.h>
 
-const static struct sd_caps host_caps[] = {
+static const struct sd_caps host_caps[] = {
 	SD_CAPS(MMC_CAP_4_BIT_DATA, "MMC_CAP_4_BIT_DATA"),
 	SD_CAPS(MMC_CAP_MMC_HIGHSPEED, "MMC_CAP_MMC_HIGHSPEED"),
 	SD_CAPS(MMC_CAP_SD_HIGHSPEED, "MMC_CAP_SD_HIGHSPEED"),
@@ -43,201 +60,205 @@ const static struct sd_caps host_caps[] = {
 	SD_CAPS(MMC_PM_KEEP_POWER, "MMC_PM_KEEP_POWER"),
 };
 
-#if defined(CONFIG_MACH_MESON8B_ODROIDC)
-static int disable_uhs = 0;
-
-static int __init setup_disableuhs(char *line)
+static int amlsd_get_host_caps(struct device_node *of_node,
+		struct amlsd_platform *pdata)
 {
-        disable_uhs = 1;
-        return 0;
-}
-early_param("disableuhs", setup_disableuhs);
+	const char *str_caps;
+	struct property *prop;
+	u32 i, caps = 0;
 
-/* Force to set "MMC_CAP_NONREMOVABLE" to prevent MMC card detection
- * by MicroSD card socket.
- */
-static int mmc_removable = 0;
+	of_property_for_each_string(of_node, "caps", prop, str_caps) {
+		for (i = 0; i < ARRAY_SIZE(host_caps); i++) {
+			if (!strcasecmp(host_caps[i].name, str_caps))
+				caps |= host_caps[i].caps;
+		}
+	};
+	if (caps & MMC_CAP_8_BIT_DATA)
+		caps |= MMC_CAP_4_BIT_DATA;
 
-static int __init setup_mmc_removable(char *line)
-{
-        mmc_removable = 1;
-        return 0;
-}
-early_param("mmc_removable", setup_mmc_removable);
-#endif
-
-
-static int amlsd_get_host_caps(struct device_node* of_node,
-                struct amlsd_platform* pdata)
-{
-    const char* str_caps;
-    struct property* prop;
-    u32 i, caps = 0;
-
-    of_property_for_each_string(of_node, "caps", prop, str_caps){
-        for(i = 0; i < ARRAY_SIZE(host_caps);i++){
-            if(!strcasecmp(host_caps[i].name,str_caps))
-                caps |= host_caps[i].caps;
-        }
-    };
-
-#if defined(CONFIG_MACH_MESON8B_ODROIDC)
-    if (disable_uhs) {
-            caps &= ~(MMC_CAP_UHS_SDR12 | MMC_CAP_UHS_SDR25 |
-                            MMC_CAP_UHS_SDR50 | MMC_CAP_UHS_SDR104 |
-                            MMC_CAP_UHS_DDR50);
-    }
-
-    if (mmc_removable) {
-        caps &= ~MMC_CAP_NONREMOVABLE;
-    } else {
-        caps |= MMC_CAP_NONREMOVABLE;
-    }
-#endif
-
-    pdata->caps = caps;
-    printk("pdata->caps %x\n", pdata->caps);
+	pdata->caps = caps;
+	pr_info("%s:pdata->caps = %x\n", pdata->pinname, pdata->caps);
 	return 0;
 }
 
-const static struct sd_caps host_caps2[] = {
+static const struct sd_caps host_caps2[] = {
 	SD_CAPS(MMC_CAP2_BOOTPART_NOACC, "MMC_CAP2_BOOTPART_NOACC"),
-	SD_CAPS(MMC_CAP2_CACHE_CTRL, "MMC_CAP2_CACHE_CTRL"),
-	SD_CAPS(MMC_CAP2_POWEROFF_NOTIFY, "MMC_CAP2_POWEROFF_NOTIFY"),
+	/*SD_CAPS(MMC_CAP2_CACHE_CTRL, "MMC_CAP2_CACHE_CTRL"),*/
+	/* SD_CAPS(MMC_CAP2_POWEROFF_NOTIFY, "MMC_CAP2_POWEROFF_NOTIFY"), */
 	SD_CAPS(MMC_CAP2_NO_MULTI_READ, "MMC_CAP2_NO_MULTI_READ"),
-	SD_CAPS(MMC_CAP2_NO_SLEEP_CMD, "MMC_CAP2_NO_SLEEP_CMD"),
+	/*SD_CAPS(MMC_CAP2_NO_SLEEP_CMD, "MMC_CAP2_NO_SLEEP_CMD"),*/
 	SD_CAPS(MMC_CAP2_HS200_1_8V_SDR, "MMC_CAP2_HS200_1_8V_SDR"),
 	SD_CAPS(MMC_CAP2_HS200_1_2V_SDR, "MMC_CAP2_HS200_1_2V_SDR"),
 	SD_CAPS(MMC_CAP2_HS200, "MMC_CAP2_HS200"),
-	SD_CAPS(MMC_CAP2_BROKEN_VOLTAGE, "MMC_CAP2_BROKEN_VOLTAGE"),
-	SD_CAPS(MMC_CAP2_DETECT_ON_ERR, "MMC_CAP2_DETECT_ON_ERR"),
+	SD_CAPS(MMC_CAP2_HS400_1_8V, "MMC_CAP2_HS400_1_8V"),
+	SD_CAPS(MMC_CAP2_HS400_1_2V, "MMC_CAP2_HS400_1_2V"),
+	SD_CAPS(MMC_CAP2_HS400, "MMC_CAP2_HS400"),
+	/*SD_CAPS(MMC_CAP2_BROKEN_VOLTAGE, "MMC_CAP2_BROKEN_VOLTAGE"),*/
+	/* SD_CAPS(MMC_CAP2_DETECT_ON_ERR, "MMC_CAP2_DETECT_ON_ERR"), */
 	SD_CAPS(MMC_CAP2_HC_ERASE_SZ, "MMC_CAP2_HC_ERASE_SZ"),
 	SD_CAPS(MMC_CAP2_CD_ACTIVE_HIGH, "MMC_CAP2_CD_ACTIVE_HIGH"),
 	SD_CAPS(MMC_CAP2_RO_ACTIVE_HIGH, "MMC_CAP2_RO_ACTIVE_HIGH"),
 };
 
-static int amlsd_get_host_caps2(struct device_node* of_node,
-                struct amlsd_platform* pdata)
+static int amlsd_get_host_caps2(struct device_node *of_node,
+		struct amlsd_platform *pdata)
 {
-    const char* str_caps;
-    struct property* prop;
-    u32 i, caps = 0;
+	const char *str_caps;
+	struct property *prop;
+	u32 i, caps = 0;
 
-    of_property_for_each_string(of_node, "caps2", prop, str_caps){
-        for(i = 0; i < ARRAY_SIZE(host_caps2);i++){
-            if(!strcasecmp(host_caps2[i].name,str_caps))
-                caps |= host_caps2[i].caps;
-        }
-    };
-    pdata->caps2 = caps;
-    printk("pdata->caps2 %x\n", pdata->caps2);
+	of_property_for_each_string(of_node, "caps2", prop, str_caps) {
+		for (i = 0; i < ARRAY_SIZE(host_caps2); i++) {
+			if (!strcasecmp(host_caps2[i].name, str_caps))
+				caps |= host_caps2[i].caps;
+		}
+	};
+	pdata->caps2 = caps;
+	pr_info("%s:pdata->caps2 = %x\n", pdata->pinname, pdata->caps2);
 	return 0;
 }
 
-int amlsd_get_reg_base(struct platform_device* pdev,
-				struct amlsd_host* host)
+int amlsd_get_reg_base(struct platform_device *pdev,
+				struct amlsd_host *host)
 {
-	struct device_node* of_node = pdev->dev.of_node;
+	struct device_node *of_node = pdev->dev.of_node;
 
-    host->base = of_iomap(of_node, 0);
+	host->base = of_iomap(of_node, 0);
 	if (!host->base) {
 		dev_err(&pdev->dev, "of_iomap fail\n");
 		return -EINVAL;
 	}
-    printk("host->base %x\n", (u32)host->base);
+	pr_info("host->base %p\n", host->base);
 	return 0;
 }
+#if 0
 
-static void aml_set_gpio_input (const char *pin_name)
+static void aml_set_gpio_input(const char *pin_name)
 {
-    int ret = 0, gpio_pin;
+	int ret = 0, gpio_pin;
 
-    gpio_pin = amlogic_gpio_name_map_num(pin_name);
-    ret = amlogic_gpio_request_one(gpio_pin, GPIOF_IN, MODULE_NAME);
-    CHECK_RET(ret);
-    ret = amlogic_gpio_direction_input(gpio_pin, MODULE_NAME); // output high
-    CHECK_RET(ret);
-    // print_tmp("\033[0;40;32m %s set input \033[0m\n", pin_name);
-    ret = amlogic_gpio_free(gpio_pin, MODULE_NAME);
-    CHECK_RET(ret);
+	gpio_pin = amlogic_gpio_name_map_num(pin_name);
+	ret = amlogic_gpio_request_one(gpio_pin, GPIOF_IN, MODULE_NAME);
+	CHECK_RET(ret);
+	ret = amlogic_gpio_direction_input(gpio_pin, MODULE_NAME);
+	CHECK_RET(ret);
+	/* print_tmp("\033[0;40;32m %s set input \033[0m\n", pin_name); */
+	ret = amlogic_gpio_free(gpio_pin, MODULE_NAME);
+	CHECK_RET(ret);
 }
 
-static int amlsd_init_pins_input (struct device_node* of_node,
-                struct amlsd_platform* pdata)
+static int amlsd_init_pins_input(struct device_node *of_node,
+		struct amlsd_platform *pdata)
 {
-    const char* pin_name;
-    struct property* prop;
+	const char *pin_name;
+	struct property *prop;
 
-    // print_tmp("\033[0;40;32m Enter \033[0m\n", pin_name);
-    of_property_for_each_string(of_node, "all_pins_name", prop, pin_name){
-        aml_set_gpio_input(pin_name);
-    };
+	/* print_tmp("\033[0;40;32m Enter \033[0m\n", pin_name); */
+	of_property_for_each_string(of_node,
+		"all_pins_name", prop, pin_name) {
+
+		aml_set_gpio_input(pin_name);
+	};
 	return 0;
 }
+#endif
 
-int amlsd_get_platform_data(struct platform_device* pdev,
-                struct amlsd_platform* pdata,
-                struct mmc_host* mmc, u32 index)
+int amlsd_get_platform_data(struct platform_device *pdev,
+		struct amlsd_platform *pdata,
+		struct mmc_host *mmc, u32 index)
 {
-    struct device_node* of_node = pdev->dev.of_node;
-    struct device_node* child;
-    u32 i, prop;
-	const char *str;
+	struct device_node *of_node = pdev->dev.of_node;
+	struct device_node *child;
+	u32 i, prop;
+	const char *str = "none";
 
-    if(of_node){
+	if (of_node) {
 		child = of_node->child;
 		BUG_ON(!child);
 		BUG_ON(index >= MMC_MAX_DEVICE);
-		for(i=0;i<index;i++)
+		for (i = 0; i < index; i++)
 			child = child->sibling;
-		if(!child)
+		if (!child)
 			return -EINVAL;
 
-        amlsd_get_host_caps(child, pdata);
-        amlsd_get_host_caps2(child, pdata);
+/*	amlsd_init_pins_input(child, pdata);*/
 
-        amlsd_init_pins_input(child, pdata);
-
-		SD_PARSE_U32_PROP(child, "port", prop, pdata->port);
-		SD_PARSE_U32_PROP(child, "ocr_avail", prop, pdata->ocr_avail);
+		SD_PARSE_U32_PROP_HEX(child, "port",
+						prop, pdata->port);
+		SD_PARSE_U32_PROP_HEX(child, "ocr_avail",
+						prop, pdata->ocr_avail);
 		BUG_ON(!pdata->ocr_avail);
-		SD_PARSE_U32_PROP(child, "f_min", prop, pdata->f_min);
-		SD_PARSE_U32_PROP(child, "f_max", prop, pdata->f_max);
-		SD_PARSE_U32_PROP(child, "f_max_w", prop, pdata->f_max_w);
-		SD_PARSE_U32_PROP(child, "max_req_size", prop, pdata->max_req_size);
-		SD_PARSE_U32_PROP(child, "irq_in", prop, pdata->irq_in);
-		SD_PARSE_U32_PROP(child, "irq_in_edge", prop, pdata->irq_in_edge);
-		SD_PARSE_U32_PROP(child, "irq_out", prop, pdata->irq_out);
-		SD_PARSE_U32_PROP(child, "irq_out_edge", prop, pdata->irq_out_edge);
-		SD_PARSE_U32_PROP(child, "power_level", prop, pdata->power_level);
+		SD_PARSE_U32_PROP_DEC(child, "f_min",
+						prop, pdata->f_min);
+		SD_PARSE_U32_PROP_DEC(child, "f_max",
+						prop, pdata->f_max);
+		SD_PARSE_U32_PROP_DEC(child, "f_max_w",
+						prop, pdata->f_max_w);
+		SD_PARSE_U32_PROP_HEX(child, "max_req_size", prop,
+						pdata->max_req_size);
+		SD_PARSE_U32_PROP_DEC(child, "irq_in", prop,
+						pdata->irq_in);
+		SD_PARSE_U32_PROP_DEC(child, "irq_in_edge",
+						prop, pdata->irq_in_edge);
+		SD_PARSE_U32_PROP_DEC(child, "irq_out",
+						prop, pdata->irq_out);
+		SD_PARSE_U32_PROP_DEC(child, "irq_out_edge",
+						prop, pdata->irq_out_edge);
+		SD_PARSE_U32_PROP_HEX(child, "power_level",
+						prop, pdata->power_level);
 
-		SD_PARSE_GPIO_NUM_PROP(child, "gpio_cd", str, pdata->gpio_cd);
-		SD_PARSE_U32_PROP(child, "gpio_cd_level", prop, pdata->gpio_cd_level);
-		SD_PARSE_GPIO_NUM_PROP(child, "gpio_ro", str, pdata->gpio_ro);
-		SD_PARSE_GPIO_NUM_PROP(child, "gpio_power", str, pdata->gpio_power);
+		SD_PARSE_GPIO_NUM_PROP(child, "gpio_cd",
+						str, pdata->gpio_cd);
+		SD_PARSE_U32_PROP_DEC(child, "gpio_cd_level",
+						prop, pdata->gpio_cd_level);
+		SD_PARSE_GPIO_NUM_PROP(child, "gpio_ro",
+						str, pdata->gpio_ro);
+		SD_PARSE_GPIO_NUM_PROP(child, "gpio_power",
+						str, pdata->gpio_power);
 
-		SD_PARSE_STRING_PROP(child, "pinname", str, pdata->pinname);
-        SD_PARSE_GPIO_NUM_PROP(child, "jtag_pin", str, pdata->jtag_pin);
-		SD_PARSE_U32_PROP(child, "card_type", prop, pdata->card_type);
-        SD_PARSE_GPIO_NUM_PROP(child, "gpio_dat3", str, pdata->gpio_dat3);
-        SD_PARSE_GPIO_NUM_PROP(child, "gpio_volsw", str, pdata->gpio_volsw);
-
+		SD_PARSE_STRING_PROP(child, "pinname",
+						str, pdata->pinname);
+		SD_PARSE_GPIO_NUM_PROP(child, "jtag_pin",
+						str, pdata->jtag_pin);
+		SD_PARSE_U32_PROP_DEC(child, "auto_clk_close",
+						prop, pdata->auto_clk_close);
+		SD_PARSE_GPIO_NUM_PROP(child, "vol_switch",
+						str, pdata->vol_switch);
+		SD_PARSE_U32_PROP_DEC(child, "vol_switch_18",
+						prop, pdata->vol_switch_18);
+		SD_PARSE_U32_PROP_DEC(child, "vol_switch_delay",
+						prop, pdata->vol_switch_delay);
+		SD_PARSE_U32_PROP_DEC(child, "card_type",
+						prop, pdata->card_type);
+		if (aml_card_type_mmc(pdata)) {
+			/*tx_phase set default value first*/
+			if (get_cpu_type() == MESON_CPU_MAJOR_ID_GXTVBB)
+				pdata->tx_phase = 1;
+			SD_PARSE_U32_PROP_DEC(child, "tx_phase",
+						prop, pdata->tx_phase);
+		}
+		if (aml_card_type_non_sdio(pdata)) {
+			/*card in default value*/
+			pdata->card_in_delay = 0;
+			SD_PARSE_U32_PROP_DEC(child, "card_in_delay",
+						prop, pdata->card_in_delay);
+		}
+		SD_PARSE_GPIO_NUM_PROP(child, "gpio_dat3",
+						str, pdata->gpio_dat3);
+		SD_PARSE_GPIO_NUM_PROP(child, "hw_reset",
+						str, pdata->hw_reset);
+		amlsd_get_host_caps(child, pdata);
+		amlsd_get_host_caps2(child, pdata);
 		pdata->port_init = of_amlsd_init;
 		pdata->pwr_pre = of_amlsd_pwr_prepare;
 		pdata->pwr_on = of_amlsd_pwr_on;
 		pdata->pwr_off = of_amlsd_pwr_off;
 		pdata->xfer_pre = of_amlsd_xfer_pre;
 		pdata->xfer_post = of_amlsd_xfer_post;
-		// pdata->cd = of_amlsd_detect;
+		/* pdata->cd = of_amlsd_detect; */
 		pdata->irq_init = of_amlsd_irq_init;
-        pdata->ro = of_amlsd_ro;
-
-#if defined(CONFIG_MACH_MESON8B_ODROIDC)
-	    if (disable_uhs) {
-	            pdata->f_max = 40000000;
-	    }
-#endif
-    }
-    return 0;
+	pdata->ro = of_amlsd_ro;
+	}
+	return 0;
 }
 

@@ -156,7 +156,7 @@ static int mid_spi_dma_transfer(struct dw_spi *dws, int cs_change)
 				&dws->tx_sgl,
 				1,
 				DMA_MEM_TO_DEV,
-				DMA_PREP_INTERRUPT | DMA_COMPL_SKIP_DEST_UNMAP);
+				DMA_PREP_INTERRUPT);
 	txdesc->callback = dw_spi_dma_done;
 	txdesc->callback_param = dws;
 
@@ -179,7 +179,7 @@ static int mid_spi_dma_transfer(struct dw_spi *dws, int cs_change)
 				&dws->rx_sgl,
 				1,
 				DMA_DEV_TO_MEM,
-				DMA_PREP_INTERRUPT | DMA_COMPL_SKIP_DEST_UNMAP);
+				DMA_PREP_INTERRUPT);
 	rxdesc->callback = dw_spi_dma_done;
 	rxdesc->callback_param = dws;
 
@@ -222,6 +222,7 @@ int dw_spi_mid_init(struct dw_spi *dws)
 	iounmap(clk_reg);
 
 	dws->num_cs = 16;
+	dws->fifo_len = 40;	/* FIFO has 40 words buffer */
 
 #ifdef CONFIG_SPI_DW_MID_DMA
 	dws->dma_priv = kzalloc(sizeof(struct mid_dma), GFP_KERNEL);

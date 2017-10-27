@@ -1,26 +1,43 @@
 /*
- *  linux/drivers/video/apollo/vout_notify.c
+ * drivers/amlogic/display/vout/vout_notify.c
  *
- *  Copyright (C) 2009 amlogic
+ * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
  *
- * This file is subject to the terms and conditions of the GNU General Public
- * License.  See the file COPYING in the main directory of this archive
- * for more details.
- * author :   
- *		 jianfeng_wang@amlogic
- */
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+*/
+
+
+/* Linux Headers */
 #include <linux/module.h>
-#include <linux/amlogic/vout/vout_notify.h>
 #include <linux/delay.h>
 #include <linux/sched.h>
 
+/* Amlogic Headers */
+#include <linux/amlogic/vout/vout_notify.h>
+
+/* Local Headers */
+#include "vout_log.h"
 
 static BLOCKING_NOTIFIER_HEAD(vout_notifier_list);
-static  DEFINE_MUTEX(vout_mutex)  ;
-static  vout_module_t  vout_module={
-		.vout_server_list={&vout_module.vout_server_list,&vout_module.vout_server_list},
-		.curr_vout_server=NULL,	
+static DEFINE_MUTEX(vout_mutex);
+
+static struct vout_module_s vout_module = {
+	.vout_server_list = {
+		&vout_module.vout_server_list,
+		&vout_module.vout_server_list
+	},
+	.curr_vout_server = NULL,
 };
+
 /**
  *	vout_register_client - register a client notifier
  *	@nb: notifier block to callback on events
@@ -54,17 +71,23 @@ EXPORT_SYMBOL_GPL(vout_notifier_call_chain);
 /*
 *interface export to client who want to get current vinfo.
 */
-const vinfo_t *get_current_vinfo(void)
+struct vinfo_s *get_current_vinfo(void)
 {
-	const vinfo_t *info=NULL;
+	struct vinfo_s *info = NULL;
+	unsigned int atomic_flag = in_interrupt();
 
-	mutex_lock(&vout_mutex);
-	if(vout_module.curr_vout_server)
-	{
+	if (atomic_flag == 0)
+		mutex_lock(&vout_mutex);
+
+	if (vout_module.curr_vout_server) {
 		BUG_ON(vout_module.curr_vout_server->op.get_vinfo == NULL);
 		info = vout_module.curr_vout_server->op.get_vinfo();
 	}
-	mutex_unlock(&vout_mutex);
+	if (info == NULL) /* avoid crash mistake */
+		info = get_invalid_vinfo();
+
+	if (atomic_flag == 0)
+		mutex_unlock(&vout_mutex);
 
 	return info;
 }
@@ -73,21 +96,21 @@ EXPORT_SYMBOL(get_current_vinfo);
 /*
 *interface export to client who want to get current vmode.
 */
-vmode_t get_current_vmode(void)
+enum vmode_e get_current_vmode(void)
 {
-	const vinfo_t *info;
-	vmode_t mode=VMODE_MAX;
+	const struct vinfo_s *info;
+	enum vmode_e mode = VMODE_MAX;
 
 	mutex_lock(&vout_mutex);
 
-	if(vout_module.curr_vout_server)
-	{
+	if (vout_module.curr_vout_server) {
 		BUG_ON(vout_module.curr_vout_server->op.get_vinfo == NULL);
 		info = vout_module.curr_vout_server->op.get_vinfo();
-		mode=info->mode;
-	}	
+		mode = info->mode;
+	}
+
 	mutex_unlock(&vout_mutex);
-	
+
 	return mode;
 }
 EXPORT_SYMBOL(get_current_vmode);
@@ -97,22 +120,21 @@ EXPORT_SYMBOL(get_current_vmode);
 */
 int set_vframe_rate_hint(int duration)
 {
-    int r=-1;
-    vout_server_t  *p_server;
+	int r = -1;
+	struct vout_server_s  *p_server;
 
-    //mutex_lock(&vout_mutex);
-    list_for_each_entry(p_server, &vout_module.vout_server_list, list)
-    {
-		if ( (p_server->op.set_vframe_rate_hint!=NULL) && (p_server->op.set_vframe_rate_hint(duration)==0) )
-    	{
-			//mutex_unlock(&vout_mutex);
+	/* mutex_lock(&vout_mutex); */
+	list_for_each_entry(p_server, &vout_module.vout_server_list, list) {
+		if ((p_server->op.set_vframe_rate_hint != NULL) &&
+		    (p_server->op.set_vframe_rate_hint(duration) == 0)) {
+			/* mutex_unlock(&vout_mutex); */
 			return 0;
-        }
-    }
+		}
+	}
 
-    //mutex_unlock(&vout_mutex);
+	/* mutex_unlock(&vout_mutex); */
 
-    return r;
+	return r;
 }
 EXPORT_SYMBOL(set_vframe_rate_hint);
 
@@ -121,22 +143,21 @@ EXPORT_SYMBOL(set_vframe_rate_hint);
 */
 int set_vframe_rate_end_hint(void)
 {
-    int r=-1;
-    vout_server_t  *p_server;
+	int r = -1;
+	struct vout_server_s  *p_server;
 
-    //mutex_lock(&vout_mutex);
-    list_for_each_entry(p_server, &vout_module.vout_server_list, list)
-    {
-        if ( (p_server->op.set_vframe_rate_end_hint!=NULL) && (p_server->op.set_vframe_rate_end_hint()==0) )
-        {
-            //mutex_unlock(&vout_mutex);
-            return 0;
-        }
-    }
+	/* mutex_lock(&vout_mutex); */
+	list_for_each_entry(p_server, &vout_module.vout_server_list, list) {
+		if ((p_server->op.set_vframe_rate_end_hint != NULL) &&
+		    (p_server->op.set_vframe_rate_end_hint() == 0)) {
+			/* mutex_unlock(&vout_mutex); */
+			return 0;
+		}
+	}
 
-    //mutex_unlock(&vout_mutex);
+	/* mutex_unlock(&vout_mutex); */
 
-    return r;
+	return r;
 }
 EXPORT_SYMBOL(set_vframe_rate_end_hint);
 
@@ -149,69 +170,69 @@ void wakeup_early_suspend_proc(void)
 #endif
 int vout_suspend(void)
 {
-	int ret=0 ;
-	vout_server_t  *p_server = vout_module.curr_vout_server;
+	int ret = 0;
+	struct vout_server_s  *p_server = vout_module.curr_vout_server;
 #ifdef CONFIG_SCREEN_ON_EARLY
 	wake_up_flag = 0;
 	int i = 0;
-	for(; i < 20; i++)
+
+	for (; i < 20; i++)
 		if (wake_up_flag)
 			break;
 		else
 			msleep(100);
+
 	wake_up_flag = 0;
 #endif
 	mutex_lock(&vout_mutex);
-	if (p_server)
-	{
-		if(p_server->op.vout_suspend)
-		{
-			ret = p_server->op.vout_suspend() ;
-		}
+
+	if (p_server) {
+		if (p_server->op.vout_suspend)
+			ret = p_server->op.vout_suspend();
 	}
+
 	mutex_unlock(&vout_mutex);
 	return ret;
 }
 EXPORT_SYMBOL(vout_suspend);
 int vout_resume(void)
 {
-	vout_server_t  *p_server = vout_module.curr_vout_server;
+	struct vout_server_s  *p_server = vout_module.curr_vout_server;
 
 	mutex_lock(&vout_mutex);
-	if (p_server)
-	{
-		if (p_server->op.vout_resume)
-		{
-			p_server->op.vout_resume() ; //ignore error when resume.
+
+	if (p_server) {
+		if (p_server->op.vout_resume) {
+			/* ignore error when resume. */
+			p_server->op.vout_resume();
 		}
 	}
-	
+
 	mutex_unlock(&vout_mutex);
 	return 0;
 }
 EXPORT_SYMBOL(vout_resume);
 /*
-*interface export to client who want to set current vmode.
-*/
-int set_current_vmode(vmode_t mode)
+ * interface export to client who want to set current vmode.
+ */
+int set_current_vmode(enum vmode_e mode)
 {
-	int r=-1;
-	vout_server_t  *p_server;
-	
+	int r = -1;
+	struct vout_server_s  *p_server;
+
 	mutex_lock(&vout_mutex);
-	list_for_each_entry(p_server, &vout_module.vout_server_list, list)
-	{
+	list_for_each_entry(p_server, &vout_module.vout_server_list, list) {
 		BUG_ON(p_server->op.vmode_is_supported == NULL);
-		if(true == p_server->op.vmode_is_supported(mode))
-		{
-			vout_module.curr_vout_server=p_server;
-			r=p_server->op.set_vmode(mode);
-			//break;  do not exit , should disable other modules
-		}
-		else
-		{
+
+		if (true == p_server->op.vmode_is_supported(mode)) {
+			vout_module.curr_vout_server = p_server;
+			r = p_server->op.set_vmode(mode);
+			if (vout_module.curr_vout_server)
+				update_vout_mode_attr
+				(vout_module.curr_vout_server->op.get_vinfo());
+			/* break;  do not exit , should disable other modules */
+		} else
 			p_server->op.disable(mode);
-		}
 	}
 
 	mutex_unlock(&vout_mutex);
@@ -223,20 +244,18 @@ EXPORT_SYMBOL(set_current_vmode);
 /*
 *interface export to client who want to set current vmode.
 */
-vmode_t validate_vmode(char *name)
+enum vmode_e validate_vmode(char *name)
 {
-	vmode_t r=VMODE_MAX;
-	vout_server_t  *p_server;
-	
+	enum vmode_e r = VMODE_MAX;
+	struct vout_server_s  *p_server;
+
 	mutex_lock(&vout_mutex);
-	list_for_each_entry(p_server, &vout_module.vout_server_list, list)
-	{
+	list_for_each_entry(p_server, &vout_module.vout_server_list, list) {
 		BUG_ON(p_server->op.validate_vmode == NULL);
 		r = p_server->op.validate_vmode(name);
-		if(VMODE_MAX != r) //valid vmode find.
-		{
+
+		if (VMODE_MAX != r) /* valid vmode find. */
 			break;
-		}
 	}
 	mutex_unlock(&vout_mutex);
 
@@ -251,47 +270,50 @@ EXPORT_SYMBOL(validate_vmode);
 */
 
 
-int vout_register_server(vout_server_t*  mem_server)
+int vout_register_server(struct vout_server_s  *mem_server)
 {
-	list_head_T  *p_iter;
-	vout_server_t  *p_server;
+	struct list_head *p_iter;
+	struct vout_server_s  *p_server;
 
 	BUG_ON(mem_server == NULL);
-    printk("%s\n", __func__);
+	vout_log_info("%s\n", __func__);
 
 	mutex_lock(&vout_mutex);
-	list_for_each(p_iter,&vout_module.vout_server_list )
-	{
-		p_server=list_entry(p_iter,vout_server_t,list);
-		if(p_server->name && mem_server->name && strcmp(p_server->name,mem_server->name)==0)
-		{
-			//vout server already registered.
-			
+	list_for_each(p_iter, &vout_module.vout_server_list) {
+		p_server = list_entry(p_iter, struct vout_server_s, list);
+
+		if (p_server->name && mem_server->name &&
+		    strcmp(p_server->name, mem_server->name) == 0) {
+			/* vout server already registered. */
 			mutex_unlock(&vout_mutex);
 			return -1;
 		}
 	}
-	list_add(&mem_server->list,&vout_module.vout_server_list);
+	list_add(&mem_server->list, &vout_module.vout_server_list);
 	mutex_unlock(&vout_mutex);
-	return  0 ;
+	return  0;
 }
 EXPORT_SYMBOL(vout_register_server);
-int vout_unregister_server(vout_server_t*  mem_server)
+
+int vout_unregister_server(struct vout_server_s  *mem_server)
 {
-	vout_server_t  *p_server;
+	struct vout_server_s  *p_server;
 
 	BUG_ON(mem_server == NULL);
 	mutex_lock(&vout_mutex);
-	list_for_each_entry(p_server, &vout_module.vout_server_list, list)
-	{
-		if(p_server->name && mem_server->name && strcmp(p_server->name,mem_server->name)==0)
-		{
-			//we will not move current vout server pointer automatically if current vout server
-			//pointer is the one which will be deleted next .so you should change current vout server 
-			//first then remove it .
-			if(vout_module.curr_vout_server==p_server)
-			vout_module.curr_vout_server=NULL;
-			
+	list_for_each_entry(p_server, &vout_module.vout_server_list, list) {
+		if (p_server->name && mem_server->name &&
+		    strcmp(p_server->name, mem_server->name) == 0) {
+			/*
+			 * We will not move current vout server pointer
+			 * automatically if current vout server pointer
+			 * is the one which will be deleted next.
+			 * So you should change current vout server
+			 * first then remove it
+			 */
+			if (vout_module.curr_vout_server == p_server)
+				vout_module.curr_vout_server = NULL;
+
 			list_del(&mem_server->list);
 			mutex_unlock(&vout_mutex);
 			return 0;

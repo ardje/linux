@@ -495,10 +495,8 @@ static void skip_emulated_instruction(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_svm *svm = to_svm(vcpu);
 
-	if (svm->vmcb->control.next_rip != 0) {
-		WARN_ON_ONCE(!static_cpu_has(X86_FEATURE_NRIPS));
+	if (svm->vmcb->control.next_rip != 0)
 		svm->next_rip = svm->vmcb->control.next_rip;
-	}
 
 	if (!svm->next_rip) {
 		if (emulate_instruction(vcpu, EMULTYPE_SKIP) !=
@@ -608,7 +606,7 @@ static int has_svm(void)
 	return 1;
 }
 
-static void svm_hardware_disable(void *garbage)
+static void svm_hardware_disable(void)
 {
 	/* Make sure we clean up behind us */
 	if (static_cpu_has(X86_FEATURE_TSCRATEMSR))
@@ -619,7 +617,7 @@ static void svm_hardware_disable(void *garbage)
 	amd_pmu_disable_virt();
 }
 
-static int svm_hardware_enable(void *garbage)
+static int svm_hardware_enable(void)
 {
 
 	struct svm_cpu_data *sd;
@@ -1028,7 +1026,10 @@ static void svm_write_tsc_offset(struct kvm_vcpu *vcpu, u64 offset)
 		g_tsc_offset = svm->vmcb->control.tsc_offset -
 			       svm->nested.hsave->control.tsc_offset;
 		svm->nested.hsave->control.tsc_offset = offset;
-	}
+	} else
+		trace_kvm_write_tsc_offset(vcpu->vcpu_id,
+					   svm->vmcb->control.tsc_offset,
+					   offset);
 
 	svm->vmcb->control.tsc_offset = offset + g_tsc_offset;
 
@@ -1046,6 +1047,11 @@ static void svm_adjust_tsc_offset(struct kvm_vcpu *vcpu, s64 adjustment, bool ho
 	svm->vmcb->control.tsc_offset += adjustment;
 	if (is_guest_mode(vcpu))
 		svm->nested.hsave->control.tsc_offset += adjustment;
+	else
+		trace_kvm_write_tsc_offset(vcpu->vcpu_id,
+				     svm->vmcb->control.tsc_offset - adjustment,
+				     svm->vmcb->control.tsc_offset);
+
 	mark_dirty(svm->vmcb, VMCB_INTERCEPTS);
 }
 
@@ -1665,6 +1671,19 @@ static void new_asid(struct vcpu_svm *svm, struct svm_cpu_data *sd)
 	mark_dirty(svm->vmcb, VMCB_ASID);
 }
 
+static u64 svm_get_dr6(struct kvm_vcpu *vcpu)
+{
+	return to_svm(vcpu)->vmcb->save.dr6;
+}
+
+static void svm_set_dr6(struct kvm_vcpu *vcpu, unsigned long value)
+{
+	struct vcpu_svm *svm = to_svm(vcpu);
+
+	svm->vmcb->save.dr6 = value;
+	mark_dirty(svm->vmcb, VMCB_DR);
+}
+
 static void svm_set_dr7(struct kvm_vcpu *vcpu, unsigned long value)
 {
 	struct vcpu_svm *svm = to_svm(vcpu);
@@ -1953,11 +1972,9 @@ static void nested_svm_inject_npf_exit(struct kvm_vcpu *vcpu,
 	nested_svm_vmexit(svm);
 }
 
-static int nested_svm_init_mmu_context(struct kvm_vcpu *vcpu)
+static void nested_svm_init_mmu_context(struct kvm_vcpu *vcpu)
 {
-	int r;
-
-	r = kvm_init_shadow_mmu(vcpu, &vcpu->arch.mmu);
+	kvm_init_shadow_mmu(vcpu, &vcpu->arch.mmu);
 
 	vcpu->arch.mmu.set_cr3           = nested_svm_set_tdp_cr3;
 	vcpu->arch.mmu.get_cr3           = nested_svm_get_tdp_cr3;
@@ -1965,8 +1982,6 @@ static int nested_svm_init_mmu_context(struct kvm_vcpu *vcpu)
 	vcpu->arch.mmu.inject_page_fault = nested_svm_inject_npf_exit;
 	vcpu->arch.mmu.shadow_root_level = get_npt_level();
 	vcpu->arch.walk_mmu              = &vcpu->arch.nested_mmu;
-
-	return r;
 }
 
 static void nested_svm_uninit_mmu_context(struct kvm_vcpu *vcpu)
@@ -4231,9 +4246,7 @@ static int svm_check_intercept(struct kvm_vcpu *vcpu,
 		break;
 	}
 
-	/* TODO: Advertise NRIPS to guest hypervisor unconditionally */
-	if (static_cpu_has(X86_FEATURE_NRIPS))
-		vmcb->control.next_rip  = info->next_rip;
+	vmcb->control.next_rip  = info->next_rip;
 	vmcb->control.exit_code = icpt_info.exit_code;
 	vmexit = nested_svm_exit_handled(svm);
 
@@ -4286,6 +4299,8 @@ static struct kvm_x86_ops svm_x86_ops = {
 	.set_idt = svm_set_idt,
 	.get_gdt = svm_get_gdt,
 	.set_gdt = svm_set_gdt,
+	.get_dr6 = svm_get_dr6,
+	.set_dr6 = svm_set_dr6,
 	.set_dr7 = svm_set_dr7,
 	.cache_reg = svm_cache_reg,
 	.get_rflags = svm_get_rflags,
