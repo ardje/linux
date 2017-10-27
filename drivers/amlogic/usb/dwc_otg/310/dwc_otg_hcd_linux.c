@@ -301,6 +301,7 @@ int _hcd_isoc_complete(dwc_otg_hcd_t * hcd,void *urb_handle,
 static int _complete(dwc_otg_hcd_t * hcd, void *urb_handle,
 		     dwc_otg_hcd_urb_t * dwc_otg_urb, int32_t status)
 {
+	struct usb_host_endpoint *ep = NULL;
 	struct urb *urb = (struct urb *)urb_handle;
 #ifdef DEBUG
 	if (CHK_DEBUG_LEVEL(DBG_HCDV | DBG_HCD_URB)) {
@@ -363,6 +364,7 @@ static int _complete(dwc_otg_hcd_t * hcd, void *urb_handle,
 	}
 
 	urb->status = status;
+	urb->hcpriv = NULL;
 	if (!status) {
 		if ((urb->transfer_flags & URB_SHORT_NOT_OK) &&
 		    (urb->actual_length < urb->transfer_buffer_length)) {
@@ -370,15 +372,19 @@ static int _complete(dwc_otg_hcd_t * hcd, void *urb_handle,
 		}
 	}
 
+	ep = dwc_urb_to_endpoint(urb);
 	if ((usb_pipetype(urb->pipe) == PIPE_ISOCHRONOUS) ||
 	    (usb_pipetype(urb->pipe) == PIPE_INTERRUPT)) {
-		struct usb_host_endpoint *ep = dwc_urb_to_endpoint(urb);
 		if (ep) {
 			free_bus_bandwidth(dwc_otg_hcd_to_hcd(hcd),
 					   dwc_otg_hcd_get_ep_bandwidth(hcd,
 									ep->hcpriv),
 					   urb);
 		}
+	}
+
+	if (ep) {
+	    ep->hcpriv = NULL;
 	}
 #if 0
 	usb_hcd_unlink_urb_from_ep(dwc_otg_hcd_to_hcd(hcd), urb);
