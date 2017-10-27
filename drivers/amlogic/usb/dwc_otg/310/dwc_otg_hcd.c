@@ -1181,8 +1181,13 @@ static int assign_and_init_hc(dwc_otg_hcd_t * hcd, dwc_otg_qh_t * qh)
 
 	if(qh->do_split && (qtd->complete_split == 0) && (qh->ep_type == UE_BULK)){
 		/* flow control for split bulk/control transfer */
+		if( (qh->sched_frame-hcd->frame_number)&0x3fff > 20 ) {
+			//dump_urb_info(urb,__FUNC__);
+			qh->sched_frame=dwc_frame_num_inc(hcd->frame_number,20);
+			printk("assign_and_init_hc: resched_frame hack: %d, %d\n",qh->sched_frame,hcd->frame_number);
+		}
 		if(dwc_frame_num_gt(qh->sched_frame, hcd->frame_number)){
-			printk("assign_and_init_hc: sched_frame: %d, %d\n",qh->sched_frame,hcd->frame_number);
+			//printk("assign_and_init_hc: sched_frame: %d, %d\n",qh->sched_frame,hcd->frame_number);
 			return -1;
 		}
 		else{
