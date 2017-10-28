@@ -1179,10 +1179,15 @@ static int assign_and_init_hc(dwc_otg_hcd_t * hcd, dwc_otg_qh_t * qh)
 
 	urb = qtd->urb;
 
+	if (qh->sched_frame == DWC_SCHED_NOW) {
+		qh->sched_frame=hcd->frame_number;
+		printk("assign_and_init_hc: rescheduled SCHED_NOW: %d\n",qh->sched_frame);
+	}
 	if(qh->do_split && (qtd->complete_split == 0) && (qh->ep_type == UE_BULK)){
 		/* flow control for split bulk/control transfer */
 		int d=qh->sched_frame-hcd->frame_number;
-		if( d > 20 || ( d > 20-16383 && d < 0)) {
+		// If sched_frame lies 200 microframes/250ms in the future, something is wrong
+		if( d > 200 || ( d > 200-16383 && d < 0)) {
 			//dump_urb_info(urb,__FUNC__);
 			printk("assign_and_init_hc: resched_frame hack from: %d, %d, %d\n",qh->sched_frame,hcd->frame_number,d);
 			qh->sched_frame=dwc_frame_num_inc(hcd->frame_number,19);
