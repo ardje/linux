@@ -741,6 +741,7 @@ int dwc_otg_hcd_qtd_add(dwc_otg_qtd_t * qtd,
 			goto done;
 		}
 	}
+	(*qh)->sched_frame=DWC_SCHED_NOW;
 //	DWC_SPINLOCK_IRQSAVE(hcd->lock, &flags); 
 	retval = dwc_otg_hcd_qh_add(hcd, *qh);
 	if (retval == 0) {
