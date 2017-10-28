@@ -634,6 +634,7 @@ static inline void dwc_otg_hcd_qh_remove_and_free(dwc_otg_hcd_t * hcd,
 	dwc_otg_hcd_qh_free(hcd, qh);
 }
 
+#define DWC_SCHED_NOW 0xFFFF
 /** Allocates memory for a QH structure.
  * @return Returns the memory allocate or NULL on error. */
 static inline dwc_otg_qh_t *dwc_otg_hcd_qh_alloc(int atomic_alloc)
@@ -644,7 +645,7 @@ static inline dwc_otg_qh_t *dwc_otg_hcd_qh_alloc(int atomic_alloc)
 	else
 		tmp= (dwc_otg_qh_t *) DWC_ALLOC(sizeof(dwc_otg_qh_t));
 	if (tmp) {
-		tmp->sched_frame=0x3333;
+		tmp->sched_frame=DWC_SCHED_NOW;
 		tmp->start_split_frame=0x1111;
 		tmp->interval=0x1d;
 	}
