@@ -1178,6 +1178,9 @@ static int assign_and_init_hc(dwc_otg_hcd_t * hcd, dwc_otg_qh_t * qh)
 	qtd = DWC_CIRCLEQ_FIRST(&qh->qtd_list);
 
 	urb = qtd->urb;
+	
+	if (qh->sched_frame == DWC_OTG_QH_SCHED_NOW)
+		qh->sched_frame=hcd->frame_number;
 
 	if(qh->do_split && (qtd->complete_split == 0) && (qh->ep_type == UE_BULK)){
 		/* flow control for split bulk/control transfer */
