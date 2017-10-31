@@ -69,6 +69,11 @@ static inline uint32_t SET_DEBUG_LEVEL(const uint32_t new)
  *  mode. */
 #define DBG_HCD_URB	(0x800)
 
+#define DBG_HCD_NYET	(0x100)
+#define DBG_HCD_SPLIT	(0x200)
+#define DBG_HCD_INTERR	(0x400)
+#define DBG_HCD_NAK	(0x1000)
+
 /** When debug level has any bit set, display debug messages */
 #define DBG_ANY		(0xFF)
 

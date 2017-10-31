@@ -1323,7 +1323,7 @@ static int32_t handle_hc_nak_intr(dwc_otg_hcd_t * hcd,
 				  dwc_otg_hc_regs_t * hc_regs,
 				  dwc_otg_qtd_t * qtd)
 {
-	DWC_DEBUGPL(DBG_HCD, "--Host Channel %d Interrupt: "
+	DWC_DEBUGPL(DBG_HCD_NAK, "--Host Channel %d Interrupt: "
 		    "NAK Received--\n", hc->hc_num);
 
 	/*
@@ -1502,8 +1502,8 @@ static int32_t handle_hc_nyet_intr(dwc_otg_hcd_t * hcd,
 				   dwc_otg_hc_regs_t * hc_regs,
 				   dwc_otg_qtd_t * qtd)
 {
-	DWC_DEBUGPL(DBG_HCD, "--Host Channel %d Interrupt: "
-		    "NYET Received--\n", hc->hc_num);
+	DWC_DEBUGPL(DBG_HCD_NYET, "DWC_OTG: Nyet @ %02d,%s%s%s, %d, %02x, %02x\n",
+		    hc->hc_num, hc->do_split?"S":"-", hc->complete_split?"C":"S", hc->ep_is_in?"I":"O", hc->ep_type, (int)hc->hub_addr, (int)hc->port_addr);
 
 	/*
 	 * NYET on CSPLIT
@@ -1582,7 +1582,7 @@ static int32_t handle_hc_babble_intr(dwc_otg_hcd_t * hcd,
 				     dwc_otg_hc_regs_t * hc_regs,
 				     dwc_otg_qtd_t * qtd)
 {
-	DWC_DEBUGPL(DBG_HCD, "--Host Channel %d Interrupt: "
+	DWC_DEBUGPL(DBG_HCD_INTERR, "--Host Channel %d Interrupt: "
 		    "Babble Error--\n", hc->hc_num);
 
 	if (hcd->core_if->dma_desc_enable) {
@@ -1624,7 +1624,7 @@ static int32_t handle_hc_ahberr_intr(dwc_otg_hcd_t * hcd,
 
 	dwc_otg_hcd_urb_t *urb = qtd->urb;
 
-	DWC_DEBUGPL(DBG_HCD, "--Host Channel %d Interrupt: "
+	DWC_DEBUGPL(DBG_HCD_INTERR, "--Host Channel %d Interrupt: "
 		    "AHB Error--\n", hc->hc_num);
 
 	hcchar.d32 = DWC_READ_REG32(&hc_regs->hcchar);
@@ -1635,7 +1635,7 @@ static int32_t handle_hc_ahberr_intr(dwc_otg_hcd_t * hcd,
 	DWC_ERROR("AHB ERROR, Channel %d\n", hc->hc_num);
 	DWC_ERROR("  hcchar 0x%08x, hcsplt 0x%08x\n", hcchar.d32, hcsplt.d32);
 	DWC_ERROR("  hctsiz 0x%08x, hcdma 0x%08x\n", hctsiz.d32, hcdma);
-	DWC_DEBUGPL(DBG_HCD, "DWC OTG HCD URB Enqueue\n");
+	DWC_DEBUGPL(DBG_HCD_URB, "DWC OTG HCD URB Enqueue\n");
 	DWC_ERROR("  Device address: %d\n",
 		  dwc_otg_hcd_get_dev_addr(&urb->pipe_info));
 	DWC_ERROR("  Endpoint: %d, %s\n",
@@ -1716,7 +1716,7 @@ static int32_t handle_hc_xacterr_intr(dwc_otg_hcd_t * hcd,
 				      dwc_otg_hc_regs_t * hc_regs,
 				      dwc_otg_qtd_t * qtd)
 {
-	DWC_DEBUGPL(DBG_HCD, "--Host Channel %d Interrupt: "
+	DWC_DEBUGPL(DBG_HCD_INTERR, "--Host Channel %d Interrupt: "
 		    "Transaction Error--\n", hc->hc_num);
 
 	if (hcd->core_if->dma_desc_enable) {
@@ -1781,7 +1781,7 @@ static int32_t handle_hc_frmovrun_intr(dwc_otg_hcd_t * hcd,
 				       dwc_otg_hc_regs_t * hc_regs,
 				       dwc_otg_qtd_t * qtd)
 {
-	DWC_DEBUGPL(DBG_HCD, "--Host Channel %d Interrupt: "
+	DWC_DEBUGPL(DBG_HCD_INTERR, "--Host Channel %d Interrupt: "
 		    "Frame Overrun--\n", hc->hc_num);
 
 	switch (dwc_otg_hcd_get_pipe_type(&qtd->urb->pipe_info)) {
@@ -1817,7 +1817,7 @@ static int32_t handle_hc_datatglerr_intr(dwc_otg_hcd_t * hcd,
 					 dwc_otg_hc_regs_t * hc_regs,
 					 dwc_otg_qtd_t * qtd)
 {
-	DWC_DEBUGPL(DBG_HCD, "--Host Channel %d Interrupt: "
+	DWC_DEBUGPL(DBG_HCD_INTERR, "--Host Channel %d Interrupt: "
 		    "Data Toggle Error--\n", hc->hc_num);
 
 	if (hc->ep_is_in) {
@@ -1956,10 +1956,10 @@ static void handle_hc_chhltd_intr_dma(dwc_otg_hcd_t * hcd,
 	} else if (hcint.b.xacterr && !hcd->core_if->dma_desc_enable) {
 		if (out_nak_enh) {
 			if (hcint.b.nyet || hcint.b.nak || hcint.b.ack) {
-				DWC_DEBUG("XactErr with NYET/NAK/ACK\n");
+				DWC_DEBUGPL(DBG_HCD_NYET,"XactErr with NYET/NAK/ACK\n");
 				qtd->error_count = 0;
 			} else {
-				DWC_DEBUG("XactErr without NYET/NAK/ACK\n");
+				DWC_DEBUGPL(DBG_HCD_NYET,"XactErr without NYET/NAK/ACK\n");
 			}
 		}
 
@@ -2033,7 +2033,7 @@ static void handle_hc_chhltd_intr_dma(dwc_otg_hcd_t * hcd,
 
 		}
 	} else {
-		DWC_PRINTF("NYET/NAK/ACK/other in non-error case, 0x%08x\n",
+		DWC_DEBUGPL(DBG_HCD_NYET,"NYET/NAK/ACK/other in non-error case, 0x%08x\n",
 			   hcint.d32);
 		clear_hc_int(hc_regs, chhltd);
 	}
