@@ -285,6 +285,29 @@ static DRIVER_ATTR(version, S_IRUGO, version_show, NULL);
  */
 uint32_t g_dbg_lvl = 0;		/* OFF */
 
+
+/**
+ * which hacks to use
+ */
+uint32_t g_hack = 0;
+
+/**
+ * This function shows the applied hacks;
+ */
+static ssize_t hack_show(struct device_driver *drv, char *buf)
+{
+	return sprintf(buf, "0x%0x\n", g_hack);
+}
+/**
+ * This function set the applied hacks;
+ */
+static ssize_t hack_store(struct device_driver *drv, const char *buf,
+			       size_t count)
+{
+	g_hack = simple_strtoul(buf, NULL, 16);
+	return count;
+}
+
 /**
  * This function shows the driver Debug Level.
  */
@@ -1607,6 +1630,8 @@ module_param_named(ts_dline, dwc_otg_module_params.ts_dline, int, 0444);
 MODULE_PARM_DESC(ts_dline, "Term select Dline pulsing for all PHYs");
 module_param_named(debug, g_dbg_lvl, int, 0644);
 MODULE_PARM_DESC(debug, "");
+module_param_named(hack, g_hack, int, 0644);
+MODULE_PARM_DESC(hack, "");
 
 module_param_named(en_multiple_tx_fifo,
 		   dwc_otg_module_params.en_multiple_tx_fifo, int, 0444);

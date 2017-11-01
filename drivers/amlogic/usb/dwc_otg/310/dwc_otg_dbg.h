@@ -39,6 +39,7 @@
  * The Debug Level bit-mask variable.
  */
 extern uint32_t g_dbg_lvl;
+extern uint32_t g_hack;
 /**
  * Set the Debug Level variable.
  */
@@ -100,6 +101,11 @@ static inline uint32_t SET_DEBUG_LEVEL(const uint32_t new)
  * usb-DWC_otg: dwc_otg_cil_init(ca867000)
  * </code>
  */
+
+#define HACK_SCHEDNOW_QTD_QA (0x1)
+#define HACK_SCHEDNOW_QTD_QA_BULK (0x2)
+#define HACK_SCHEDNOW_QH_DEACTIVATE (0x4)
+#define CHK_HACK(level) ((level) & g_hack)
 #ifdef DEBUG
 
 # define DWC_DEBUGPL(lvl, x...) do{ if ((lvl)&g_dbg_lvl)__DWC_DEBUG(USB_DWC x ); }while(0)

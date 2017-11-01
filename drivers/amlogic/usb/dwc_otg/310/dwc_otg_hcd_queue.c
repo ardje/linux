@@ -578,6 +578,9 @@ void dwc_otg_hcd_qh_deactivate(dwc_otg_hcd_t * hcd, dwc_otg_qh_t * qh,
 {	
 	if (dwc_qh_is_non_per(qh)) {
 		dwc_otg_hcd_qh_remove(hcd, qh);
+		if(CHK_HACK(HACK_SCHEDNOW_QH_DEACTIVATE)) {
+			qh->sched_frame=DWC_OTG_QH_SCHED_NOW;
+		}
 		if (!DWC_CIRCLEQ_EMPTY(&qh->qtd_list)) {
 			/* Add back to inactive non-periodic schedule. */
 			dwc_otg_hcd_qh_add(hcd, qh);
@@ -727,8 +730,16 @@ int dwc_otg_hcd_qtd_add(dwc_otg_qtd_t * qtd,
 			retval = -1;
 			goto done;
 		}
+	} else {
+		if (CHK_HACK(HACK_SCHED_NOW_QTD_QA_BULK) && dwc_otg_hcd_get_pipe_type(&urb->pipe_info) == UE_BULK ) {
+
+			(*qh)->sched_frame = DWC_OTG_QH_SCHED_NOW;
+		}
+		if (CHK_HACK(HACK_SCHED_NOW_QTD_QA)) {
+
+			(*qh)->sched_frame = DWC_OTG_QH_SCHED_NOW;
+		}
 	}
-	(*qh)->sched_frame = DWC_OTG_QH_SCHED_NOW;
 //	DWC_SPINLOCK_IRQSAVE(hcd->lock, &flags); 
 	retval = dwc_otg_hcd_qh_add(hcd, *qh);
 	if (retval == 0) {
