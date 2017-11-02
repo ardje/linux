@@ -292,23 +292,6 @@ uint32_t g_dbg_lvl = 0;		/* OFF */
 uint32_t g_hack = 0;
 
 /**
- * This function shows the applied hacks;
- */
-static ssize_t hack_show(struct device_driver *drv, char *buf)
-{
-	return sprintf(buf, "0x%0x\n", g_hack);
-}
-/**
- * This function set the applied hacks;
- */
-static ssize_t hack_store(struct device_driver *drv, const char *buf,
-			       size_t count)
-{
-	g_hack = simple_strtoul(buf, NULL, 16);
-	return count;
-}
-
-/**
  * This function shows the driver Debug Level.
  */
 static ssize_t dbg_level_show(struct device_driver *drv, char *buf)

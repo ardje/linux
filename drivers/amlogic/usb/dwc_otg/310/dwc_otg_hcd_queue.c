@@ -731,11 +731,11 @@ int dwc_otg_hcd_qtd_add(dwc_otg_qtd_t * qtd,
 			goto done;
 		}
 	} else {
-		if (CHK_HACK(HACK_SCHED_NOW_QTD_QA_BULK) && dwc_otg_hcd_get_pipe_type(&urb->pipe_info) == UE_BULK ) {
+		if (CHK_HACK(HACK_SCHEDNOW_QTD_QA_BULK) && dwc_otg_hcd_get_pipe_type(&urb->pipe_info) == UE_BULK ) {
 
 			(*qh)->sched_frame = DWC_OTG_QH_SCHED_NOW;
 		}
-		if (CHK_HACK(HACK_SCHED_NOW_QTD_QA)) {
+		if (CHK_HACK(HACK_SCHEDNOW_QTD_QA)) {
 
 			(*qh)->sched_frame = DWC_OTG_QH_SCHED_NOW;
 		}
