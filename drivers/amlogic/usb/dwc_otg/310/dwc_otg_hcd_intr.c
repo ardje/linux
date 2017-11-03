@@ -1323,10 +1323,12 @@ static int32_t handle_hc_nak_intr(dwc_otg_hcd_t * hcd,
 				  dwc_otg_hc_regs_t * hc_regs,
 				  dwc_otg_qtd_t * qtd)
 {
-	DWC_DEBUGPL(DBG_HCD_NAK, "NAK @ %02d,%s%s%s%d %02x.%01x %02x.%02x\n",
-			hc->hc_num, hc->do_split?"S":"-", hc->complete_split?"C":"S", hc->ep_is_in?"I":"O",
-			hc->ep_type, hc->dev_addr, hc->ep_num,
-			hc->hub_addr, hc->port_addr);
+	if ((CHK_DEBUG_LEVEL(DBG_HCD_NAKI) && hc->ep_is_in) ||
+		(CHK_DEBUG_LEVEL(DBG_HCD_NAKO) && !hc->ep_is_in))
+			DWC_DEBUG(DBG_HCD_NAK, "NAK @ %02d,%s%s%s%d %02x.%01x %02x.%02x\n",
+				hc->hc_num, hc->do_split?"S":"-", hc->complete_split?"C":"S", hc->ep_is_in?"I":"O",
+				hc->ep_type, hc->dev_addr, hc->ep_num,
+				hc->hub_addr, hc->port_addr);
 
 	/*
 	 * Handle NAK for IN/OUT SSPLIT/CSPLIT transfers, bulk, control, and
