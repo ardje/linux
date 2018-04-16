@@ -15,3 +15,13 @@
 &usbdrd_dwc3_0 {
 	snps,dis_u3_susphy_quirk;
 };
+aliases {
+	mdio-gpio0 = &mdio0;
+};
+mdio0: mdio {
+	compatible = "virtual,mdio-gpio";
+        #address-cells = <1>;
+        #size-cells = <0>;
+	gpios= <&gpa2 3
+		&gpa2 2>;
+};
