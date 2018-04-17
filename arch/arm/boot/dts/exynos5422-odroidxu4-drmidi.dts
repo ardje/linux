@@ -13,6 +13,10 @@
                 };
 };
 
+&hsi2c_5 {
+	status = "disabled";
+};
+
 &usbdrd_dwc3_0 {
 	snps,dis_u3_susphy_quirk;
 };
@@ -25,8 +29,8 @@
 		compatible = "virtual,mdio-gpio";
 		#address-cells = <1>;
 		#size-cells = <0>;
-		gpios= <&gpa2 3
-			&gpa2 2>;
+		gpios= <&gpa2 3 GPIO_ACTIVE_HIGH
+			&gpa2 2 GPIO_ACTIVE_HIGH>;
 	};
 };
 
