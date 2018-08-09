@@ -15,3 +15,6 @@
 &usbdrd_dwc3_0 {
 	snps,dis_u3_susphy_quirk;
 };
+&usbdrd_dwc3_1 {
+	snps,dis_u3_susphy_quirk;
+};
