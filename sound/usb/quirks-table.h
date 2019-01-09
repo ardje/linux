@@ -3356,12 +3356,12 @@ AU0828_DEVICE(0x2040, 0x7270, "Hauppauge", "HVR-950Q"),
 				}
 			},
 			{
-				.ifnum = 1,
+				.ifnum = 0,
 				.type = QUIRK_AUDIO_FIXED_ENDPOINT,
 				.data = & (const struct audioformat) {
 					.formats = SNDRV_PCM_FMTBIT_S32_LE,
 					.channels = 10,
-					.iface = 1,
+					.iface = 0,
 					.altsetting = 1,
 					.altset_idx = 1,
 					.endpoint = 0x86,
