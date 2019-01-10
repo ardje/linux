@@ -368,12 +368,14 @@ static int set_sync_ep_implicit_fb_quirk(struct snd_usb_substream *subs,
 		goto add_sync_ep;
 
 	case USB_ID(0x2b73, 0x0023):
+		dev_err(&dev->dev, "Pioneer implicit sync test: %d\n",altsd->bInterfaceClass);
 		if ( altsd->bInterfaceClass == USB_CLASS_VENDOR_SPEC ) {
 			ep = 0x86;
 			iface = usb_ifnum_to_if(dev, 0);
 
 			if (!iface || iface->num_altsetting == 0)
 				return -EINVAL;
+			dev_err(&dev->dev, "Pioneer succeeded alt setting test\n");
 
 			alts = &iface->altsetting[1];
 			goto add_sync_ep;
@@ -395,9 +397,11 @@ static int set_sync_ep_implicit_fb_quirk(struct snd_usb_substream *subs,
 	return 0;
 
 add_sync_ep:
+	
 	subs->sync_endpoint = snd_usb_add_endpoint(subs->stream->chip,
 						   alts, ep, !subs->direction,
 						   SND_USB_ENDPOINT_TYPE_DATA);
+	dev_err(&dev->dev, "Added implicit sync_endpoint: %s\n", subs->sync_endpoint?"success","failed");
 	if (!subs->sync_endpoint)
 		return -EINVAL;
 
