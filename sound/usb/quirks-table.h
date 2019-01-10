@@ -3332,8 +3332,6 @@ AU0828_DEVICE(0x2040, 0x7270, "Hauppauge", "HVR-950Q"),
 	 */
 	USB_DEVICE_VENDOR_SPEC(0x2b73, 0x0023),
 	.driver_info = (unsigned long) & (const struct snd_usb_audio_quirk) {
-		/* .vendor_name = "", */
-		/* .product_name = "OCTO-CAPTURE", */
 		.ifnum = QUIRK_ANY_INTERFACE,
 		.type = QUIRK_COMPOSITE,
 		.data = (const struct snd_usb_audio_quirk[]) {
@@ -3347,7 +3345,7 @@ AU0828_DEVICE(0x2040, 0x7270, "Hauppauge", "HVR-950Q"),
 					.altsetting = 1,
 					.altset_idx = 1,
 					.endpoint = 0x05,
-					.ep_attr = 0x05,
+					.ep_attr = USB_ENDPOINT_XFER_ISOC|USB_ENDPOINT_SYNC_ASYNC,
 					.rates = SNDRV_PCM_RATE_44100,
 					.rate_min = 44100,
 					.rate_max = 44100,
@@ -3365,7 +3363,7 @@ AU0828_DEVICE(0x2040, 0x7270, "Hauppauge", "HVR-950Q"),
 					.altsetting = 1,
 					.altset_idx = 1,
 					.endpoint = 0x86,
-					.ep_attr = 0x05,
+					.ep_attr = USB_ENDPOINT_XFER_ISOC|USB_ENDPOINT_SYNC_ASYNC|USB_ENDPOINT_USAGE_IMPLICIT_FB,
 					.rates = SNDRV_PCM_RATE_44100,
 					.rate_min = 44100,
 					.rate_max = 44100,
