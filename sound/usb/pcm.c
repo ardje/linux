@@ -367,6 +367,17 @@ static int set_sync_ep_implicit_fb_quirk(struct snd_usb_substream *subs,
 		alts = &iface->altsetting[1];
 		goto add_sync_ep;
 
+	case USB_ID(0x2b73, 0x0023):
+		if ( altsd->bInterfaceClass == USB_CLASS_VENDOR_SPEC ) {
+			ep = 0x86;
+			iface = usb_ifnum_to_if(dev, 0);
+
+			if (!iface || iface->num_altsetting == 0)
+				return -EINVAL;
+
+			alts = &iface->altsetting[1];
+			goto add_sync_ep;
+		}
 	}
 	if (attr == USB_ENDPOINT_SYNC_ASYNC &&
 	    altsd->bInterfaceClass == USB_CLASS_VENDOR_SPEC &&
