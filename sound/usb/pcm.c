@@ -401,7 +401,7 @@ add_sync_ep:
 	subs->sync_endpoint = snd_usb_add_endpoint(subs->stream->chip,
 						   alts, ep, !subs->direction,
 						   SND_USB_ENDPOINT_TYPE_DATA);
-	dev_err(&dev->dev, "Added implicit sync_endpoint: %s\n", subs->sync_endpoint?"success","failed");
+	dev_err(&dev->dev, "Added implicit sync_endpoint: %s\n", subs->sync_endpoint?"success":"failed");
 	if (!subs->sync_endpoint)
 		return -EINVAL;
 
