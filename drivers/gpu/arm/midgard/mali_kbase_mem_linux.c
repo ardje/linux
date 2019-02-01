@@ -165,11 +165,8 @@ struct kbase_va_region *kbase_mem_alloc(struct kbase_context *kctx,
 		goto prepare_failed;
 	}
 
-	if (*flags & BASE_MEM_GROW_ON_GPF) {
+	if (*flags & BASE_MEM_GROW_ON_GPF)
 		reg->extent = extent;
-		if (reg->extent == 0)
-			goto invalid_extent;
-	}
 	else
 		reg->extent = 0;
 
@@ -251,7 +248,6 @@ struct kbase_va_region *kbase_mem_alloc(struct kbase_context *kctx,
 no_mmap:
 no_cookie:
 no_mem:
-invalid_extent:
 	kbase_mem_phy_alloc_put(reg->cpu_alloc);
 	kbase_mem_phy_alloc_put(reg->gpu_alloc);
 invalid_flags:
@@ -2625,7 +2621,7 @@ void *kbase_va_alloc(struct kbase_context *kctx, u32 size, struct kbase_hwc_dma_
 	page_array = kbase_get_cpu_phy_pages(reg);
 
 	for (i = 0; i < pages; i++)
-		page_array[i] = as_tagged(dma_pa + ((dma_addr_t)i << PAGE_SHIFT));
+		page_array[i] = as_tagged(dma_pa + (i << PAGE_SHIFT));
 
 	reg->cpu_alloc->nents = pages;
 

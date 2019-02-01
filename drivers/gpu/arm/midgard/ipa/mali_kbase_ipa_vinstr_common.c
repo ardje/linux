@@ -24,8 +24,6 @@ static ktime_t dummy_time;
 #ifdef ktime_get
 #undef ktime_get
 #endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 3, 0)
 #define ktime_get() (ACCESS_ONCE(dummy_time))
 
 void kbase_ipa_set_dummy_time(ktime_t t)
@@ -33,16 +31,6 @@ void kbase_ipa_set_dummy_time(ktime_t t)
 	ACCESS_ONCE(dummy_time) = t;
 }
 KBASE_EXPORT_TEST_API(kbase_ipa_set_dummy_time);
-#else
-#define ktime_get() (READ_ONCE(dummy_time))
-
-void kbase_ipa_set_dummy_time(ktime_t t)
-{
-	WRITE_ONCE(dummy_time, t);
-}
-KBASE_EXPORT_TEST_API(kbase_ipa_set_dummy_time);
-
-#endif
 
 #endif /* MALI_UNIT_TEST */
 
@@ -97,7 +85,7 @@ s64 kbase_ipa_sum_all_shader_cores(
 	/* Range: -2^54 < ret < 2^54 */
 	ret *= coeff;
 
-	return div_s64(ret, 1000000);
+	return ret / 1000000;
 }
 
 s64 kbase_ipa_single_counter(
@@ -111,7 +99,7 @@ s64 kbase_ipa_single_counter(
 	const s64 multiplied = (s64) counter_value * (s64) coeff;
 
 	/* Range: -2^29 < return < 2^29 */
-	return div_s64(multiplied, 1000000);
+	return multiplied / 1000000;
 }
 
 int kbase_ipa_attach_vinstr(struct kbase_ipa_model_vinstr_data *model_data)
@@ -185,7 +173,7 @@ int kbase_ipa_vinstr_dynamic_coeff(struct kbase_ipa_model *model, u32 *coeffp,
 		s32 coeff, group_energy;
 
 		coeff = model_data->group_values[i];
-		group_energy = group->op(model_data, coeff, group->counter_block_offset);
+		group_energy = group->op(model_data, coeff, group->counter);
 
 		energy = kbase_ipa_add_saturate(energy, group_energy);
 	}
@@ -211,7 +199,7 @@ int kbase_ipa_vinstr_dynamic_coeff(struct kbase_ipa_model *model, u32 *coeffp,
 	/* Range: 2^20 < num_cycles < 2^40 mCycles */
 	num_cycles = (u64) current_freq * (u64) time_since_last_sample_ms;
 	/* Range: 2^10 < num_cycles < 2^30 Cycles */
-	num_cycles = div_u64(num_cycles, 1000000);
+	num_cycles /= 1000000;
 
 	/* num_cycles should never be 0 in _normal_ usage (because we expect
 	 * frequencies on the order of MHz and >10ms polling intervals), but
