@@ -4020,7 +4020,8 @@ static void config_hdmi20_tx(enum hdmi_vic vic,
 /*
 	data32 |= (((0 == hdmi_color_range_FUL) ? 1 : 0) << 2);
 */
-	data32 |= ( 1 << 2);
+/* Pixel range: 0=16-235/240; 1=16-240; 2=1-254; 3=0-255. */
+	data32 |= ( 3 << 2);
 	data32 |= (0 << 0);
 	hdmitx_wr_reg(HDMITX_DWC_FC_AVICONF3,   data32);
 
