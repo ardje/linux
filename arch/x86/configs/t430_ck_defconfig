@@ -2796,6 +2796,7 @@ CONFIG_IEEE802154_ATUSB=m
 # CONFIG_IEEE802154_HWSIM is not set
 # CONFIG_VMXNET3 is not set
 # CONFIG_FUJITSU_ES is not set
+# CONFIG_THUNDERBOLT_NET is not set
 # CONFIG_NETDEVSIM is not set
 # CONFIG_NET_FAILOVER is not set
 # CONFIG_ISDN is not set
@@ -4762,67 +4763,19 @@ CONFIG_SND_HDA_RECONFIG=y
 CONFIG_SND_HDA_INPUT_BEEP=y
 CONFIG_SND_HDA_INPUT_BEEP_MODE=1
 CONFIG_SND_HDA_PATCH_LOADER=y
-CONFIG_SND_HDA_CODEC_REALTEK=m
-
-#
-# Set to Y if you want auto-loading the codec driver
-#
-CONFIG_SND_HDA_CODEC_ANALOG=m
-
-#
-# Set to Y if you want auto-loading the codec driver
-#
-CONFIG_SND_HDA_CODEC_SIGMATEL=m
-
-#
-# Set to Y if you want auto-loading the codec driver
-#
-CONFIG_SND_HDA_CODEC_VIA=m
-
-#
-# Set to Y if you want auto-loading the codec driver
-#
-CONFIG_SND_HDA_CODEC_HDMI=m
-
-#
-# Set to Y if you want auto-loading the codec driver
-#
-CONFIG_SND_HDA_CODEC_CIRRUS=m
-
-#
-# Set to Y if you want auto-loading the codec driver
-#
-CONFIG_SND_HDA_CODEC_CONEXANT=m
-
-#
-# Set to Y if you want auto-loading the codec driver
-#
-CONFIG_SND_HDA_CODEC_CA0110=m
-
-#
-# Set to Y if you want auto-loading the codec driver
-#
-CONFIG_SND_HDA_CODEC_CA0132=m
-
-#
-# Set to Y if you want auto-loading the codec driver
-#
+CONFIG_SND_HDA_CODEC_REALTEK=y
+CONFIG_SND_HDA_CODEC_ANALOG=y
+CONFIG_SND_HDA_CODEC_SIGMATEL=y
+CONFIG_SND_HDA_CODEC_VIA=y
+CONFIG_SND_HDA_CODEC_HDMI=y
+CONFIG_SND_HDA_CODEC_CIRRUS=y
+CONFIG_SND_HDA_CODEC_CONEXANT=y
+CONFIG_SND_HDA_CODEC_CA0110=y
+CONFIG_SND_HDA_CODEC_CA0132=y
 CONFIG_SND_HDA_CODEC_CA0132_DSP=y
-CONFIG_SND_HDA_CODEC_CMEDIA=m
-
-#
-# Set to Y if you want auto-loading the codec driver
-#
-CONFIG_SND_HDA_CODEC_SI3054=m
-
-#
-# Set to Y if you want auto-loading the codec driver
-#
-CONFIG_SND_HDA_GENERIC=m
-
-#
-# Set to Y if you want auto-loading the codec driver
-#
+CONFIG_SND_HDA_CODEC_CMEDIA=y
+CONFIG_SND_HDA_CODEC_SI3054=y
+CONFIG_SND_HDA_GENERIC=y
 CONFIG_SND_HDA_POWER_SAVE_DEFAULT=0
 CONFIG_SND_HDA_CORE=y
 CONFIG_SND_HDA_DSP_LOADER=y
@@ -5642,15 +5595,13 @@ CONFIG_IOMMU_SUPPORT=y
 #
 # Generic IOMMU Pagetable Support
 #
-CONFIG_IOMMU_DEBUGFS=y
+# CONFIG_IOMMU_DEBUGFS is not set
 # CONFIG_IOMMU_DEFAULT_PASSTHROUGH is not set
 CONFIG_IOMMU_IOVA=y
 CONFIG_AMD_IOMMU=y
 # CONFIG_AMD_IOMMU_V2 is not set
-# CONFIG_AMD_IOMMU_DEBUGFS is not set
 CONFIG_DMAR_TABLE=y
 CONFIG_INTEL_IOMMU=y
-# CONFIG_INTEL_IOMMU_DEBUGFS is not set
 CONFIG_INTEL_IOMMU_SVM=y
 CONFIG_INTEL_IOMMU_DEFAULT_ON=y
 CONFIG_INTEL_IOMMU_FLOPPY_WA=y
@@ -5757,7 +5708,7 @@ CONFIG_IDLE_INJECT=y
 # Performance monitor support
 #
 CONFIG_RAS=y
-# CONFIG_THUNDERBOLT is not set
+CONFIG_THUNDERBOLT=m
 
 #
 # Android
