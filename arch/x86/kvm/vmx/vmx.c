@@ -969,17 +969,9 @@ static bool update_transition_efer(struct vcpu_vmx *vmx, int efer_offset)
 	u64 guest_efer = vmx->vcpu.arch.efer;
 	u64 ignore_bits = 0;
 
-	if (!enable_ept) {
-		/*
-		 * NX is needed to handle CR0.WP=1, CR4.SMEP=1.  Testing
-		 * host CPUID is more efficient than testing guest CPUID
-		 * or CR4.  Host SMEP is anyway a requirement for guest SMEP.
-		 */
-		if (boot_cpu_has(X86_FEATURE_SMEP))
-			guest_efer |= EFER_NX;
-		else if (!(guest_efer & EFER_NX))
-			ignore_bits |= EFER_NX;
-	}
+	/* Shadow paging assumes NX to be available.  */
+	if (!enable_ept)
+		guest_efer |= EFER_NX;
 
 	/*
 	 * LMA and LME handled by hardware; SCE meaningless outside long mode.
@@ -1276,6 +1268,18 @@ static void vmx_vcpu_pi_load(struct kvm_vcpu *vcpu, int cpu)
 	if (!pi_test_sn(pi_desc) && vcpu->cpu == cpu)
 		return;
 
+	/*
+	 * If the 'nv' field is POSTED_INTR_WAKEUP_VECTOR, do not change
+	 * PI.NDST: pi_post_block is the one expected to change PID.NDST and the
+	 * wakeup handler expects the vCPU to be on the blocked_vcpu_list that
+	 * matches PI.NDST. Otherwise, a vcpu may not be able to be woken up
+	 * correctly.
+	 */
+	if (pi_desc->nv == POSTED_INTR_WAKEUP_VECTOR || vcpu->cpu == cpu) {
+		pi_clear_sn(pi_desc);
+		goto after_clear_sn;
+	}
+
 	/* The full case.  */
 	do {
 		old.control = new.control = pi_desc->control;
@@ -1291,6 +1295,8 @@ static void vmx_vcpu_pi_load(struct kvm_vcpu *vcpu, int cpu)
 	} while (cmpxchg64(&pi_desc->control, old.control,
 			   new.control) != old.control);
 
+after_clear_sn:
+
 	/*
 	 * Clear SN before reading the bitmap.  The VT-d firmware
 	 * writes the bitmap and reads SN atomically (5.2.3 in the
@@ -1299,7 +1305,7 @@ static void vmx_vcpu_pi_load(struct kvm_vcpu *vcpu, int cpu)
 	 */
 	smp_mb__after_atomic();
 
-	if (!bitmap_empty((unsigned long *)pi_desc->pir, NR_VECTORS))
+	if (!pi_is_pir_empty(pi_desc))
 		pi_set_on(pi_desc);
 }
 
@@ -2989,6 +2995,7 @@ u64 construct_eptp(struct kvm_vcpu *vcpu, unsigned long root_hpa)
 void vmx_set_cr3(struct kvm_vcpu *vcpu, unsigned long cr3)
 {
 	struct kvm *kvm = vcpu->kvm;
+	bool update_guest_cr3 = true;
 	unsigned long guest_cr3;
 	u64 eptp;
 
@@ -3005,15 +3012,18 @@ void vmx_set_cr3(struct kvm_vcpu *vcpu, unsigned long cr3)
 			spin_unlock(&to_kvm_vmx(kvm)->ept_pointer_lock);
 		}
 
-		if (enable_unrestricted_guest || is_paging(vcpu) ||
-		    is_guest_mode(vcpu))
+		/* Loading vmcs02.GUEST_CR3 is handled by nested VM-Enter. */
+		if (is_guest_mode(vcpu))
+			update_guest_cr3 = false;
+		else if (enable_unrestricted_guest || is_paging(vcpu))
 			guest_cr3 = kvm_read_cr3(vcpu);
 		else
 			guest_cr3 = to_kvm_vmx(kvm)->ept_identity_map_addr;
 		ept_load_pdptrs(vcpu);
 	}
 
-	vmcs_writel(GUEST_CR3, guest_cr3);
+	if (update_guest_cr3)
+		vmcs_writel(GUEST_CR3, guest_cr3);
 }
 
 int vmx_set_cr4(struct kvm_vcpu *vcpu, unsigned long cr4)
@@ -6145,7 +6155,7 @@ static int vmx_sync_pir_to_irr(struct kvm_vcpu *vcpu)
 	if (pi_test_on(&vmx->pi_desc)) {
 		pi_clear_on(&vmx->pi_desc);
 		/*
-		 * IOMMU can write to PIR.ON, so the barrier matters even on UP.
+		 * IOMMU can write to PID.ON, so the barrier matters even on UP.
 		 * But on x86 this is just a compiler barrier anyway.
 		 */
 		smp_mb__after_atomic();
@@ -6175,7 +6185,10 @@ static int vmx_sync_pir_to_irr(struct kvm_vcpu *vcpu)
 
 static bool vmx_dy_apicv_has_pending_interrupt(struct kvm_vcpu *vcpu)
 {
-	return pi_test_on(vcpu_to_pi_desc(vcpu));
+	struct pi_desc *pi_desc = vcpu_to_pi_desc(vcpu);
+
+	return pi_test_on(pi_desc) ||
+		(pi_test_sn(pi_desc) && !pi_is_pir_empty(pi_desc));
 }
 
 static void vmx_load_eoi_exitmap(struct kvm_vcpu *vcpu, u64 *eoi_exit_bitmap)

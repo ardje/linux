@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0
 VERSION = 5
 PATCHLEVEL = 4
-SUBLEVEL = 0
-EXTRAVERSION = -rc5
+SUBLEVEL = 3
+EXTRAVERSION =
 NAME = Kleptomaniac Octopus
 
 # *DOCUMENTATION*
@@ -916,6 +916,9 @@ endif
 ifeq ($(CONFIG_RELR),y)
 LDFLAGS_vmlinux	+= --pack-dyn-relocs=relr
 endif
+
+# make the checker run with the right architecture
+CHECKFLAGS += --arch=$(ARCH)
 
 # insure the checker run with the right endianness
 CHECKFLAGS += $(if $(CONFIG_CPU_BIG_ENDIAN),-mbig-endian,-mlittle-endian)

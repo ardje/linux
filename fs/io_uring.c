@@ -70,6 +70,7 @@
 #include <linux/nospec.h>
 #include <linux/sizes.h>
 #include <linux/hugetlb.h>
+#include <linux/highmem.h>
 
 #include <uapi/linux/io_uring.h>
 
@@ -238,6 +239,8 @@ struct io_ring_ctx {
 
 	struct user_struct	*user;
 
+	struct cred		*creds;
+
 	struct completion	ctx_done;
 
 	struct {
@@ -326,6 +329,7 @@ struct io_kiocb {
 #define REQ_F_TIMEOUT		1024	/* timeout request */
 #define REQ_F_ISREG		2048	/* regular file */
 #define REQ_F_MUST_PUNT		4096	/* must be punted even for NONBLOCK */
+#define REQ_F_TIMEOUT_NOSEQ	8192	/* no timeout sequence */
 	u64			user_data;
 	u32			result;
 	u32			sequence;
@@ -453,9 +457,13 @@ static struct io_kiocb *io_get_timeout_req(struct io_ring_ctx *ctx)
 	struct io_kiocb *req;
 
 	req = list_first_entry_or_null(&ctx->timeout_list, struct io_kiocb, list);
-	if (req && !__io_sequence_defer(ctx, req)) {
-		list_del_init(&req->list);
-		return req;
+	if (req) {
+		if (req->flags & REQ_F_TIMEOUT_NOSEQ)
+			return NULL;
+		if (!__io_sequence_defer(ctx, req)) {
+			list_del_init(&req->list);
+			return req;
+		}
 	}
 
 	return NULL;
@@ -1124,6 +1132,7 @@ static int io_prep_rw(struct io_kiocb *req, const struct sqe_submit *s,
 
 		kiocb->ki_flags |= IOCB_HIPRI;
 		kiocb->ki_complete = io_complete_rw_iopoll;
+		req->result = 0;
 	} else {
 		if (kiocb->ki_flags & IOCB_HIPRI)
 			return -EINVAL;
@@ -1224,7 +1233,7 @@ static int io_import_fixed(struct io_ring_ctx *ctx, int rw,
 		}
 	}
 
-	return 0;
+	return len;
 }
 
 static ssize_t io_import_iovec(struct io_ring_ctx *ctx, int rw,
@@ -1343,8 +1352,18 @@ static ssize_t loop_rw_iter(int rw, struct file *file, struct kiocb *kiocb,
 		return -EAGAIN;
 
 	while (iov_iter_count(iter)) {
-		struct iovec iovec = iov_iter_iovec(iter);
+		struct iovec iovec;
 		ssize_t nr;
+
+		if (!iov_iter_is_bvec(iter)) {
+			iovec = iov_iter_iovec(iter);
+		} else {
+			/* fixed buffers import bvec */
+			iovec.iov_base = kmap(iter->bvec->bv_page)
+						+ iter->iov_offset;
+			iovec.iov_len = min(iter->count,
+					iter->bvec->bv_len - iter->iov_offset);
+		}
 
 		if (rw == READ) {
 			nr = file->f_op->read(file, iovec.iov_base,
@@ -1353,6 +1372,9 @@ static ssize_t loop_rw_iter(int rw, struct file *file, struct kiocb *kiocb,
 			nr = file->f_op->write(file, iovec.iov_base,
 					       iovec.iov_len, &kiocb->ki_pos);
 		}
+
+		if (iov_iter_is_bvec(iter))
+			kunmap(iter->bvec->bv_page);
 
 		if (nr < 0) {
 			if (!ret)
@@ -1646,6 +1668,8 @@ static int io_send_recvmsg(struct io_kiocb *req, const struct io_uring_sqe *sqe,
 		ret = fn(sock, msg, flags);
 		if (force_nonblock && ret == -EAGAIN)
 			return ret;
+		if (ret == -ERESTARTSYS)
+			ret = -EINTR;
 	}
 
 	io_cqring_add_event(req->ctx, sqe->user_data, ret);
@@ -1746,7 +1770,10 @@ static void io_poll_complete_work(struct work_struct *work)
 	struct io_poll_iocb *poll = &req->poll;
 	struct poll_table_struct pt = { ._key = poll->events };
 	struct io_ring_ctx *ctx = req->ctx;
+	const struct cred *old_cred;
 	__poll_t mask = 0;
+
+	old_cred = override_creds(ctx->creds);
 
 	if (!READ_ONCE(poll->canceled))
 		mask = vfs_poll(poll->file, &pt) & poll->events;
@@ -1762,7 +1789,7 @@ static void io_poll_complete_work(struct work_struct *work)
 	if (!mask && !READ_ONCE(poll->canceled)) {
 		add_wait_queue(poll->head, &poll->wait);
 		spin_unlock_irq(&ctx->completion_lock);
-		return;
+		goto out;
 	}
 	list_del_init(&req->list);
 	io_poll_complete(ctx, req, mask);
@@ -1770,6 +1797,8 @@ static void io_poll_complete_work(struct work_struct *work)
 
 	io_cqring_ev_posted(ctx);
 	io_put_req(req);
+out:
+	revert_creds(old_cred);
 }
 
 static int io_poll_wake(struct wait_queue_entry *wait, unsigned mode, int sync,
@@ -1940,18 +1969,24 @@ static int io_timeout(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 	if (get_timespec64(&ts, u64_to_user_ptr(sqe->addr)))
 		return -EFAULT;
 
+	req->flags |= REQ_F_TIMEOUT;
+
 	/*
 	 * sqe->off holds how many events that need to occur for this
-	 * timeout event to be satisfied.
+	 * timeout event to be satisfied. If it isn't set, then this is
+	 * a pure timeout request, sequence isn't used.
 	 */
 	count = READ_ONCE(sqe->off);
-	if (!count)
-		count = 1;
+	if (!count) {
+		req->flags |= REQ_F_TIMEOUT_NOSEQ;
+		spin_lock_irq(&ctx->completion_lock);
+		entry = ctx->timeout_list.prev;
+		goto add;
+	}
 
 	req->sequence = ctx->cached_sq_head + count - 1;
 	/* reuse it to store the count */
 	req->submit.sequence = count;
-	req->flags |= REQ_F_TIMEOUT;
 
 	/*
 	 * Insertion sort, ensuring the first entry in the list is always
@@ -1962,6 +1997,9 @@ static int io_timeout(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 		struct io_kiocb *nxt = list_entry(entry, struct io_kiocb, list);
 		unsigned nxt_sq_head;
 		long long tmp, tmp_nxt;
+
+		if (nxt->flags & REQ_F_TIMEOUT_NOSEQ)
+			continue;
 
 		/*
 		 * Since cached_sq_head + count - 1 can overflow, use type long
@@ -1989,6 +2027,7 @@ static int io_timeout(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 		nxt->sequence++;
 	}
 	req->sequence -= span;
+add:
 	list_add(&req->list, entry);
 	spin_unlock_irq(&ctx->completion_lock);
 
@@ -2000,7 +2039,7 @@ static int io_timeout(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 }
 
 static int io_req_defer(struct io_ring_ctx *ctx, struct io_kiocb *req,
-			const struct io_uring_sqe *sqe)
+			struct sqe_submit *s)
 {
 	struct io_uring_sqe *sqe_copy;
 
@@ -2018,7 +2057,8 @@ static int io_req_defer(struct io_ring_ctx *ctx, struct io_kiocb *req,
 		return 0;
 	}
 
-	memcpy(sqe_copy, sqe, sizeof(*sqe_copy));
+	memcpy(&req->submit, s, sizeof(*s));
+	memcpy(sqe_copy, s->sqe, sizeof(*sqe_copy));
 	req->submit.sqe = sqe_copy;
 
 	INIT_WORK(&req->work, io_sq_wq_submit_work);
@@ -2131,10 +2171,12 @@ static void io_sq_wq_submit_work(struct work_struct *work)
 	struct io_ring_ctx *ctx = req->ctx;
 	struct mm_struct *cur_mm = NULL;
 	struct async_list *async_list;
+	const struct cred *old_cred;
 	LIST_HEAD(req_list);
 	mm_segment_t old_fs;
 	int ret;
 
+	old_cred = override_creds(ctx->creds);
 	async_list = io_async_list_from_sqe(ctx, req->submit.sqe);
 restart:
 	do {
@@ -2242,6 +2284,7 @@ out:
 		unuse_mm(cur_mm);
 		mmput(cur_mm);
 	}
+	revert_creds(old_cred);
 }
 
 /*
@@ -2282,6 +2325,7 @@ static bool io_op_needs_file(const struct io_uring_sqe *sqe)
 	switch (op) {
 	case IORING_OP_NOP:
 	case IORING_OP_POLL_REMOVE:
+	case IORING_OP_TIMEOUT:
 		return false;
 	default:
 		return true;
@@ -2382,7 +2426,7 @@ static int io_queue_sqe(struct io_ring_ctx *ctx, struct io_kiocb *req,
 {
 	int ret;
 
-	ret = io_req_defer(ctx, req, s->sqe);
+	ret = io_req_defer(ctx, req, s);
 	if (ret) {
 		if (ret != -EIOCBQUEUED) {
 			io_free_req(req);
@@ -2409,10 +2453,11 @@ static int io_queue_link_head(struct io_ring_ctx *ctx, struct io_kiocb *req,
 	 * list.
 	 */
 	req->flags |= REQ_F_IO_DRAIN;
-	ret = io_req_defer(ctx, req, s->sqe);
+	ret = io_req_defer(ctx, req, s);
 	if (ret) {
 		if (ret != -EIOCBQUEUED) {
 			io_free_req(req);
+			__io_free_req(shadow);
 			io_cqring_add_event(ctx, s->sqe->user_data, ret);
 			return 0;
 		}
@@ -2645,6 +2690,7 @@ static int io_sq_thread(void *data)
 {
 	struct io_ring_ctx *ctx = data;
 	struct mm_struct *cur_mm = NULL;
+	const struct cred *old_cred;
 	mm_segment_t old_fs;
 	DEFINE_WAIT(wait);
 	unsigned inflight;
@@ -2654,6 +2700,7 @@ static int io_sq_thread(void *data)
 
 	old_fs = get_fs();
 	set_fs(USER_DS);
+	old_cred = override_creds(ctx->creds);
 
 	timeout = inflight = 0;
 	while (!kthread_should_park()) {
@@ -2764,6 +2811,7 @@ static int io_sq_thread(void *data)
 		unuse_mm(cur_mm);
 		mmput(cur_mm);
 	}
+	revert_creds(old_cred);
 
 	kthread_parkme();
 
@@ -3549,6 +3597,8 @@ static void io_ring_ctx_free(struct io_ring_ctx *ctx)
 		io_unaccount_mem(ctx->user,
 				ring_pages(ctx->sq_entries, ctx->cq_entries));
 	free_uid(ctx->user);
+	if (ctx->creds)
+		put_cred(ctx->creds);
 	kfree(ctx);
 }
 
@@ -3820,16 +3870,18 @@ static int io_uring_create(unsigned entries, struct io_uring_params *p)
 	ctx->account_mem = account_mem;
 	ctx->user = user;
 
+	ctx->creds = prepare_creds();
+	if (!ctx->creds) {
+		ret = -ENOMEM;
+		goto err;
+	}
+
 	ret = io_allocate_scq_urings(ctx, p);
 	if (ret)
 		goto err;
 
 	ret = io_sq_offload_start(ctx, p);
 	if (ret)
-		goto err;
-
-	ret = io_uring_get_fd(ctx);
-	if (ret < 0)
 		goto err;
 
 	memset(&p->sq_off, 0, sizeof(p->sq_off));
@@ -3848,6 +3900,14 @@ static int io_uring_create(unsigned entries, struct io_uring_params *p)
 	p->cq_off.ring_entries = offsetof(struct io_rings, cq_ring_entries);
 	p->cq_off.overflow = offsetof(struct io_rings, cq_overflow);
 	p->cq_off.cqes = offsetof(struct io_rings, cqes);
+
+	/*
+	 * Install ring fd as the very last thing, so we don't risk someone
+	 * having closed it before we finish setup
+	 */
+	ret = io_uring_get_fd(ctx);
+	if (ret < 0)
+		goto err;
 
 	p->features = IORING_FEAT_SINGLE_MMAP;
 	return ret;

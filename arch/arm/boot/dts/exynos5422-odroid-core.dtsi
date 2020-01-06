@@ -622,7 +622,6 @@
 				regulator-name = "vdd_g3d";
 				regulator-min-microvolt = <800000>;
 				regulator-max-microvolt = <1400000>;
-				regulator-always-on;
 				regulator-boot-on;
 
 				regulator-state-mem {
@@ -775,7 +774,7 @@
 	status = "okay";
 };
 
-&mali {
+&gpu {
 	mali-supply = <&buck4_reg>;
 	status = "okay";
 };

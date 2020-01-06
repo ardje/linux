@@ -916,6 +916,9 @@ static void r8168g_mdio_write(struct rtl8169_private *tp, int reg, int value)
 
 static int r8168g_mdio_read(struct rtl8169_private *tp, int reg)
 {
+	if (reg == 0x1f)
+		return tp->ocp_base == OCP_STD_PHY_BASE ? 0 : tp->ocp_base >> 4;
+
 	if (tp->ocp_base != OCP_STD_PHY_BASE)
 		reg -= 0x10;
 
@@ -1028,6 +1031,10 @@ static void r8168dp_2_mdio_write(struct rtl8169_private *tp, int reg, int value)
 static int r8168dp_2_mdio_read(struct rtl8169_private *tp, int reg)
 {
 	int value;
+
+	/* Work around issue with chip reporting wrong PHY ID */
+	if (reg == MII_PHYSID2)
+		return 0xc912;
 
 	r8168dp_2_mdio_start(tp);
 
@@ -1509,6 +1516,7 @@ static void __rtl8169_set_wol(struct rtl8169_private *tp, u32 wolopts)
 	rtl_lock_config_regs(tp);
 
 	device_set_wakeup_enable(tp_to_dev(tp), wolopts);
+	tp->dev->wol_enabled = wolopts ? 1 : 0;
 }
 
 static int rtl8169_set_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
@@ -4111,7 +4119,7 @@ static void rtl_hw_jumbo_enable(struct rtl8169_private *tp)
 	case RTL_GIGA_MAC_VER_27 ... RTL_GIGA_MAC_VER_28:
 		r8168dp_hw_jumbo_enable(tp);
 		break;
-	case RTL_GIGA_MAC_VER_31 ... RTL_GIGA_MAC_VER_34:
+	case RTL_GIGA_MAC_VER_31 ... RTL_GIGA_MAC_VER_33:
 		r8168e_hw_jumbo_enable(tp);
 		break;
 	default:
@@ -7172,8 +7180,11 @@ static int rtl_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		dev->gso_max_segs = RTL_GSO_MAX_SEGS_V1;
 	}
 
-	/* RTL8168e-vl has a HW issue with TSO */
-	if (tp->mac_version == RTL_GIGA_MAC_VER_34) {
+	/* RTL8168e-vl and one RTL8168c variant are known to have a
+	 * HW issue with TSO.
+	 */
+	if (tp->mac_version == RTL_GIGA_MAC_VER_34 ||
+	    tp->mac_version == RTL_GIGA_MAC_VER_22) {
 		dev->vlan_features &= ~(NETIF_F_ALL_TSO | NETIF_F_SG);
 		dev->hw_features &= ~(NETIF_F_ALL_TSO | NETIF_F_SG);
 		dev->features &= ~(NETIF_F_ALL_TSO | NETIF_F_SG);
