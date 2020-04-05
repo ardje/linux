@@ -1189,7 +1189,7 @@ static int hdmi_create_connector(struct drm_encoder *encoder)
 
 	hdata->notifier = cec_notifier_conn_register(hdata->dev, NULL,
 						     &conn_info);
-	if (hdata->notifier == NULL) {
+	if (!hdata->notifier) {
 		ret = -ENOMEM;
 		DRM_DEV_ERROR(hdata->dev, "Failed to allocate CEC notifier\n");
 	}
